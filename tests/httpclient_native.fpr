@@ -1,10 +1,8 @@
 unsafe base.
-H = use "../std/httpclient".
+H = use "../std/http".
 Http = use "../std/http".
 T = use "../std/transport".
 TLS = use "../std/tls".
-DNS = use "../std/resolver".
-Socket = use "../std/sockettransport".
 P = use "../std/program".
 S = use "../std/string".
 need result = case result of Ok value -> value | Err why -> error "HTTP native fixture: {why}".
@@ -14,9 +12,9 @@ main = case P.args Unit of
     options = {H.defaults | headerBytes = 512, bodyBytes = 262144, timeoutMs = if mode == "stall" or mode == "slow" then 150 else 3000,
       trust = TLS.CaFile roots};
     q = {method = "POST", url = url, headers = [("content-type", "application/octet-stream")], body = S.repeat 4096 "binary{chr 0}"};
-    pool = need (DNS.create 1);
-    budget = need (Socket.forMs options.timeoutMs);
-    answer = H.requestOn Socket.timerWait budget pool options q;
+    pool = need (T.resolverCreate 1);
+    budget = need (T.forMs options.timeoutMs);
+    answer = H.requestOn T.timerWait budget pool options q;
     _ = case mode of
       "success" -> r = need answer; check "binary body" (r.status == 201 and r.body == S.repeat 4096 "reply{chr 0}")
     | "chunked" -> r = need answer; check "native chunked" (r.status == 200 and r.body == "hello native HTTP")
@@ -27,6 +25,6 @@ main = case P.args Unit of
     | "oversize" -> check "refuse body before allocation" (case answer of Err (T.Invalid why) -> S.contains "body exceeds limit" why | _ -> False)
     | "public" -> r = need (Http.requestWith options q); check "public wrapper" (r.status == 201 and r.body == S.repeat 4096 "reply{chr 0}")
     | _ -> error "bad HTTP fixture mode";
-    _ = need (DNS.close pool);
+    _ = need (T.resolverClose pool);
     print "native HTTP {mode}: PASS"
   | _ -> error "needs URL roots mode".

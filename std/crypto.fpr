@@ -3,7 +3,6 @@
 # remain charged against capacity until their workers really finish.
 
 T = use "transport".
-R = use "resolver".
 
 CryptoHost.verifyBegin : String -> String -> String -> Int -> Result Int String .
 CryptoHost.randomBegin : Int -> Int -> Result Int String .
@@ -12,11 +11,11 @@ CryptoHost.close : Int -> Result Unit String .
 
 await : unsafe T.Budget -> Int -> Result (Bool, String) String .
 await budget id =
-  case R.gate budget of
+  case T.resolverGate budget of
     Err _ -> Err "native crypto deadline/cancellation"
   | Ok _ ->
       case CryptoHost.poll id of
-        Err "again" -> _ = R.nap budget; await budget id
+        Err "again" -> _ = T.resolverNap budget; await budget id
     | answer -> answer.
 
 finish budget begun =

@@ -1,6 +1,6 @@
+B = use "std/browser".
 unsafe base.
 C = use "std/clientcalc".
-B = use "std/browsercalc".
 M = use "std/money".
 J = use "std/json".
 L = use "std/list".

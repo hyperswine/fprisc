@@ -5,18 +5,56 @@
 # definition, implemented by machine/posix/os_*.c.  A system without them (a
 # board) fails a program that imports them at LINK time, by name: a program's
 # imports are its capability manifest (docs/2026-09-18-BASE.md).
-#
-# Sub-seams (`osfs`, `osio`, `osnet`, `oswatch`, `osconnection`) remain available
-# for embedded targets that link only a subset of POSIX runtime units, while
-# `std/os` provides the complete unified surface (`Fs`, `Io`, `Net`, `Watch`,
-# `Conn`, plus top-level primitive bindings).
 
-Fs = use "osfs".
-Io = use "osio".
-Net = use "osnet".
-Watch = use "oswatch".
-Conn = use "osconnection".
+# ---- Filesystem (machine/posix/os_fs.c) ------------------------------------------
+Os.readFile  : String -> Result String String .
+Os.listDir   : String -> Result (List String) String .
+Os.stat      : String -> Result (Int, Int, Int) String .
+Os.mkdir     : String -> Result Unit String .
+Os.remove    : String -> Result Unit String .
+Os.rename    : String -> String -> Result Unit String .
+Os.cwd       : Unit -> String .
 
+# ---- File descriptor I/O (machine/posix/os_io.c) ---------------------------------
+Os.open      : String -> String -> Result Int String .
+Os.ready     : Int -> Bool .
+Os.readyFor  : Int -> Int -> Result Bool String .
+Os.poll      : List Int -> List Int .
+Os.read      : Int -> Int -> Result String String .
+Os.write     : Int -> String -> Result Int String .
+Os.seek      : Int -> Int -> Result Int String .
+Os.close     : Int -> Result Unit String .
+
+# ---- Networking (machine/posix/os_net.c) -----------------------------------------
+Os.connect       : String -> Int -> Result Int String .
+Os.listen        : String -> Int -> Result Int String .
+Os.accept        : Int -> Result (Int, String) String .
+Os.localPort     : Int -> Result Int String .
+Os.prepareSocket : Int -> Result Unit String .
+
+# ---- Kernel readiness watch (machine/posix/os_watch.c) ---------------------------
+Os.watchOpen       : Unit -> Result Int String .
+Os.watchArm        : Int -> List Int -> Unit .
+Os.watchTake       : Int -> List Int .
+# Directional off-hart wait, with a relative kernel timer (-1 means untimed).
+# Timer-only expiry raises an IRQ; take then returns Nil. Policy lives above.
+Os.watchArmEvents  : Int -> List (Int, Int) -> Int -> Result Unit String .
+Os.watchTakeEvents : Int -> List (Int, Int) .
+# Unsafe owned handle: stop arm/take first; retry after yielding while False.
+# True releases the handle, which must never be used again (IRQ slots reuse).
+Os.watchClose      : Int -> Bool .
+
+# ---- Checked owned sockets (machine/posix/os_connection.c) -----------------------
+# IDs never reuse. Raw Os.* is an unsafe escape hatch.
+ConnHost.adopt  : Int -> Result Int String .
+ConnHost.begin  : Int -> String -> Int -> Result Int String .
+ConnHost.fd     : Int -> Result Int String .
+ConnHost.status : Int -> Result Bool String .
+ConnHost.read   : Int -> Int -> Result String String .
+ConnHost.write  : Int -> String -> Result Int String .
+ConnHost.close  : Int -> Result Unit String .
+
+# ---- Processes, TTY, wall clock (machine/posix/os_*.c) ---------------------------
 Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
 Os.wallClock : Unit -> Int .
 Os.tzOffset  : Int -> Int .
@@ -25,35 +63,44 @@ Os.exePath   : Unit -> Result String String .
 Os.ttyRaw    : Bool -> Result Unit String .
 Os.ttySize   : Unit -> (Int, Int) .
 
-readFile p = Fs.readFile p.
-listDir p = Fs.listDir p.
-stat p = Fs.stat p.
-mkdir p = Fs.mkdir p.
-remove p = Fs.remove p.
-rename a b = Fs.rename a b.
-cwd u = Fs.cwd u.
+readFile path = Os.readFile path.
+listDir path = Os.listDir path.
+stat path = Os.stat path.
+mkdir path = Os.mkdir path.
+remove path = Os.remove path.
+rename from to = Os.rename from to.
+cwd u = Os.cwd u.
 
-open path mode = Io.open path mode.
-ready fd = Io.ready fd.
-readyFor fd mask = Io.readyFor fd mask.
-poll fds = Io.poll fds.
-read fd n = Io.read fd n.
-write fd bytes = Io.write fd bytes.
-seek fd at = Io.seek fd at.
-close fd = Io.close fd.
+open path mode = Os.open path mode.
+ready fd = Os.ready fd.
+# Readiness mask: 1 = read, 2 = write, 3 = either. Never blocks.
+readyFor fd mask = Os.readyFor fd mask.
+poll fds = Os.poll fds.
+read fd n = Os.read fd n.
+write fd bytes = Os.write fd bytes.
+seek fd at = Os.seek fd at.
+close fd = Os.close fd.
 
-connect host port = Net.connect host port.
-listen addr port = Net.listen addr port.
-accept fd = Net.accept fd.
-localPort fd = Net.localPort fd.
-prepareSocket fd = Net.prepareSocket fd.
+connect host port = Os.connect host port.
+listen addr port = Os.listen addr port.
+accept fd = Os.accept fd.
+localPort fd = Os.localPort fd.
+prepareSocket fd = Os.prepareSocket fd.
 
-watchOpen u = Watch.watchOpen u.
-watchArm w fds = Watch.watchArm w fds.
-watchTake w = Watch.watchTake w.
-watchArmEvents w events us = Watch.watchArmEvents w events us.
-watchTakeEvents w = Watch.watchTakeEvents w.
-watchClose w = Watch.watchClose w.
+watchOpen u = Os.watchOpen u.
+watchArm w fds = Os.watchArm w fds.
+watchTake w = Os.watchTake w.
+watchArmEvents w events us = Os.watchArmEvents w events us.
+watchTakeEvents w = Os.watchTakeEvents w.
+watchClose w = Os.watchClose w.
+
+connAdopt fd = ConnHost.adopt fd.
+connBegin family address port = ConnHost.begin family address port.
+connFd id = ConnHost.fd id.
+connStatus id = ConnHost.status id.
+connRead id n = ConnHost.read id n.
+connWrite id bytes = ConnHost.write id bytes.
+connClose id = ConnHost.close id.
 
 run argv dir input env limitMs = Os.run argv dir input env limitMs.
 exec argv = Os.exec argv.

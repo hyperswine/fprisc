@@ -10,8 +10,8 @@
 # its clients can live in one process -- the tests do exactly that.
 # Plain TCP: there is no TLS here (std/http.fpr says what that means for HTTPS).
 
-OS = use "osnet".
-IO = use "osio".
+OS = use "os".
+IO = use "os".
 ST = use "stream".
 PL = use "poller".
 

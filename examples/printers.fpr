@@ -1,11 +1,11 @@
 # Printer telemetry and a shared workshop log, with per-tab controls.
 # The native printer-host owns authentication, persistence and LAN services.
 # This entry point retains the public-snapshot viewer for compatibility tests.
+B = use "std/browser".
 unsafe base.
 Live = use "std/live".
 G = use "std/view".
 LJ = use "std/livejs".
-Media = use "std/browsermedia".
 List = use "std/list".
 S = use "std/string".
 File = use "std/file".
@@ -203,7 +203,7 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6732), (
 
 # Local rules travel with the view; no global or component stylesheet.
 css v = "".
-cameraScript = Media.programWithReconnect {attribute = "data-camera-mode", value = "snapshot", delayMs = 10000,
+cameraScript = B.mediaWithReconnect {attribute = "data-camera-mode", value = "snapshot", delayMs = 10000,
   connected = "Snapshot preview · refreshes about every 10s", failed = "Snapshot unavailable · retrying in 10s"}
   {delayMs = 1000, maxDelayMs = 10000, failed = "Camera interrupted · reconnecting…"}
   {hostAttribute = "data-camera-id", onAttribute = "data-camera-on",

@@ -1,7 +1,6 @@
+B = use "std/browser".
 unsafe base.
 C = use "std/clientcalc".
-B = use "std/browsercalc".
-M = use "std/livemetrics".
 J = use "std/json".
 L = use "std/list".
 P = use "std/program".
@@ -15,7 +14,7 @@ intRow e = J.object [("code", J.Text ("String({C.jsInt e})")), ("want", J.Text (
 listRow e = J.object [("code", J.Text ("({C.jsList e}).map(String).join(',')")),
   ("want", J.Text (strJoin "," (L.map str (C.evalList env e))))].
 formatRow micros divisor =
-  e = M.milliseconds (C.Literal micros) (C.Literal divisor);
+  e = B.metricsMilliseconds (C.Literal micros) (C.Literal divisor);
   J.object [("code", J.Text (C.jsText e)), ("want", J.Text (C.evalText env e))].
 vectors = L.append
   (L.map intRow [C.Length (C.Sequence "values"), C.Sum (values [0 - 3, 4, 9]),
@@ -35,7 +34,7 @@ rollback = B.program [B.SetNumber "n" (C.Literal 0), B.SetSequence "xs" (values 
     B.SetNumber "overflow" (C.Add (C.Literal (2 ^ 62 - 1)) (C.Literal 1))],
    B.On "test:show" [B.PutText (B.Id "rollback") (C.Concat [C.Decimal (C.Number "n"), C.Text ":", C.Decimal (C.Length (C.Sequence "xs"))])]].
 snapshot = J.object [("runtime", J.Text (B.runtime Unit)),
-  ("vectors", J.Sequence vectors), ("script", J.Text (M.script (B.Id "rtt") "")),
+  ("vectors", J.Sequence vectors), ("script", J.Text (B.metrics (B.Id "rtt") "")),
   ("rollback", J.Text rollback), ("transport", J.Text (JS.src Unit)),
   ("errors", J.strings [C.jsInt (C.At (values [1]) (C.Literal (0 - 1))),
     C.jsInt (C.At (values [1]) (C.Literal 1)),
@@ -49,9 +48,9 @@ main = case P.args Unit of
   | _ ->
       _ = check "last 32" (C.evalList env (C.TakeLast 32 (values (L.range 1 40))) == L.range 9 40);
       _ = check "sequence predicate" (C.evalBool env (C.Equal (C.Length (C.Sequence "values")) (C.Literal 4)));
-      _ = check "rounding boundary" (C.evalText env (M.ms (C.Literal 49)) == "0.0" and C.evalText env (M.ms (C.Literal 50)) == "0.1");
-      _ = check "exact average" (C.evalText env (M.milliseconds (C.Literal 149) (C.Literal 3)) == "0.0" and
-        C.evalText env (M.milliseconds (C.Literal 150) (C.Literal 3)) == "0.1");
+      _ = check "rounding boundary" (C.evalText env (B.metricsMs (C.Literal 49)) == "0.0" and C.evalText env (B.metricsMs (C.Literal 50)) == "0.1");
+      _ = check "exact average" (C.evalText env (B.metricsMilliseconds (C.Literal 149) (C.Literal 3)) == "0.0" and
+        C.evalText env (B.metricsMilliseconds (C.Literal 150) (C.Literal 3)) == "0.1");
       _ = check "timer bounds" (B.validInterval 1 and B.validInterval 2147483647 and not (B.validInterval 2147483648));
       _ = print "livemetrics: exact rounding, bounded immutable sequences, checked reductions and timer bounds PASS";
       0.

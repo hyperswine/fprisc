@@ -3,8 +3,8 @@
 # service; always await or cancel it before reusing that actor's return address.
 # Cancellation acknowledges removal before the descriptor may be closed/reused.
 # A ticket may be handed to another actor for explicit cancellation.
-OS = use "oswatch".
-IO = use "osio".
+OS = use "os".
+IO = use "os".
 M = use "map".
 L = use "list".
 Ord = use "order".

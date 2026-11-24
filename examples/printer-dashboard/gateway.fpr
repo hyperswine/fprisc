@@ -4,18 +4,14 @@ Auth = use "std/sessionauth".
 PT = use "std/printertelemetry".
 A = use "std/actor".
 T = use "std/transport".
-Sock = use "std/sockettransport".
-Connect = use "std/connect".
-DNS = use "std/resolver".
-H = use "std/httpcore".
-HC = use "std/httpclient".
+H = use "std/http".
 MJ = use "std/mjpeg".
 J = use "std/json".
 L = use "std/list".
 S = use "std/string".
 O = use "std/option".
-N = use "std/osnet".
-IO = use "std/osio".
+N = use "std/os".
+IO = use "std/os".
 ST = use "std/stream".
 Clock = use "std/clock".
 Camera = use "cameraservice".
@@ -23,14 +19,14 @@ cookieName = "print_room_session".
 bindingName = "print_room_challenge".
 Sys.alive : Int -> Bool .
 Request = {method : String, path : String, target : String, headers : List (String, String), body : String}.
-budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "gateway: invalid budget".
+budget ms = case T.forMs ms of Ok b -> b | Err _ -> error "gateway: invalid budget".
 now u = Sys.timeUs Unit / 1000.
 header name request = O.withDefault "" (H.header name request).
 cookie name request =
   pieces = S.split ";" (header "cookie" request);
   matches = L.filterMap (fn piece -> part = S.trim piece; at = strIndexOf "=" part;
     if at < 0 or S.left at part != name then O.None else O.Some (S.dropLeft (at + 1) part)) pieces;
-  case matches of [value] -> if HC.controls value 0 or S.contains " " value then "" else value | _ -> "".
+  case matches of [value] -> if H.controls value 0 or S.contains " " value then "" else value | _ -> "".
 origin configured localPort request =
   authority = case S.split "://" configured of [_, host] -> host | _ -> "";
   host = header "host" request;
@@ -46,21 +42,21 @@ response status content body extra connection =
   next.
 text status body c = response status "text/plain; charset=utf-8" body Nil c.
 json status value hs c = response status "application/json" (J.render value) hs c.
-request limit connection = case HC.line limit 8192 "" connection of
+request limit connection = case H.line limit 8192 "" connection of
     (Err why, _, c) -> (Err why, c)
-  | (Ok line, rest, c) -> case HC.headers limit (8192 - strlen line - 2) 0 Nil rest c of
+  | (Ok line, rest, c) -> case H.headers limit (8192 - strlen line - 2) 0 Nil rest c of
       (Err why, _, c2) -> (Err why, c2)
     | (Ok hs, pending, c2) ->
         unique = L.all (fn key -> L.length (L.filter (fn pair -> case pair of (name, _) -> name == key) hs) <= 1) ["host", "origin", "cookie", "content-length", "transfer-encoding", "content-type", "sec-fetch-site"];
-        size = case H.header "content-length" {headers = hs} of O.None -> Ok 0 | O.Some value -> HC.decimal value;
+        size = case H.header "content-length" {headers = hs} of O.None -> Ok 0 | O.Some value -> H.decimal value;
         result = case S.split " " line of [method, target, "HTTP/1.1"] ->
-            if not unique or not (HC.token method) or H.header "transfer-encoding" {headers = hs} != O.None or not (S.startsWith "/" target) or HC.controls target 0 then Err (T.Invalid "malformed HTTP request")
+            if not unique or not (H.token method) or H.header "transfer-encoding" {headers = hs} != O.None or not (S.startsWith "/" target) or H.controls target 0 then Err (T.Invalid "malformed HTTP request")
             else Ok (method, target)
           | _ -> Err (T.Invalid "malformed request line");
         (case result of Err why -> (Err why, c2) | Ok (method, target) ->
           case size of Err why -> (Err why, c2) | Ok n ->
             if n > 1024 or strlen pending > n then (Err (T.Invalid "invalid request body"), c2) else
-            case HC.exact limit n pending c2 of
+            case H.exact limit n pending c2 of
               (Err why, _, c3) -> (Err why, c3)
             | (Ok body, _, c3) ->
                 at = strIndexOf "?" target;
@@ -127,11 +123,11 @@ readProxyHead cfg token expected until pending conn =
   | (Ok (T.ReadWait _), next) -> _ = Clock.sleepMs 10; readProxyHead cfg token expected until pending next
   | (_, next) -> (Err T.EndOfStream, next).
 proxyHeaderMs websocket = if websocket then 3000 else Camera.headerBudgetMs.
-proxy cfg token expected port target cameraGate req client = case DNS.create 1 of
+proxy cfg token expected port target cameraGate req client = case T.resolverCreate 1 of
     Err _ -> text 503 "Native service unavailable\n" client
   | Ok pool ->
       limit = budget 3000;
-      opened = Connect.connect limit pool "127.0.0.1" port 16384;
+      opened = T.connect limit pool "127.0.0.1" port 16384;
       result = case opened of
           Err _ -> text 503 "Native service unavailable\n" client
         | Ok upstream ->
@@ -155,9 +151,9 @@ proxy cfg token expected port target cameraGate req client = case DNS.create 1 o
                       Sys.loop (c1, u2) (relayStep cfg token expected);
             _ = T.close finalUpstream;
             finalClient;
-      _ = DNS.close pool;
+      _ = T.resolverClose pool;
       result.
-handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
+handle cfg raw peer me = case T.adopt 16384 (ST.Stream raw) of
     Err _ -> _ = IO.close raw; _ = send cfg.owner (Finished me); Unit
   | Ok conn ->
       (parsed, c1) = request (budget 2000) conn;
@@ -183,7 +179,7 @@ handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
         else if req.path == "/" then
           # The view host is an actor, not an external program. Fetch bounded HTML.
           q = {method = "GET", url = "http://127.0.0.1:{cfg.viewPort}/", headers = Nil, body = ""};
-          (case HC.request {HC.defaults | bodyBytes = 2097152, timeoutMs = 3000} q of
+          (case H.clientRequest {H.defaults | bodyBytes = 2097152, timeoutMs = 3000} q of
             Err _ -> text 503 "View unavailable\n" c1
           | Ok r -> gated cfg token expected (response 200 "text/html; charset=utf-8" r.body Nil) c1)
         else if req.path == "/ws" then proxy local token expected cfg.viewPort req.target "" req c1

@@ -18,7 +18,7 @@
 # would refuse to let you forget, is the intended end state (the design's
 # `File.read : Int -> File -> (File, ...)`); this is the usable first cut.
 
-OS = use "osio".
+OS = use "os".
 PL = use "poller".
 O = use "option".
 

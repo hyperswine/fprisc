@@ -9,7 +9,7 @@ E = use "encoding".
 D = use "digest".
 A = use "actor".
 C = use "crypto".
-Socket = use "sockettransport".
+T = use "transport".
 Key = {name : String, public : String}.
 Pending = {id : String, binding : String, origin : String, message : String, until : Int}.
 Session = {digest : String, origin : String, until : Int}.
@@ -58,7 +58,7 @@ valid at token origin state = if strlen token < 32 or strlen token > 128 then Fa
   digest = D.sha256 token;
   L.any (fn session -> session.digest == digest and session.origin == origin and session.until > at) state.sessions.
 logout token state = digest = D.sha256 token; {state | sessions = L.filter (fn s -> s.digest != digest) state.sessions}.
-budget u = case Socket.forMs 2000 of Ok b -> b | Err _ -> error "auth: invalid budget".
+budget u = case T.forMs 2000 of Ok b -> b | Err _ -> error "auth: invalid budget".
 random u = case C.random (budget Unit) 1 32 of Ok bytes -> Ok (E.hex bytes) | Err _ -> Err "auth mechanism unavailable".
 verifyKeys : (ks : List Key | measure ks) -> String -> String -> Bool .
 verifyKeys ks message signature = case ks of Nil -> False | key :: rest ->

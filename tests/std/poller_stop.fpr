@@ -1,7 +1,7 @@
 unsafe base.
 P = use "std/poller".
 TCP = use "std/tcp".
-OS = use "std/oswatch".
+OS = use "std/os".
 check b why = if b then Unit else error why.
 need r = case r of Ok x -> x | Err why -> error why.
 # Publish a Watch before announcing registration. The owner waits for both

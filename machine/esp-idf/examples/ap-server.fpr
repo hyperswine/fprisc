@@ -15,7 +15,7 @@
 unsafe base.
 Esp = use "std/esp".
 Wifi = use "std/wifi".
-Http = use "std/httpcore".
+Http = use "std/http".
 TCP = use "std/tcp".
 ST = use "std/stream".
 PL = use "std/poller".

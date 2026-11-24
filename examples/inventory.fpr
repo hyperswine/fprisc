@@ -50,6 +50,7 @@
 # localStorage and mirrors back on every connection.  Only its hash is in the
 # log.  Signing out forgets that device; "sign out other devices" forgets the rest.
 # ============================================================================
+B = use "std/browser".
 
 profile base.
 
@@ -58,12 +59,6 @@ G = use "std/view".
 UI = use "std/ui".
 Appearance = use "std/appearance".
 LJ = use "std/livejs".
-Storage = use "std/browserstorage".
-Autocomplete = use "std/browserautocomplete".
-Feedback = use "std/browserfeedback".
-Metrics = use "std/livemetrics".
-B = use "std/browsercalc".
-Console = use "std/browserconsole".
 VC = use "std/viewcache".
 List = use "std/list".
 Pagination = use "std/pagination".
@@ -707,9 +702,9 @@ locals = G.locals @Client client.
 # lives in a hidden input so the page's script can fill it
 root v kids =
   light = v.theme == 1;
-  UI.pageWith (Appearance.look light) { UI.stack | pad = 3 } [Feedback.theme light]
-    [UI.vstackWith { UI.stack | gap = 4, fill = UI.Broad } (Autocomplete.scope :: locals + Appearance.tokens light)
-      (UI.input { UI.field | kind = UI.HiddenField } [G.bind @Client.tok, B.mark tokenHook ""] :: Autocomplete.prototypes (Appearance.tokens light) :: Feedback.prototypes (Appearance.tokens light) :: kids)].
+  UI.pageWith (Appearance.look light) { UI.stack | pad = 3 } [B.feedbackTheme light]
+    [UI.vstackWith { UI.stack | gap = 4, fill = UI.Broad } (B.autocompleteScope :: locals + Appearance.tokens light)
+      (UI.input { UI.field | kind = UI.HiddenField } [G.bind @Client.tok, B.mark tokenHook ""] :: B.autocompletePrototypes (Appearance.tokens light) :: B.feedbackPrototypes (Appearance.tokens light) :: kids)].
 
 # `keep`: how many cards this tab's writer remembers, this page's and then the
 # ones it drew most recently.  The writer's cache also holds its own render
@@ -815,10 +810,10 @@ editor v =
       [ UI.label { UI.txt | size = UI.Heading } (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")
       , UI.labelled "name" (UI.input { UI.field | placeholder = "e.g. USB-C cable", maxLength = 120 } [G.bind @Client.name])
       , UI.hstack { UI.stack | gap = 2, vary = [UI.OnNarrow [UI.Stacked]] }
-          [ UI.labelled "room or place" (UI.input { UI.field | placeholder = "e.g. study", maxLength = 60, suggest = "off" } [G.bind @Client.loc, Autocomplete.from "loc"])
-          , UI.labelled "spot" (UI.input { UI.field | placeholder = "e.g. top drawer", maxLength = 60, suggest = "off" } [G.bind @Client.sub, Autocomplete.from "sub"]) ]
+          [ UI.labelled "room or place" (UI.input { UI.field | placeholder = "e.g. study", maxLength = 60, suggest = "off" } [G.bind @Client.loc, B.autocompleteFrom "loc"])
+          , UI.labelled "spot" (UI.input { UI.field | placeholder = "e.g. top drawer", maxLength = 60, suggest = "off" } [G.bind @Client.sub, B.autocompleteFrom "sub"]) ]
       , UI.labelled "notes" (UI.input { UI.field | rows = 3, maxLength = 2000 } [G.bind @Client.desc])
-      , UI.labelled "tags, comma separated" (UI.input { UI.field | placeholder = "e.g. electronics, cables", caps = False, suggest = "off" } [G.bind @Client.tags, Autocomplete.from "tags"])
+      , UI.labelled "tags, comma separated" (UI.input { UI.field | placeholder = "e.g. electronics, cables", caps = False, suggest = "off" } [G.bind @Client.tags, B.autocompleteFrom "tags"])
       , UI.hstack { UI.stack | gap = 2, wrap = True } (List.map (fn t -> UI.button chip [G.send codec (AddTag t)] t) v.quick)
       , UI.hstack { UI.stack | gap = 2 }
           [ UI.button { pill | kind = UI.Primary, vary = [UI.Always [UI.FillOf UI.Grow]] } [G.send codec Save] (case v.editing == 0 of True -> "add item" | False -> "save")
@@ -922,7 +917,7 @@ cssAll v = UI.css (G.El "div" Nil [root sampleView (signedIn sampleView [itemCar
 # mirrored, and the server signs this page in); afterwards whatever the server
 # puts in `tok` -- a new token at sign-in, "" at sign-out or when it no longer
 # knows the token -- is what localStorage keeps.
-script = rttScript + LJ.src Unit + Storage.script "inventory-device" "tok" tokenHook + autocomplete + pagerScript + consoleScript + pendingScript.
+script = rttScript + LJ.src Unit + B.storage "inventory-device" "tok" tokenHook + autocomplete + pagerScript + consoleScript + pendingScript.
 # the page's hooks: one value each, placed by the view (`B.mark`) and read by
 # the scripts, so a name is written once
 consoleScope = B.Attribute "data-console-scope".
@@ -936,10 +931,10 @@ rttHook = B.Id "inv-rtt".
 
 # The console behaves like a terminal: the newest output is at the bottom and in
 # view, and the arrow keys walk back through the commands this browser ran.
-consoleScript = Console.script {scope = consoleScope, input = consoleInput,
+consoleScript = B.console {scope = consoleScope, input = consoleInput,
   run = consoleRun, output = consoleOutput,
   storageKey = "inventory-console", limit = 50}.
-pagerScript = Console.pager (B.Id "lv-root") pagerHook listHook.
+pagerScript = B.pager (B.Id "lv-root") pagerHook listHook.
 # Never frozen.  A button pressed gives way at once.  Anything that waits on
 # the server -- a message, a search -- shows a thin bar at the top, pulses the
 # button and fades the list if nothing has come back after 100 ms, until the
@@ -949,10 +944,10 @@ pagerScript = Console.pager (B.Id "lv-root") pagerHook listHook.
 # std/livejs writes its link state into #lv-link, which lives here, outside
 # the live root, so no render replaces it.  Animations are the Web Animations
 # API, so the app still has no CSS text.
-pendingScript = Feedback.src Unit.
+pendingScript = B.feedback Unit.
 # Shared generated monitor, installed before the client opens its socket.
 # Observes successful Live sends and accepted frames through explicit events.
-rttScript = Metrics.script rttHook "".
+rttScript = B.metrics rttHook "".
 
 # The editor's autocomplete, in the page so it answers each keystroke at once.
 # An input with data-ac=loc|sub|tags is completed from the lists the server
@@ -960,7 +955,7 @@ rttScript = Metrics.script rttHook "".
 # box lives outside the live root and clones FP-RISC-owned appearance
 # prototypes inside its explicit data-ac-scope. Taking a suggestion fires
 # 'input', which is how the client hears the change (and mirrors it).
-autocomplete = Autocomplete.src Unit.
+autocomplete = B.autocomplete Unit.
 
 # ---- the old app's items: a Firestore REST listing ------------------------------------------------
 # GET .../documents/inventory?pageSize=1000 saved to a file.  Items already

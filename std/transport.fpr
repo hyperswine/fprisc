@@ -1,9 +1,15 @@
-# Byte-stream operations and policy shared by TCP and future TLS drivers.
+# std/transport.fpr -- Byte-stream transport, DNS resolver, checked TCP sockets,
+# and readiness-watched connection helpers.
+#
 # All deadlines are absolute monotonic microseconds. Drivers must never block
 # a hart: one I/O attempt, or a bounded/yielding wait. Cancellation queries
 # must also be nonblocking. Error results retain already-transferred progress.
 L = use "list".
+ST = use "stream".
+OS = use "os".
+R = use "readiness".
 
+# ---- Core transport types & state-threaded operations ----------------------------
 Interest = Type (Readable | Writable | ReadWrite | Progress).
 Failure = Type (TimedOut | Cancelled | Closed | EndOfStream | WrongOwner |
   Invalid String | DriverViolation String | Io String | Unsupported String |
@@ -160,3 +166,111 @@ withConnection conn body = case conn of
       case result of
           Ok value -> (case cleanup of Ok _ -> Ok value | Err why -> Err why)
         | Err why -> (case cleanup of Ok _ -> Err why | Err releaseWhy -> Err (CleanupFailed why releaseWhy)).
+
+# ---- Caller-bounded DNS resolver -------------------------------------------------
+# An abandoned OS call still occupies its configured pool slot until it finishes;
+# no unbounded worker/thread queue is admitted.
+DnsHost.pool : Int -> Result Int String .
+DnsHost.begin : Int -> String -> Int -> Result Int String .
+DnsHost.poll : Int -> Result (List (Int, String)) String .
+DnsHost.abandon : Int -> Result Unit String .
+DnsHost.close : Int -> Result Unit String .
+Pool = Type (Pool Int).
+resolverCreate count = if count < 1 then Err (Invalid "resolver capacity must be positive") else
+  case DnsHost.pool count of Ok id -> Ok (Pool id) | Err why -> Err (Io why).
+resolverClose pool = case pool of Pool id -> case DnsHost.close id of Ok _ -> Ok Unit | Err why -> Err (Io why).
+resolverGate budget = if isCancelled budget then Err Cancelled else
+  if deadline budget < 0 then Err (Invalid "negative deadline") else
+  if Sys.timeUs Unit >= deadline budget then Err TimedOut else Ok Unit.
+resolverNap budget =
+  left = deadline budget - Sys.timeUs Unit;
+  if left <= 0 then Unit else Sys.sleepUs (if left < 1000 then left else 1000).
+resolve budget host port pool = if port < 1 or port > 65535 then Err (Invalid "invalid TCP port") else
+  case resolverGate budget of Err why -> Err why | Ok _ -> (case pool of Pool id ->
+    case DnsHost.begin id host port of Err why -> Err (Io why) | Ok job ->
+      result = resolving budget job;
+      cleanup = DnsHost.abandon job;
+      case cleanup of Err why -> Err (Io why) | Ok _ -> result).
+resolving : unsafe Budget -> Int -> Result (List (Int, String)) Failure .
+resolving budget job = case resolverGate budget of
+    Err why -> Err why
+  | Ok _ -> (case DnsHost.poll job of
+      Ok addresses -> (case resolverGate budget of Err why -> Err why | Ok _ -> Ok addresses)
+    | Err why -> if why == "again" then _ = resolverNap budget; resolving budget job else Err (Io why)).
+
+# ---- Checked owned TCP socket transport ------------------------------------------
+# Old state aliases cannot access a descriptor after its lease is consumed.
+SocketState = Type (SocketState Int (Interest -> Budget -> Int -> Result Unit Failure)).
+within ms cancelled = case deadlineFrom (Sys.timeUs Unit) ms of Err why -> Err why | Ok d -> Ok (Budget d cancelled).
+forMs ms = case deadlineFrom (Sys.timeUs Unit) ms of Err why -> Err why | Ok d -> Ok (Uncancelled d).
+socketFailure why = if why == "closed" then Closed else if why == "wrong owner" then WrongOwner else Io why.
+socketHandle s = case s of SocketState id _ -> id.
+descriptor s = case OS.connFd (socketHandle s) of Ok fd -> Ok fd | Err why -> Err (socketFailure why).
+socketValid s = case descriptor s of Ok _ -> Ok Unit | Err why -> Err why.
+mask interest = case interest of Readable -> 1 | Writable -> 2 | ReadWrite -> 3 | Progress -> 0.
+socketReadNow n s = case OS.connRead (socketHandle s) n of
+    Ok bytes -> (if strlen bytes == 0 then End else Data bytes, s)
+  | Err why -> (if why == "again" then ReadWait Readable else ReadFault (socketFailure why), s).
+socketWriteNow bytes s = case OS.connWrite (socketHandle s) bytes of
+    Ok n -> (Wrote n, s)
+  | Err why -> (if why == "again" then WriteWait Writable else WriteFault (socketFailure why), s).
+socketWaitNow interest budget s = case descriptor s of
+    Err why -> (Err why, s)
+  | Ok fd -> (case s of SocketState _ wait ->
+      result = wait interest budget fd;
+      (case result of Err why -> Err why | Ok _ -> socketValid s, s)).
+timerWait interest budget fd =
+  left = deadline budget - Sys.timeUs Unit;
+  us = if left < 1000 then left else 1000;
+  if us <= 0 then Err TimedOut else
+  if interest == Progress then _ = Sys.sleepUs us; Ok Unit else
+  case OS.readyFor fd (mask interest) of
+    Err why -> Err (Io why)
+  | Ok ready -> _ = if ready then yield (myself 0) else Sys.sleepUs us; Ok Unit.
+socketNow s = Sys.timeUs Unit.
+socketRelease s = (case OS.connClose (socketHandle s) of Ok _ -> Ok Unit | Err why -> Err (socketFailure why), s).
+fromHandle wait chunk id = open chunk (Backend socketReadNow socketWriteNow socketWaitNow socketNow socketRelease socketValid (fn why state -> (why, state))) (SocketState id wait).
+adopt chunk stream = adoptWith timerWait chunk stream.
+adoptWith wait chunk stream = if chunk <= 0 then Err (Invalid "chunk limit must be positive") else
+  case OS.connAdopt (ST.fd stream) of Err why -> Err (socketFailure why) | Ok id -> fromHandle wait chunk id.
+
+# ---- Bounded TCP connect (same absolute budget covers DNS + TCP setup) -----------
+connect budget pool host port chunk = connectWith timerWait budget pool host port chunk.
+connectWith wait budget pool host port chunk = if chunk <= 0 then Err (Invalid "chunk limit must be positive") else
+  case resolve budget host port pool of
+    Err why -> Err why
+  | Ok addresses -> attempts wait budget port chunk addresses (Io "no address to connect to").
+attempts : unsafe (Interest -> Budget -> Int -> Result Unit Failure) -> Budget -> Int -> Int -> List (Int, String) -> Failure -> Result (Connection SocketState) Failure .
+attempts wait budget port chunk addresses last = case resolverGate budget of
+    Err why -> Err why
+  | Ok _ -> (case addresses of
+      Nil -> Err last
+    | (family, address) :: rest -> (case OS.connBegin family address port of
+        Err why -> attempts wait budget port chunk rest (socketFailure why)
+      | Ok id ->
+          result = establishing wait budget id;
+          case result of
+            Ok _ -> fromHandle wait chunk id
+          | Err why ->
+              _ = OS.connClose id;
+              case why of TimedOut -> Err why | Cancelled -> Err why | _ -> attempts wait budget port chunk rest why)).
+establishing : unsafe (Interest -> Budget -> Int -> Result Unit Failure) -> Budget -> Int -> Result Unit Failure .
+establishing wait budget id = case resolverGate budget of
+    Err why -> Err why
+  | Ok _ -> (case OS.connStatus id of
+      Err why -> Err (socketFailure why)
+    | Ok True -> resolverGate budget
+    | Ok False -> (case OS.connFd id of
+        Err why -> Err (socketFailure why)
+      | Ok fd -> (case wait Writable budget fd of Err why -> Err why | Ok _ -> establishing wait budget id))).
+
+# ---- Readiness-watched socket transport ------------------------------------------
+watchFailure why = if why == "timed out" then TimedOut else if why == "cancelled" then Cancelled else Io why.
+watchWait poller interest budget fd = if interest == Progress then _ = resolverNap budget; resolverGate budget else
+  m = mask interest;
+  result = case budget of
+      Uncancelled d -> R.awaitUntil fd m d poller
+    | Budget d cancelled -> R.awaitChecking fd m d cancelled poller;
+  case result of Ok _ -> Ok Unit | Err why -> Err (watchFailure why).
+adoptOn : R.Poller -> Int -> ST.Stream -> Result (Connection SocketState) Failure .
+adoptOn poller chunk stream = adoptWith (watchWait poller) chunk stream.

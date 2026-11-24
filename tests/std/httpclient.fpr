@@ -1,5 +1,5 @@
 unsafe base.
-H = use "std/httpclient".
+H = use "std/http".
 T = use "std/transport".
 O = use "std/option".
 S = use "std/string".
@@ -16,7 +16,7 @@ driver = T.Backend readScript writeScript (fn interest budget s -> (Err T.TimedO
 connection fragment bytes = case T.open 4096 driver {bytes = bytes, fragment = fragment, calls = 0, now = 0, tick = 0, closed = 0} of Ok c -> c | Err _ -> error "fixture".
 options = {H.defaults | headerBytes = 512, bodyBytes = 32}.
 budget = T.Uncancelled 10000.
-reply method fragment raw = T.withConnection (connection fragment raw) (fn c -> H.response budget options method 0 "" c).
+reply method fragment raw = T.withConnection (connection fragment raw) (fn c -> H.readResponse budget options method 0 "" c).
 body result = case result of Ok response -> response.body | Err why -> error "httpclient unexpected {why}".
 refuses raw = case reply "GET" 1 raw of Err _ -> True | _ -> False.
 calls conn = state = T.state conn; state.calls.
@@ -54,9 +54,9 @@ main =
      "{S.repeat 9 "HTTP/1.1 100 Continue\r\n\r\n"}{content}"];
   c = connection 1 content;
   slow = case c of T.Open d s n -> T.Open d {s | tick = 10} n | _ -> error "fixture";
-  (expired, next) = H.response (T.Uncancelled 25) options "GET" 0 "" slow;
+  (expired, next) = H.readResponse (T.Uncancelled 25) options "GET" 0 "" slow;
   _ = check "progress does not extend deadline" (case expired of Err T.TimedOut -> state = T.state next; state.calls == 3 | _ -> False);
-  (cancelled, idle) = H.response (T.Budget 0 (fn u -> True)) options "GET" 0 "" c;
+  (cancelled, idle) = H.readResponse (T.Budget 0 (fn u -> True)) options "GET" 0 "" c;
   _ = check "cancel before any I/O" (cancelled == Err T.Cancelled and (calls idle) == 0);
   _ = check "Host includes a nondefault port" (S.contains "host: example.org:8080\r\n" (H.requestHead {method = "GET", body = "", headers = Nil} {host = "example.org", port = 8080, scheme = "http", target = "/"}));
   _ = check "query-only URL" (H.parseUrl "http://example.org?q=1" == Ok {host = "example.org", port = 80, scheme = "http", target = "/?q=1"});

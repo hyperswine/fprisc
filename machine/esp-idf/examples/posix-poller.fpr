@@ -3,7 +3,7 @@ unsafe base.
 TCP = use "std/tcp".
 ST = use "std/stream".
 PL = use "std/poller".
-OS = use "std/oswatch".
+OS = use "std/os".
 Probe.tls : Unit -> Int .
 Probe.wakes : Unit -> Int .
 need r = case r of Ok x -> x | Err why -> error why.

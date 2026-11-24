@@ -45,12 +45,12 @@
 # well-behaved and the adversarial (the last-unit race, a void twice, a
 # crash across a checkout, a thousand receipts, delta-not-reshape edits).
 # ============================================================================
+B = use "std/browser".
 
 profile base.
 
 Live = use "std/live".
 Reload = use "std/livereload".
-Notice = use "std/livenotice".
 Watch = use "std/watch".
 Pricing = use "pos1_pricing".
 Core = use "pos1_core".
@@ -58,10 +58,8 @@ G = use "std/view".
 UI = use "std/ui".
 Appearance = use "std/appearance".
 C = use "std/clientcalc".
-B = use "std/browsercalc".
 Money = use "std/money".
 LJ = use "std/livejs".
-Metrics = use "std/livemetrics".
 VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
@@ -103,7 +101,7 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000, metrics = "" }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = B.noticeInit False 3000, metrics = "" }.
 
 # ---- profiling ---------------------------------------------------------------------------
 # What the app measures about itself, shown on the Admin tab (microseconds):
@@ -408,7 +406,7 @@ pMsg j sid msg m = case msg of
   # signing out empties the page's cart too, so the next cashier starts clean
   | Logout -> signOut m sid (sGet m.sess sid)
   | PricingPoll -> (case sid == 0 of True -> (pollPricing m, Nil) | False -> (m, Nil))
-  | NoticeTick -> (case sid == 0 of True -> ({m | reloadNotice = Notice.tick m.reloadNotice}, Nil) | False -> (m, Nil))
+  | NoticeTick -> (case sid == 0 of True -> ({m | reloadNotice = B.noticeTick m.reloadNotice}, Nil) | False -> (m, Nil))
   | Quit -> (m, Live.Quit :: Nil)
   | ClientState c -> mirror m sid c
   | other -> withUser j sid other m (sGet m.sess sid).
@@ -568,7 +566,7 @@ setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
 # every page mirrors its client state, twice a second when it changed
 subs m = Live.SyncClientState 500 (ClientState client) ::
   List.append (case m.pricing.journal == "" of True -> Nil | False -> Live.Every 300 PricingPoll :: Nil)
-  (case Notice.pending m.reloadNotice of True -> Live.Every 100 NoticeTick :: Nil | False -> Nil).
+  (case B.noticePending m.reloadNotice of True -> Live.Every 100 NoticeTick :: Nil | False -> Nil).
 
 # ---- what a session sees (Live.serveProjected) --------------------------------------------------
 # The register hands each session's writer THIS, not the model: its own
@@ -640,11 +638,11 @@ view sid v old = case old of (cardsOld, rowsOld, rs) ->
   s = v.s;
   t0 = Sys.timeUs Unit;
   (case (s.cashier == "") of
-    True -> (G.renderStyled (pageRoot v [loginView s, Notice.view v.reloadNotice]), old)
+    True -> (G.renderStyled (pageRoot v [loginView s, B.noticeView v.reloadNotice]), old)
   | False ->
     (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
     (case VC.many (fn x -> "{x.n}") receiptRow v.sales (VC.begin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
-      out = G.renderStyled (pageRoot v (Notice.view v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
+      out = G.renderStyled (pageRoot v (B.noticeView v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
       (ch, cm, cn) = VC.stats cc;
       (rh, rm, rn) = VC.stats rc;
       rs2 = { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + ch + rh, misses = rs.misses + cm + rm, cards = cn, rows = rn };
@@ -654,7 +652,7 @@ verify = Program.envOr "0" "POS1_VIEW_VERIFY" == "1".
 # the same page with nothing remembered: the stylesheet's sample, and the check
 # that the cached page is the fresh one
 viewFresh v = pageRoot v
-  (Notice.view v.reloadNotice :: nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
+  (B.noticeView v.reloadNotice :: nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
 
 # The stylesheet is a function of the tree -- and the page is served
 # from the signed-out view, so the rules the register needs would never
@@ -887,7 +885,7 @@ cartScript = B.onLocals
      B.PutText cartTotal (dollars (C.Add (C.Number "sub") (C.Number "tax"))),
      B.Show cartEmpty (C.Equal (C.Number "count") (C.Literal 0))]].
 # installed BEFORE the client, which opens its socket as soon as it runs
-rttScript = Metrics.script rttHook " (a tab the browser pauses or throttles inflates this; the server side is above)".
+rttScript = B.metrics rttHook " (a tab the browser pauses or throttles inflates this; the server side is above)".
 
 # ---- dynamic pricing: only the register's internal subscription can adopt ----
 # Runtime session/function values never enter disk receipts or browser projections.
@@ -902,7 +900,7 @@ pricingBindings table = case Reload.function table "rate" of
     | Ok label -> Ok {rate = rate, label = label}.
 pricingSpec = {name = "pos1_pricing", bind = pricingBindings}.
 bootPricing o store metrics reloadNotice =
-  booted = {boot o store | reloadNotice = Notice.init reloadNotice 3000, metrics = metrics};
+  booted = {boot o store | reloadNotice = B.noticeInit reloadNotice 3000, metrics = metrics};
   _ = writeStock booted;
   model = booted;
   case Program.env "FPR_RELOAD_JOURNAL" of
@@ -926,7 +924,7 @@ pricingAdopted model current result = case result of
       _ = print "[pos1] pricing adopted: {pricing.value.label Unit}#{pricing.hash}";
       notice = case pricing.hash == current.hash of
         True -> model.reloadNotice
-      | False -> Notice.adopted pricing.name pricing.hash model.reloadNotice;
+      | False -> B.noticeAdopted pricing.name pricing.hash model.reloadNotice;
       {model | pricing = pricing, reloadNotice = notice}.
 
 # ---- main ---------------------------------------------------------------------------------------------

@@ -1,8 +1,6 @@
 # TLS orchestration over a native engine. This first backend is OpenSSL 3 on
 # Unix (--with machine/unix/tls_openssl.c and its include/link flags).
 T = use "transport".
-S = use "sockettransport".
-Resolver = use "resolver".
 TlsHost.start : Int -> String -> String -> Int -> Int -> Result Int String .
 TlsHost.fd : Int -> Result Int String .
 TlsHost.step : Int -> Int -> String -> Int -> Result (Int, String, Int) String .
@@ -12,14 +10,14 @@ Trust = Type (DefaultRoots | CaFile String).
 Minimum = Type (TLS12 | TLS13).
 State = Type (State Int (T.Interest -> T.Budget -> Int -> Result Unit T.Failure)).
 id state = case state of State handle _ -> handle.
-valid state = case TlsHost.fd (id state) of Ok _ -> Ok Unit | Err why -> Err (S.failure why).
+valid state = case TlsHost.fd (id state) of Ok _ -> Ok Unit | Err why -> Err (T.socketFailure why).
 now state = Sys.timeUs Unit.
 waitNow interest budget state =
-  result = if interest == T.Progress then _ = Resolver.nap budget; Resolver.gate budget else
-    case TlsHost.fd (id state) of Err why -> Err (S.failure why) | Ok fd ->
+  result = if interest == T.Progress then _ = T.resolverNap budget; T.resolverGate budget else
+    case TlsHost.fd (id state) of Err why -> Err (T.socketFailure why) | Ok fd ->
       case state of State _ wait -> wait interest budget fd;
   (result, state).
-release state = (case TlsHost.close (id state) of Ok _ -> Ok Unit | Err why -> if why == "closed" then Ok Unit else Err (S.failure why), state).
+release state = (case TlsHost.close (id state) of Ok _ -> Ok Unit | Err why -> if why == "closed" then Ok Unit else Err (T.socketFailure why), state).
 # A pending async operation may commit after expiry/cancellation. Retire the
 # identity, never let a fresh operation collect its result, and retain that
 # uncertainty alongside the confirmed prefix reported by Transport.
@@ -29,18 +27,18 @@ abort why state = if why == T.WrongOwner then (why, state) else
   (if pending then T.OutcomeUnknown why else why, state).
 interest code = if code == 1 then T.Readable else if code == 2 then T.Writable else T.Progress.
 readNow n state = case TlsHost.step (id state) 3 "" n of
-    Err why -> (T.ReadFault (S.failure why), state)
+    Err why -> (T.ReadFault (T.socketFailure why), state)
   | Ok (code, bytes, _) ->
       (if code == 3 then T.Data bytes else if code == 4 then T.End else T.ReadWait (interest code), state).
 writeNow bytes state = case TlsHost.step (id state) 4 bytes 0 of
-    Err why -> (T.WriteFault (S.failure why), state)
+    Err why -> (T.WriteFault (T.socketFailure why), state)
   | Ok (code, _, n) -> (if code == 3 then T.Wrote n else T.WriteWait (interest code), state).
 drive : unsafe T.Budget -> Int -> State -> Result Unit T.Failure .
-drive budget op state = case Resolver.gate budget of
+drive budget op state = case T.resolverGate budget of
     Err why -> Err why
   | Ok _ -> (case TlsHost.step (id state) op "" 0 of
-      Err why -> Err (S.failure why)
-    | Ok (code, _, _) -> if code == 3 then Resolver.gate budget else
+      Err why -> Err (T.socketFailure why)
+    | Ok (code, _, _) -> if code == 3 then T.resolverGate budget else
         case waitNow (interest code) budget state of
           (Err why, _) -> Err why
         | (Ok _, _) -> drive budget op state).
@@ -49,15 +47,15 @@ upgrade budget peer trust minimum tcp = upgradeWith 16 budget peer trust minimum
 upgradeWith capacity budget peer trust minimum tcp = case tcp of
     T.Shut _ -> Err T.Closed
   | T.Open _ socket chunk ->
-      result = case Resolver.gate budget of
+      result = case T.resolverGate budget of
         Err why -> Err why
       | Ok _ ->
           roots = case trust of DefaultRoots -> Ok "" | CaFile path -> if strlen path == 0 then Err (T.Invalid "empty CA file") else Ok path;
           case roots of Err why -> Err why | Ok path ->
-            case TlsHost.start (S.handle socket) peer path (case minimum of TLS12 -> 771 | TLS13 -> 772) capacity of
-              Err why -> Err (if why == "native TLS backend unavailable" then T.Unsupported why else S.failure why)
+            case TlsHost.start (T.socketHandle socket) peer path (case minimum of TLS12 -> 771 | TLS13 -> 772) capacity of
+              Err why -> Err (if why == "native TLS backend unavailable" then T.Unsupported why else T.socketFailure why)
             | Ok handle ->
-                wait = case socket of S.SocketState _ w -> w;
+                wait = case socket of T.SocketState _ w -> w;
                 state = State handle wait;
                 setup = case drive budget 1 state of Err why -> Err why | Ok _ -> drive budget 2 state;
                 case setup of

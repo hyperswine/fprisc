@@ -8,8 +8,8 @@
 # are the convenient ones; `open` / `withOpen` give a Stream (std/stream.fpr)
 # for a file too big to hold, or one you read and write in place.
 
-OS = use "osfs".
-IO = use "osio".
+OS = use "os".
+IO = use "os".
 S = use "string".
 ST = use "stream".
 

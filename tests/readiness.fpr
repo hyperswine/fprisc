@@ -1,10 +1,8 @@
 unsafe base.
 R = use "../std/readiness".
 T = use "../std/transport".
-Socket = use "../std/sockettransport".
 Tcp = use "../std/tcp".
 ST = use "../std/stream".
-Watched = use "../std/watchedtransport".
 S = use "../std/string".
 Msg = Type (Datum String | Finish | Flag | Noise).
 check name yes = if yes then Unit else error "readiness: {name}".
@@ -111,17 +109,17 @@ main =
   _ = check "unrelated message preserved" (get noise == Noise);
   _ = check "callback cancellation leaves no pending note" (emptyFrom p);
   # The transport passes its full absolute budget into the watcher backend.
-  conn = need (Watched.adoptOn p 16384 raw);
-  (quiet, c1) = T.readSome (need (Socket.forMs 20)) 1 conn;
+  conn = need (T.adoptOn p 16384 raw);
+  (quiet, c1) = T.readSome (need (T.forMs 20)) 1 conn;
   _ = check "watched transport deadline" (quiet == Err (T.TimedOut, ""));
   delayed = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send server (Datum "abcdef"); Unit);
-  (bytes, c2) = T.readExactly (need (Socket.forMs 1000)) 6 c1;
+  (bytes, c2) = T.readExactly (need (T.forMs 1000)) 6 c1;
   _ = check "watched transport fragmented read" (bytes == Ok "abcdef");
   signaller2 = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send me Flag; Unit);
-  (cancelled, c3) = T.readSome (need (Socket.within 1000 (callback signaller2))) 1 c2;
+  (cancelled, c3) = T.readSome (need (T.within 1000 (callback signaller2))) 1 c2;
   _ = check "watched transport cancellation" (cancelled == Err (T.Cancelled, ""));
   large = S.repeat 2097152 "abcdefgh";
-  (blocked, c4) = T.writeAll (need (Socket.forMs 20)) large c3;
+  (blocked, c4) = T.writeAll (need (T.forMs 20)) large c3;
   _ = check "watched writable backpressure retains prefix" (case blocked of Err (T.TimedOut, n) -> n > 0 and n < strlen large | _ -> False);
   (active, _, _) = need (R.stats p);
   _ = check "transport waits retired" (active == 0);

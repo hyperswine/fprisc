@@ -1,17 +1,16 @@
 unsafe base.
 T = use "../std/transport".
-Socket = use "../std/sockettransport".
 Tcp = use "../std/tcp".
 ST = use "../std/stream".
-IO = use "../std/osio".
+IO = use "../std/os".
 F = use "../std/file".
 S = use "../std/string".
 P = use "../std/program".
 Notice = Type (Ready | Cancel | Unrelated | CancelDone Bool).
 check label yes = if yes then Unit else error "sockettransport: {label}".
 need r = case r of Ok x -> x | Err why -> error "fixture: {why}".
-budget ms = need (Socket.within ms T.neverCancel).
-adopt raw = need (Socket.adopt 16384 raw).
+budget ms = need (T.within ms T.neverCancel).
+adopt raw = need (T.adopt 16384 raw).
 readFailure result = case result of Ok _ -> error "expected read failure" | Err x -> x.
 finish peer listener =
   m = receiveFrom (myself 0) peer;
@@ -122,7 +121,7 @@ main =
   client = spawn (fn self ->
     raw = need (Tcp.connect "127.0.0.1" port);
     conn = adopt raw;
-    limit = need (Socket.within 2000 (cancelFrom me));
+    limit = need (T.within 2000 (cancelFrom me));
     _ = send me Ready;
     begun = Sys.timeUs Unit;
     (answer, next) = T.readSome limit 1 conn;
@@ -144,7 +143,7 @@ main =
   _ = drop done;
   _ = finish server listener;
   file = case P.args Unit of [path] -> path | _ -> error "fixture needs a temporary regular file";
-  rejected = F.withOpen file "r" (fn raw -> case Socket.adopt 4096 raw of Err _ -> Ok True | Ok _ -> Ok False);
+  rejected = F.withOpen file "r" (fn raw -> case T.adopt 4096 raw of Err _ -> Ok True | Ok _ -> Ok False);
   _ = check "blocking regular file cannot be adopted" (rejected == Ok True);
   _ = print "sockettransport: real TCP fragmentation/EOF, duplex, backpressure/deadline, cancellation, actor ownership, close and readiness PASS";
   0.

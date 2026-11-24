@@ -1,10 +1,9 @@
+Q = use "../std/mqtt".
 unsafe base.
 FB = use "../examples/printer-dashboard/framebuffer".
 F = use "../examples/printer-dashboard/cameraframe".
 RC = use "../examples/printer-dashboard/resourcecore".
 OT = use "../std/ownedtransport".
-MQ = use "../std/ownedmqtt".
-SS = use "../std/mqttsession".
 T = use "../std/transport".
 B = use "../std/binary".
 S = use "../std/string".
@@ -60,24 +59,24 @@ main =
   (oversized, unconsumed) = F.readOwned (T.Uncancelled 100) 4096 (connection (header 4097));
   _ = check "oversize refused before buffer allocation" (case oversized of Err (T.Invalid _) -> True | _ -> False); _ = need (OT.close unconsumed);
   _ = assertEmpty "all error paths release";
-  config = need (SS.config "local-owner-test" True 30 1000 8);
-  failed = MQ.create config 0 16384 (connection "");
-  _ = (case failed of MQ.CreateFailed _ -> Unit | MQ.Created client -> _ = MQ.close client; error "bad client accepted");
+  config = need (Q.config "local-owner-test" True 30 1000 8);
+  failed = Q.ownedCreate config 0 16384 (connection "");
+  _ = (case failed of Q.CreateFailed _ -> Unit | Q.Created client -> _ = Q.ownedClose client; error "bad client accepted");
   owned = case OT.open 16384 failedDriver "" of OT.Opened c -> c | OT.OpenFailed why -> error "{why}";
-  failure = MQ.create config 0 16384 owned;
+  failure = Q.ownedCreate config 0 16384 owned;
   _ = (case failure of
-      MQ.CreateFailed (T.CleanupFailed _ (T.Io "release refused")) -> Unit
-    | MQ.CreateFailed _ -> error "creation hid cleanup failure"
-    | MQ.Created client -> _ = MQ.close client; error "invalid decoder accepted");
-  created = MQ.create config 4096 16384 (connection "");
+      Q.CreateFailed (T.CleanupFailed _ (T.Io "release refused")) -> Unit
+    | Q.CreateFailed _ -> error "creation hid cleanup failure"
+    | Q.Created client -> _ = Q.ownedClose client; error "invalid decoder accepted");
+  created = Q.ownedCreate config 4096 16384 (connection "");
   _ = (case created of
-      MQ.CreateFailed why -> error "{why}"
-    | MQ.Created client ->
-        (started, next) = MQ.begin (T.Uncancelled 100) client;
+      Q.CreateFailed why -> error "{why}"
+    | Q.Created client ->
+        (started, next) = Q.ownedBegin (T.Uncancelled 100) client;
         _ = check "MQTT begins through owned connection" (case started of Ok _ -> True | _ -> False);
-        (phase, queried) = MQ.phase next;
-        _ = check "metadata query returns successor" (phase == SS.Connecting);
-        stopped = MQ.stop (T.Uncancelled 100) queried;
+        (phase, queried) = Q.ownedPhase next;
+        _ = check "metadata query returns successor" (phase == Q.Connecting);
+        stopped = Q.ownedStop (T.Uncancelled 100) queried;
         check "graceful stop consumes client" (case stopped of Ok _ -> True | _ -> False));
   before = heapUsed Unit;
   _ = Sys.loop 0 (fn n -> if n >= 20 then (False, n) else (True, cycle n));

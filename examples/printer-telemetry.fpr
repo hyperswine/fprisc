@@ -2,18 +2,12 @@
 # One process per printer; the gateway owns process supervision and cameras.
 unsafe base.
 Q = use "std/mqtt".
-SS = use "std/mqttsession".
-MC = use "std/ownedmqtt".
 OT = use "std/ownedtransport".
 RC = use "printer-dashboard/resourcecore".
 PT = use "std/printertelemetry".
 T = use "std/transport".
 TLS = use "std/tls".
-Socket = use "std/sockettransport".
-DNS = use "std/resolver".
-Connect = use "std/connect".
 Ready = use "std/readiness".
-Watch = use "std/watchedtransport".
 P = use "std/program".
 J = use "std/json".
 S = use "std/string".
@@ -21,53 +15,53 @@ L = use "std/list".
 O = use "std/option".
 Clock = use "std/clock".
 need result = case result of Ok x -> x | Err _ -> P.fail 2 "printer telemetry: invalid configuration or unavailable native service".
-budget ms = need (Socket.forMs ms).
+budget ms = need (T.forMs ms).
 now u = Sys.timeUs Unit / 1000.
 request = J.render (J.object [("pushing", J.object [("sequence_id", J.Text "1"), ("command", J.Text "pushall"), ("version", J.Integer 1), ("push_target", J.Integer 1)])]).
 dial cfg pool watcher =
   limit = budget 5000;
-  case OT.connectWith (Watch.wait watcher) limit pool cfg.host cfg.port 16384 of
-    OT.OpenFailed why -> MC.CreateFailed why
+  case OT.connectWith (T.watchWait watcher) limit pool cfg.host cfg.port 16384 of
+    OT.OpenFailed why -> Q.CreateFailed why
   | OT.Opened tcp -> (case OT.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
-      OT.OpenFailed why -> MC.CreateFailed why
-    | OT.Opened secure -> (case MC.create cfg.session 262144 16384 secure of
-        MC.CreateFailed why -> MC.CreateFailed why
-      | MC.Created client -> (case MC.begin limit client of
-          (Err why, next) -> _ = MC.close next; MC.CreateFailed why
-        | (Ok _, next) -> MC.Created next))).
+      OT.OpenFailed why -> Q.CreateFailed why
+    | OT.Opened secure -> (case Q.ownedCreate cfg.session 262144 16384 secure of
+        Q.CreateFailed why -> Q.CreateFailed why
+      | Q.Created client -> (case Q.ownedBegin limit client of
+          (Err why, next) -> _ = Q.ownedClose next; Q.CreateFailed why
+        | (Ok _, next) -> Q.Created next))).
 initial = {telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."}.
 offline state slot =
-  _ = MC.closeSlot slot;
+  _ = Q.closeSlot slot;
   ({state | retryAt = now Unit + state.backoff, backoff = RC.backoff state.backoff,
-    note = "Disconnected; retrying. Last known values are retained."}, MC.Empty).
+    note = "Disconnected; retrying. Last known values are retained."}, Q.Empty).
 reports cfg notes state = L.fold (fn acc effect -> case effect of
-    SS.Delivered topic payload _ _ _ -> if topic != cfg.report then acc else
+    Q.Delivered topic payload _ _ _ -> if topic != cfg.report then acc else
       (case PT.accept (now Unit) (Clock.now Unit) payload acc.telemetry of Err why -> {acc | note = why} | Ok telemetry -> {acc | telemetry = telemetry, note = ""})
   | _ -> acc) state notes.
 effects cfg notes state slot = case notes of
     Nil -> (state, slot)
   | effect :: rest ->
       current = reports cfg [effect] state;
-      case slot of MC.Empty -> (current, MC.Empty) | MC.Active client ->
+      case slot of Q.Empty -> (current, Q.Empty) | Q.Active client ->
         action = case effect of
-            SS.Up _ _ -> MC.subscribe (budget 2000) [(cfg.report, 0)] client
-          | SS.Subscribed _ grants -> if L.any (fn n -> n == 128) grants then (Err (T.Invalid "subscription refused"), client) else MC.publish (budget 2000) cfg.request request 0 False client
-          | SS.Down _ _ -> (Err T.Closed, client)
-          | SS.Rejected _ -> (Err (T.Invalid "MQTT operation refused"), client)
+            Q.Up _ _ -> Q.ownedSubscribe (budget 2000) [(cfg.report, 0)] client
+          | Q.Subscribed _ grants -> if L.any (fn n -> n == 128) grants then (Err (T.Invalid "subscription refused"), client) else Q.ownedPublish (budget 2000) cfg.request request 0 False client
+          | Q.Down _ _ -> (Err T.Closed, client)
+          | Q.Rejected _ -> (Err (T.Invalid "MQTT operation refused"), client)
           | _ -> (Ok Nil, client);
         (result, next) = action;
-        case result of Err _ -> offline current (MC.Active next) | Ok _ -> effects cfg rest {current | backoff = 1000} (MC.Active next).
+        case result of Err _ -> offline current (Q.Active next) | Ok _ -> effects cfg rest {current | backoff = 1000} (Q.Active next).
 advance cfg pool watcher state slot = case slot of
-    MC.Empty -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; (state, MC.Empty) else
-      (case dial cfg pool watcher of MC.CreateFailed _ -> offline state MC.Empty | MC.Created client -> ({state | note = "Waiting for a status report."}, MC.Active client))
-  | MC.Active client ->
-      (result, next) = MC.next (budget 250) client;
-      (retained, drained) = MC.takeNotices next;
+    Q.Empty -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; (state, Q.Empty) else
+      (case dial cfg pool watcher of Q.CreateFailed _ -> offline state Q.Empty | Q.Created client -> ({state | note = "Waiting for a status report."}, Q.Active client))
+  | Q.Active client ->
+      (result, next) = Q.ownedNext (budget 250) client;
+      (retained, drained) = Q.ownedTakeNotices next;
       base = reports cfg retained state;
-      (case result of Err _ -> offline base (MC.Active drained) | Ok notes -> effects cfg notes base (MC.Active drained)).
+      (case result of Err _ -> offline base (Q.Active drained) | Ok notes -> effects cfg notes base (Q.Active drained)).
 connected slot = case slot of
-    MC.Empty -> (False, MC.Empty)
-  | MC.Active client -> (phase, next) = MC.phase client; (phase == SS.Online, MC.Active next).
+    Q.Empty -> (False, Q.Empty)
+  | Q.Active client -> (phase, next) = Q.ownedPhase client; (phase == Q.Online, Q.Active next).
 step cfg pool watcher pair =
   (state, slot) = pair;
   (current, fresh) = advance cfg pool watcher state slot;
@@ -80,13 +74,13 @@ main = case P.args Unit of
       _ = if port < 1 or port > 65535 or strlen host == 0 or strlen ca == 0 or strlen peer == 0 or not (Q.topic serial) or S.contains "/" serial then P.fail 2 "printer telemetry: invalid public configuration" else Unit;
       code = P.envOr "" codeEnv;
       _ = if strlen code == 0 then P.fail 2 "printer telemetry: access-code environment variable is not set" else Unit;
-      session = need (SS.configAuth (Q.UserPassword "bblp" code) "fpr-read-{serial}" True 30 5000 8);
-      pool = need (DNS.create 1);
+      session = need (Q.configAuth (Q.UserPassword "bblp" code) "fpr-read-{serial}" True 30 5000 8);
+      pool = need (T.resolverCreate 1);
       watcher = Ready.start Unit;
       cfg = {host = host, port = port, peer = peer, ca = ca, session = session, report = "device/{serial}/report", request = "device/{serial}/request"};
-      (_, terminal) = Sys.loop (initial, MC.Empty) (step cfg pool watcher);
-      _ = MC.closeSlot terminal;
+      (_, terminal) = Sys.loop (initial, Q.Empty) (step cfg pool watcher);
+      _ = Q.closeSlot terminal;
       _ = Ready.stop watcher;
-      _ = need (DNS.close pool);
+      _ = need (T.resolverClose pool);
       Unit
   | _ -> P.fail 2 "usage: printer-telemetry HOST PORT SERIAL TLS_PEER CA_FILE CODE_ENV".

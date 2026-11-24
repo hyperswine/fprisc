@@ -5,7 +5,7 @@ F = use "file".
 P = use "path".
 S = use "string".
 O = use "option".
-OS = use "osfs".
+OS = use "os".
 
 hex : String -> (i : Int | measure i) -> Bool .
 hex s i = if i < 0 then True else

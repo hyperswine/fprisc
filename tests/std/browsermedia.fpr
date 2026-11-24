@@ -1,5 +1,5 @@
+B = use "std/browser".
 unsafe base.
-M = use "std/browsermedia".
 L = use "std/list".
 check why yes = if yes then Unit else error "browsermedia: {why}".
 labels = {off = "off", paused = "paused", connecting = "connecting", connected = "connected", failed = "failed"}.
@@ -7,11 +7,11 @@ main =
   _ = L.each (fn selected -> L.each (fn visible -> L.each (fn live ->
     s = {selected = selected, visible = visible, live = live};
     expected = selected and visible and live;
-    _ = check "shared active rule" (M.evaluate s M.active == expected);
-    _ = check "new source" (M.phase s False M.Connected == (if expected then M.Connecting else if selected then M.Paused else M.Off));
-    _ = check "retained source" (M.phase s True M.Connected == (if expected then M.Connected else if selected then M.Paused else M.Off));
-    check "failure stays failed until source removed" (M.phase s True M.Failed == (if expected then M.Failed else if selected then M.Paused else M.Off))
+    _ = check "shared active rule" (B.mediaEvaluate s B.mediaActive == expected);
+    _ = check "new source" (B.mediaPhase s False B.Connected == (if expected then B.Connecting else if selected then B.Paused else B.Off));
+    _ = check "retained source" (B.mediaPhase s True B.Connected == (if expected then B.Connected else if selected then B.Paused else B.Off));
+    check "failure stays failed until source removed" (B.mediaPhase s True B.Failed == (if expected then B.Failed else if selected then B.Paused else B.Off))
   ) [False, True]) [False, True]) [False, True];
-  _ = check "labels are typed phase data" (M.message labels M.Connecting == "connecting" and M.message labels M.Paused == "paused");
+  _ = check "labels are typed phase data" (B.mediaMessage labels B.Connecting == "connecting" and B.mediaMessage labels B.Paused == "paused");
   _ = print "browsermedia: shared source policy, phases, retained failure and suspension PASS";
   0.

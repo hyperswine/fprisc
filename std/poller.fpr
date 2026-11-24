@@ -30,7 +30,7 @@
 # 5 ms: the first message after a quiet spell waited up to 5 ms for the next
 # tick.  That loop is still here, for a machine that cannot start a watcher.)
 
-OS = use "oswatch".
+OS = use "os".
 M = use "map".
 Ord = use "order".
 A = use "actor".
