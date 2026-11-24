@@ -883,13 +883,21 @@ lowerVal cx env = \case
       | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arithVal o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b
       -- the bitwise primitives and the shifts: declared HAL names of arity
-      -- two (band/bor/bxor/BITSHIFTL/BITSHIFTR; their slow path is the
-      -- fpr_g_<name>_call2 entry, which traps by name)
+      -- two (band/bor/bxor/BITSHIFTL/BITSHIFTR). Proven-small TInt operands
+      -- use the untagged one-instruction form; otherwise the tagged form
+      -- whose slow path is fpr_g_<name>_call2 (exact T_BIGINT in bits.c).
       | isPrim cx env h, Just o <- M.lookup h bitOps, [a, b] <- args, Just (Prim 2 _ _) <- M.lookup h (cxHal cx) -> do
-          x <- lowerVal cx env a >>= asInt
-          y <- lowerVal cx env b >>= asInt
-          v <- emit TInt (OBit o x y)
-          pure (v, TInt)
+          ra <- lowerVal cx env a
+          rb <- lowerVal cx env b
+          case (snd ra, snd rb) of
+            (TInt, TInt) -> do
+              v <- emit TInt (OBit o (fst ra) (fst rb))
+              pure (v, TInt)
+            _ -> do
+              x <- asVal ra
+              y <- asVal rb
+              v <- emit TVal (OBitVal o x y)
+              pure (v, TVal)
       | isPrim cx env h, Just o <- M.lookup h shiftOps, [a, b] <- args, Just (Prim 2 _ _) <- M.lookup h (cxHal cx) -> do
           x <- lowerVal cx env a >>= asInt
           y <- lowerVal cx env b >>= asInt

@@ -95,6 +95,7 @@ callLike op = case op of
   OStrLen _ -> True
   OCharAt _ _ -> True
   OArithVal {} -> False
+  OBitVal {} -> False
   OCmpVal {} -> False
   _ -> opEffect op `elem` [AnyEffect, RuntimeCall]
 
@@ -108,6 +109,7 @@ preservedOnX64 op = case op of
   OStackCheck -> True
   OEqVal _ _ _ -> True
   OArithVal {} -> True
+  OBitVal {} -> True
   OCmpVal {} -> True
   _ -> False
 

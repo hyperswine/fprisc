@@ -1154,6 +1154,10 @@ void fpr_trap_num(const char *pre, sw n, const char *post) __attribute__((noretu
 void fpr_trap_range(const char *what, sw k, uw len) __attribute__((noreturn));        /* an index past the end */
 void fpr_int_overflow_kernel(void) __attribute__((noreturn)); /* a vector kernel's Int overflow trap */
 void fpr_div_zero_kernel(void) __attribute__((noreturn));
+/* exact Int band/bor/bxor, including T_BIGINT (two's-complement infinite) */
+V fpr_int_band(V a, V b);
+V fpr_int_bor(V a, V b);
+V fpr_int_bxor(V a, V b);
 /* the /logs rings (runtime.c): sev 0 normal / 1 warn / 2 error / 3 host */
 void fpr_logput(int sev, const char *line, uw n);
 /* #24: set by hosted entries (qosp) to persist a panic's last words */

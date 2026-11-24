@@ -234,6 +234,7 @@ dropPhantomLoopRegions prog =
         OMakeSpine {} -> True
         OApply {} -> True
         OArithVal {} -> True -- T_BIGINT promotion
+        OBitVal {} -> True -- T_BIGINT slow path (fpr_int_band/bor/bxor)
         OCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
         OCallProduct c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
         OConstInt {} -> False

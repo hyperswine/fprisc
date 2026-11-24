@@ -169,8 +169,14 @@ main = do
       typedKept = Typed.lowerFn False m2Policy layout keptProg M.empty bitHal mask
   check ("without normalization the literal let is kept: " ++ show (erasedKept, typedKept))
     (case (erasedKept, typedKept) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
-  check "the kept literal let lowers differently from the substituted one"
-    (case (erasedKept, erasedMask) of (Right a, Right b) -> a {I.fnSourceParams = []} /= b {I.fnSourceParams = []}; _ -> False)
+  -- With exact-Int OBitVal, `let k = 1 in band x (k + 1)` and `band x (1 + 1)`
+  -- lower to the same tagged add + OBitVal (no early untag of x). They used
+  -- to differ only because Lower untagged x before the second argument.
+  check "the kept literal let and the substituted 1+1 lower to the same OBitVal"
+    (case (erasedKept, erasedMask) of
+        (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}
+          && any (\i -> case i of I.Instr _ (I.OBitVal I.BAnd _ _) -> True; _ -> False) (I.bInstrs (head (I.fnBlocks a)))
+        _ -> False)
 
   -- slice 3d-i: a constructor pattern with fields, and a constructor value
   -- swap p = case p of Pair a b -> Pair b a  (Pair: tid 9, variant 0, arity 2)

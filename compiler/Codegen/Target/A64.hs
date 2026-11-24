@@ -100,7 +100,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 35 -- G8: fuse OI64Cmp/ONot/ORegionRoom/known-small OEqVal/OCmpVal branches (34: OVariantOf)
+a64SelectionRev = 36 -- OBitVal exact-Int band/bor/bxor (35: G8 fused branches)
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -402,7 +402,7 @@ selectBlock cfg fn tyMap b = do
       consts = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk]
       tagSrc = M.fromList [(v, u) | blk <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs blk]
       smallAware v (Instr _ o) = v `elem` opUses o && case o of
-        OArithVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
+        OArithVal {} -> True; OBitVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
       -- a constant only ever tagged is never made raw: its tag is one literal
       -- and a fast path that needs it raw loads it there (rawV)
       tagOnlyConsts = S.fromList [v | v <- M.keys consts,
@@ -847,7 +847,61 @@ selectInstrK cfg immediates small (Instr d op) = case op of
     Mul -> emitI (rrr A.Multiply r (vreg a) (vreg b))
     Div -> floorDiv r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
-  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
+  OBit o a b -> def (\r -> emitI (rrr (bitA64 o) r (vreg a) (vreg b)))
+  -- exact Int band/bor/bxor: both small, or one small, or a tag test and a
+  -- T_BIGINT slow path through fpr_g_band/bor/bxor_call2
+  OBitVal o a b | Just ua <- rawOf a, Just ub <- rawOf b -> def $ \r -> do
+    xa <- rawV ua
+    xb <- rawV ub
+    t <- freshV False
+    sh <- freshV False
+    emitI (rrr (bitA64 o) t xa xb)
+    emitI (rri A.ShiftLeftImmediate sh t 1)
+    emitI (rri A.OrImmediate r sh 1)
+  OBitVal o a b | isJust (rawOf a) || isJust (rawOf b) -> def $ \r -> do
+    slow <- freshL "bitslow"
+    done <- freshL "bitdone"
+    bit <- freshV False
+    let other = if isJust (rawOf a) then b else a
+    emitI (rri A.AndImmediate bit (vreg other) 1)
+    emitI (cbz bit slow)
+    xo <- freshV False
+    emitI (rri A.ShiftRightArithmeticImmediate xo (vreg other) 1)
+    let side v = maybe (pure xo) rawV (rawOf v)
+    sa <- side a
+    sb <- side b
+    t <- freshV False
+    sh <- freshV False
+    emitI (rrr (bitA64 o) t sa sb)
+    emitI (rri A.ShiftLeftImmediate sh t 1)
+    emitI (rri A.OrImmediate r sh 1)
+    emitI (jump done)
+    emitL slow
+    ta <- taggedV a
+    tb <- taggedV b
+    call (CodeSymbol ("fpr_g_" ++ bitName o ++ "_call2")) Calling.RuntimeCall [ta, tb] (Just r)
+    emitL done
+  OBitVal o a b -> def $ \r -> do
+    slow <- freshL "bitslow"
+    done <- freshL "bitdone"
+    bit <- freshV False
+    both <- freshV False
+    xa <- freshV False
+    yb <- freshV False
+    t <- freshV False
+    sh <- freshV False
+    emitI (rrr A.And both (vreg a) (vreg b))
+    emitI (rri A.AndImmediate bit both 1)
+    emitI (cbz bit slow)
+    emitI (rri A.ShiftRightArithmeticImmediate xa (vreg a) 1)
+    emitI (rri A.ShiftRightArithmeticImmediate yb (vreg b) 1)
+    emitI (rrr (bitA64 o) t xa yb)
+    emitI (rri A.ShiftLeftImmediate sh t 1)
+    emitI (rri A.OrImmediate r sh 1)
+    emitI (jump done)
+    emitL slow
+    call (CodeSymbol ("fpr_g_" ++ bitName o ++ "_call2")) Calling.RuntimeCall [vreg a, vreg b] (Just r)
+    emitL done
   -- I64 on the raw words: the machine's own wrapping instruction
   OI64Arith o a b -> def (\r -> emitI (rrr (case o of Add -> A.Add; Sub -> A.Subtract; _ -> A.Multiply) r (vreg a) (vreg b)))
   OI64Bit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
@@ -1074,6 +1128,7 @@ selectInstrK cfg immediates small (Instr d op) = case op of
       emitI (li r 0)
       emitL done
     cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+    bitA64 = \case BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor
     rawOf v = M.lookup v (siTag small)
     -- a raw Int operand: a constant is loaded where it is needed
     rawV u = case M.lookup u (siConst small) of

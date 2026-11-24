@@ -217,7 +217,8 @@ callFn width program name args = do
           x <- int env a
           y <- int env b
           when (o == Div && y == 0) (trap "division by zero")
-          let result = case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `quot` y
+          -- floored, as runtime/runtime.c and the native floorDiv paths state (D8)
+          let result = case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `div` y
           unless (intFitsWidth width result) (trap ("Int overflow in a vector kernel: the result does not fit an Int (" ++ show (fst (intBounds width)) ++ ".." ++ show (snd (intBounds width)) ++ "); I64 is the type that wraps"))
           pure (Just (VInt result))
         OArith o a b -> do
@@ -237,16 +238,26 @@ callFn width program name args = do
           let r = case o of Add -> Just (x + y); Sub -> Just (x - y); Mul -> Just (x * y); Div -> if y == 0 then Nothing else Just (x `div` y)
           pure (Just (VPred (maybe False (intFitsWidth width) r)))
         -- proven not to trap (Codegen.Interval, Simplify.foldDivisors); the
-        -- evaluator still checks, so a wrong proof shows as a trap here
+        -- evaluator still checks a zero divisor, so a wrong proof shows as a
+        -- trap here. Add/Sub/Mul and a minInt / -1 overflow are returned as
+        -- unbounded Integers (the reference RawInts/Eval contract): a fit
+        -- trap would disagree with copies that take this op past the small
+        -- range on a proven-safe path's shadow.
         OArithU o a b -> do
           x <- int env a
           y <- int env b
           when (o == Div && y == 0) (trap "division by zero")
-          pure (Just (VInt (case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `quot` y)))
+          pure (Just (VInt (case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `div` y)))
         OBit o a b -> do
           x <- int env a
           y <- int env b
           pure (Just (VInt (bit o x y)))
+        -- exact Int band/bor/bxor (fast tagged path, T_BIGINT slow path):
+        -- two's-complement infinite, like Haskell Bits Integer
+        OBitVal o a b -> do
+          x <- val env a >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
+          y <- val env b >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
+          pure (Just (VVal (RInt (bit o x y))))
         OShift o a b -> do
           x <- int env a
           n <- int env b

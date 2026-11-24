@@ -271,8 +271,8 @@ main = do
       (bitIr, bitFail) = lowerProgram m2Policy M.empty bitProg bitProg M.empty hal
       bitEval f a b = ocResult (evalProgram bitIr f [RInt a, RInt b])
   check "the bit operations and shifts lower and verify" (null bitFail && M.size bitIr == 5 && verifyProgram bitIr == Right ())
-  check "the dump names the operations" ("shift BITSHIFTL" `isInfixOf` dumpFn (bitIr M.! "shl") && "bit bxor" `isInfixOf` dumpFn (bitIr M.! "xorf"))
-  check "band/bor/bxor are two's complement on the untagged values"
+  check "the dump names the operations" ("shift BITSHIFTL" `isInfixOf` dumpFn (bitIr M.! "shl") && "bitval bxor" `isInfixOf` dumpFn (bitIr M.! "xorf"))
+  check "band/bor/bxor are two's complement on exact Ints (OBitVal)"
     (bitEval "andf" 12 10 == Right (RInt 8) && bitEval "orf" 12 10 == Right (RInt 14) && bitEval "xorf" 12 10 == Right (RInt 6)
        && bitEval "andf" (-1) 77 == Right (RInt 77) && bitEval "xorf" (-1) 5 == Right (RInt (-6)))
   -- a program function of the primitive's name shadows it, as in the legacy generator
