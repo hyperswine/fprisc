@@ -63,7 +63,7 @@ function (`--chains` shows whole chains). Every change below started from that t
 ### Three and four pieces (25 Nov 2026)
 
 Zero-cost pair 25b (`strlen "k={band i 7};x"` in a loop) was 15.7x the
-folded literal: 382.4 Ir per iteration against 24.6. Each interpolation
+folded literal (the audit run; 382.4 Ir per iteration against 24.6, 15.5x, here). Each interpolation
 built a tuple of its pieces, and `$strcatT` tested each piece's tag in both
 passes, then called `fpr_alloc` (about 66 Ir).
 
