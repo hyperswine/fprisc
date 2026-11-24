@@ -52,6 +52,15 @@ normalize input=(input {functionBody=body},changed)
       Var (Local uid) | Just value<-M.lookup uid env->tell (Any True) >> pure e {exprNode=exprNode value}
       Let b rhs rest->chain env (counts env e) [] e b rhs rest
       _->mapChildrenM (go env) e >>= rewrite
+    isEntryTick x=case exprNode (unNote x) of EntryTick->True;_->False
+    isIntConst x=case exprNode (unNote x) of IntValue _->True;_->False
+    isStringConst x=case exprNode (unNote x) of StringValue _->True;_->False
+    stripEntryTicks x=case exprNode (unNote x) of
+      Sequence a rest | isEntryTick a->
+        let (ticks,core)=stripEntryTicks rest in (Left (unNote x,a):ticks,core)
+      Let tb a rest | isEntryTick a, not (occurs (binderId tb) rest)->
+        let (ticks,core)=stripEntryTicks rest in (Right (unNote x,tb,a):ticks,core)
+      _->([],x)
     -- Counts describe the remaining *canonical* references. An eliminated
     -- alias transfers its future uses, and later RHSs debit that same target.
     chain env left pending old b rhs rest=do
@@ -60,23 +69,29 @@ normalize input=(input {functionBody=body},changed)
           remaining=M.differenceWith (\n used->Just (n-used)) left here
           uid=binderId b
           finish env' counts'=next env' counts' pending rest
-      if uid `S.member` pinned || not (unambiguous b) then keep env remaining here pending old b rhs' rest else
+      if uid `S.member` pinned then keep env remaining here pending old b rhs' rest else
         case exprNode rhs' of
-          IntValue _->tell (Any True) >> finish (M.insert uid rhs' env) (M.delete uid remaining)
-          Var (Local target) | safeAlias uid target->
+          IntValue _ | unambiguous b->tell (Any True) >> finish (M.insert uid rhs' env) (M.delete uid remaining)
+          StringValue _->tell (Any True) >> finish (M.insert uid rhs' env) (M.delete uid remaining)
+          Var (Local target) | unambiguous b, safeAlias uid target->
             let n=M.findWithDefault 0 uid remaining
             in tell (Any True) >> finish (M.insert uid rhs' env) (M.insertWith (+) target n (M.delete uid remaining))
-          _->keep env remaining here pending old b rhs' rest
+          _->case stripEntryTicks rhs' of
+            (ticks@(_:_),core) | isStringConst core || (unambiguous b && isIntConst core)->
+              tell (Any True) >> next (M.insert uid core env) (M.delete uid remaining) (reverse ticks++pending) rest
+            _->keep env remaining here pending old b rhs' rest
     keep env left here pending old b rhs rest=do
       (rhs',pending')<-absorb left here pending rhs
-      next (M.delete (binderId b) env) left ((old,b,rhs'):pending') rest
+      next (M.delete (binderId b) env) left (Right (old,b,rhs'):pending') rest
     next env left pending rest=case exprNode (unNote rest) of
       Let b rhs body->chain env left pending (unNote rest) b rhs body
       _->do
         out0<-go env rest
-        foldM (\out (old,b,rhs)->rewrite (binding old b rhs out)) out0 pending
+        foldM (\out item->case item of
+          Left (old,tick)->pure (generated old out (Sequence tick out))
+          Right (old,b,rhs)->rewrite (binding old b rhs out)) out0 pending
     absorb left here pending rhs=case pending of
-      (old,b,value):more | binderId b `S.notMember` pinned,
+      Right (old,b,value):more | binderId b `S.notMember` pinned,
         M.member (binderId b) here,M.findWithDefault 0 (binderId b) left==0->do
           tell (Any True)
           merged<-rewrite (binding old b value rhs)
@@ -91,12 +106,20 @@ normalize input=(input {functionBody=body},changed)
         add acc uid=case M.lookup uid env of
           Just value->case exprNode value of
             IntValue _->acc
+            StringValue _->acc
             Var (Local target)->M.insertWith (+) target (1::Int) acc
             _->acc
           Nothing->M.insertWith (+) uid (1::Int) acc
         walk acc e=foldl walk (foldl add acc (directUses e)) (children e)
     occurs uid e=uid `elem` directUses e || any (occurs uid) (children e)
+    wrapTicks ticks out=foldr (\item acc->case item of
+      Left (old,tick)->generated old acc (Sequence tick acc)
+      Right (old,tb,tick)->binding old tb tick acc) out ticks
     rewrite e=case exprNode e of
+      Apply f b | Apply g a<-exprNode (unNote f), Var (Global "strcat" _)<-exprNode (unNote g),
+        (ticksA,coreA)<-stripEntryTicks a, StringValue sa<-exprNode (unNote coreA),
+        (ticksB,coreB)<-stripEntryTicks b, StringValue sb<-exprNode (unNote coreB)->
+          tell (Any True) >> pure (wrapTicks (ticksA++ticksB) (generated e e (StringValue (sa++sb))))
       Let b rhs body | unambiguous b,Var (Local uid)<-exprNode body,uid==binderId b,
         sameType (exprType rhs) (exprType e)->tell (Any True) >> pure rhs
       Let b rhs body | unambiguous b,If cond yes no<-exprNode body,

@@ -128,40 +128,115 @@ verifyPassResult before after sigs = do
         Nothing -> Left ("signature without worker " ++ n)
         Just (ps,_) -> unless (length ps == length ks) (Left ("worker signature arity for " ++ n))
 
--- An interpolation (a strcat chain of three or more pieces) becomes one
--- runtime call over a tuple of its pieces: one String and one copy, where
--- the chain made a String per piece and copied the front again at every
--- step. str comes off each piece: the runtime renders a non-String piece as
--- str would (a float piece is already its String: Infer's str! sites).
--- The tuple keeps the pieces in order, so they evaluate as before.
+-- An interpolation or (+) chain becomes one runtime call over a tuple of
+-- its pieces (with adjacent string literals folded at compile time): one
+-- String and one copy, where the chain made a String per piece and copied
+-- the front again at every step. str comes off each piece when calling
+-- $strcatT: the runtime renders a non-String piece as str would (a float
+-- piece is already its String: Infer's str! sites).
 buildStrings :: Prog -> Prog
-buildStrings=M.map (\fn@(ps,b)->if hasChain b then (ps,go b) else fn)
+buildStrings=M.map (\fn@(ps,b)->if hasStrcat b then (ps,go b) else fn)
   where
-    go e=case e of
-      CApp (CApp (CVar "strcat") _) _ | leaves@(_:_:_:_)<-chain e ->
-        CApp (CVar "$strcatT") (CMk (tupleTid (length leaves)) 0 (map (go . unstr) leaves))
-      CApp f a -> CApp (go f) (go a)
-      CLet k a b -> CLet k (go a) (go b)
-      CIf c a b -> CIf (go c) (go a) (go b)
-      CMk t v fs -> CMk t v (map go fs)
-      CProj k a -> CProj k (go a)
-      CTagEq t v a -> CTagEq t v (go a)
-      CLam qs b -> CLam qs (go b)
-      _ -> e
+    go e=case collectChain e of
+      Just (ticks, leaves) ->
+        let folded = foldLits (map go leaves)
+            built = case folded of
+              [x] -> x
+              [a, b] -> CApp (CApp (CVar "strcat") a) b
+              xs -> CApp (CVar "$strcatT") (CMk (tupleTid (length xs)) 0 (map unstr xs))
+        in wrapFuel ticks built
+      Nothing -> case e of
+        CApp f a -> CApp (go f) (go a)
+        CLet k a b -> CLet k (go a) (go b)
+        CIf c a b -> CIf (go c) (go a) (go b)
+        CMk t v fs -> CMk t v (map go fs)
+        CProj k a -> CProj k (go a)
+        CTagEq t v a -> CTagEq t v (go a)
+        CLam qs b -> CLam qs (go b)
+        _ -> e
     -- most functions build no string: leave them untouched (no copy)
-    hasChain x=case x of
-      CApp (CApp (CVar "strcat") (CApp (CApp (CVar "strcat") _) _)) _ -> True
-      CApp (CApp (CVar "strcat") _) (CApp (CApp (CVar "strcat") _) _) -> True
-      CApp f a -> hasChain f || hasChain a
-      CLet _ a b -> hasChain a || hasChain b
-      CIf c a b -> hasChain c || hasChain a || hasChain b
-      CMk _ _ fs -> any hasChain fs
-      CProj _ a -> hasChain a
-      CTagEq _ _ a -> hasChain a
-      CLam _ b -> hasChain b
+    hasStrcat x=case x of
+      CApp (CApp (CVar "strcat") _) _ -> True
+      CApp f a -> hasStrcat f || hasStrcat a
+      CLet _ a b -> hasStrcat a || hasStrcat b
+      CIf c a b -> hasStrcat c || hasStrcat a || hasStrcat b
+      CMk _ _ fs -> any hasStrcat fs
+      CProj _ a -> hasStrcat a
+      CTagEq _ _ a -> hasStrcat a
+      CLam _ b -> hasStrcat b
       _ -> False
-    chain (CApp (CApp (CVar "strcat") a) b)=chain a++chain b
-    chain x=[x]
+    isFuel (CApp (CVar "$fuel") (CInt _)) = True
+    isFuel _ = False
+    stripFuel (CLet k a rest) | isFuel a, not (occurs k rest) =
+      let (ts, core) = stripFuel rest in ((k, a) : ts, core)
+    stripFuel x = ([], x)
+    wrapFuel ts body = foldr (\(k, a) acc -> CLet k a acc) body ts
+    -- Collect a strcat chain, stepping through $fuel ticks and single-use
+    -- let bindings produced by inlining Str.+ (fn a b -> strcat a b).
+    -- Leading non-strcat lets from the leftmost RHS may hoist outside the
+    -- combined call when their binder does not occur in the continuation.
+    collectChain e = case stripFuel e of
+      (ts, CApp (CApp (CVar "strcat") a) b) ->
+        let (tsA, lsA) = chainArg a
+            (tsB, lsB) = chainArg b
+            ls = lsA ++ lsB
+        in if length ls >= 3 || hasAdjLits ls
+           then Just (ts ++ tsA ++ tsB, ls)
+           else Nothing
+      (ts, CLet k rhs body)
+        | not (isFuel rhs),
+          Just (tsR, lsR) <- chainFromRhs rhs,
+          all (\(b, _) -> not (occurs b body)) tsR,
+          Just (tsB, lsB) <- consumeLeft k body ->
+            let ls = lsR ++ lsB
+            in if length ls >= 3 || hasAdjLits ls
+               then Just (ts ++ tsR ++ tsB, ls)
+               else Nothing
+      _ -> Nothing
+    chainArg x = case stripFuel x of
+      (ts, CApp (CApp (CVar "strcat") a) b) ->
+        let (tsA, lsA) = chainArg a
+            (tsB, lsB) = chainArg b
+        in (ts ++ tsA ++ tsB, lsA ++ lsB)
+      (ts, CLet k rhs body)
+        | not (isFuel rhs),
+          Just (tsR, lsR) <- chainFromRhs rhs,
+          all (\(b, _) -> not (occurs b body)) tsR,
+          Just (tsB, lsB) <- consumeLeft k body ->
+            (ts ++ tsR ++ tsB, lsR ++ lsB)
+      _ -> ([], [x])
+    chainFromRhs rhs = case stripFuel rhs of
+      (ts, CApp (CApp (CVar "strcat") a) b) ->
+        let (tsA, lsA) = chainArg a
+            (tsB, lsB) = chainArg b
+        in Just (ts ++ tsA ++ tsB, lsA ++ lsB)
+      (ts, CLet k r1 b1)
+        | not (isFuel r1),
+          Just (ts1, ls1) <- chainFromRhs r1,
+          all (\(b, _) -> not (occurs b b1)) ts1,
+          Just (ts2, ls2) <- consumeLeft k b1 ->
+            Just (ts ++ ts1 ++ ts2, ls1 ++ ls2)
+      (ts, CLet k r1 b1)
+        | not (isFuel r1),
+          Just (ts2, ls2) <- chainFromRhs b1 ->
+            Just (ts ++ ((k, go r1) : ts2), ls2)
+      _ -> Nothing
+    consumeLeft k body = case stripFuel body of
+      (ts, CApp (CApp (CVar "strcat") (CVar v)) b) | v == k, not (occurs k b) ->
+        let (tsB, lsB) = chainArg b in Just (ts ++ tsB, lsB)
+      (ts, CLet k2 rhs2 rest2)
+        | not (isFuel rhs2), not (occurs k rest2),
+          Just (tsR, lsR) <- consumeLeft k rhs2,
+          all (\(b, _) -> not (occurs b rest2)) tsR,
+          Just (tsRest, lsRest) <- consumeLeft k2 rest2 ->
+            Just (ts ++ tsR ++ tsRest, lsR ++ lsRest)
+      _ -> Nothing
+    foldLits (CStr a : CStr b : rest) = foldLits (CStr (a ++ b) : rest)
+    foldLits (x : rest) = x : foldLits rest
+    foldLits [] = []
+    hasAdjLits (CStr _ : CStr _ : _) = True
+    hasAdjLits (_ : rest) = hasAdjLits rest
+    hasAdjLits [] = False
     unstr (CApp (CVar "str") x)=x
     unstr x=x
     -- runtime/fpr.h: Tup2 4, Tup3 5, Tup4..Tup8 10..14, wider T_TUPN + n

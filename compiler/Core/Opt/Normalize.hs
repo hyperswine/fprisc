@@ -60,8 +60,9 @@ normIn ps body0 = go M.empty body0
           here = counts a
           left1 = M.differenceWith (\l h -> Just (l - h)) left here
        in case a' of
-            -- let x = <int> in b  ->  b[x := <int>]
+            -- let x = <int|str> in b  ->  b[x := <int|str>]
             CInt _ -> chainOn (M.insert x a' env) left1 pend b
+            CStr _ -> chainOn (M.insert x a' env) left1 pend b
             -- let x = y in b  ->  b[x := y]: a local alias, when nothing
             -- in the body rebinds y (so the substitution is not captured)
             CVar y | S.member y locals, not (rebinds y b) ->
