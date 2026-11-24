@@ -41,7 +41,7 @@
 #
 # -- and events are DATA, not ints:
 #
-#   Ev  = ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx
+#   Ev  = ETick | EKey k | EKeyUp k | EMsg m a | EResize w h | EWheel dy dx
 #         | EReload info | EReloadRefused info reason
 #   Sub = STick ms | SKeys | SPort p | SEvents p
 #
@@ -98,8 +98,12 @@
 #
 # The render protocol (Rv): Dims u -> (w, h); Render st vs sc fr ->
 # (draws, bytes).  The input protocol: Poll u -> (kind, a, b) with
-# kind 0 none / 1 ascii / 4 evdev-press / 5 resize; input actor 0 =
-# no input (tick-driven apps).
+# kind 0 none / 1 ascii / 4 evdev key / 5 resize / 6 wheel; input
+# actor 0 = no input (tick-driven apps).  A kind-4 b is the evdev
+# value: 1 is a press (EKey), 0 a release (EKeyUp), 2 an autorepeat,
+# which is neither and is not delivered.  A held key is therefore
+# model state: what a game heard as EKey it has not yet heard as
+# EKeyUp.
 # ============================================================================
 
 AC = use "actor".
@@ -110,8 +114,8 @@ MC   = Type (MQuit | MLog s).
 Reload = {name : String, from : String, to : String, version : String}.
 # These protocol fields are concrete values. Unconstrained constructor
 # fields would hide their ownership from automatic receive-turn analysis.
-Ev   = Type (ETick | EKey Int | EMsg String String | EResize Int Int | EWheel Int Int
-             | EReload Reload | EReloadRefused Reload String).
+Ev   = Type (ETick | EKey Int | EKeyUp Int | EMsg String String | EResize Int Int
+             | EWheel Int Int | EReload Reload | EReloadRefused Reload String).
 Sub  = Type (STick Int | SKeys | SPort Int | SEvents Int).
 App  = Type (App ini upd sbs vw | LiveApp ini upd sbs vw).
 MApp = Type (MApp ini upd sk vw vl dn sbs).
@@ -261,6 +265,7 @@ copyReload i = {name = strCopy i.name, from = strCopy i.from,
 copyEv e = case e of
     ETick -> ETick
   | EKey k -> EKey k
+  | EKeyUp k -> EKeyUp k
   | EMsg t a -> EMsg (strCopy t) (strCopy a)
   | EResize w h -> EResize w h
   | EWheel y x -> EWheel y x
@@ -289,7 +294,11 @@ drainEv : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> Int -> List Ev .
 drainEv me inp n acc kind a b = serviceValue "input" (drainEvRes me inp n acc kind a b).
 drainEvRes : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> Int -> Result (List Ev) String .
 drainEvRes me inp n acc 0 _ _ = Ok (revK Nil acc).
-drainEvRes me inp n acc 4 a b = drainRes me inp (n - 1) (if b == 1 then EKey a :: acc else acc).
+drainEvRes me inp n acc 4 a b =
+  drainRes me inp (n - 1)
+    (if b == 1 then EKey a :: acc
+     else if b == 0 then EKeyUp a :: acc
+     else acc).
 drainEvRes me inp n acc 1 a _ = drainRes me inp (n - 1) (EKey (ascii2code a) :: acc).
 drainEvRes me inp n acc 5 a b = drainRes me inp (n - 1) (EResize a b :: acc).
 drainEvRes me inp n acc 6 a b = drainRes me inp (n - 1) (EWheel a b :: acc).
@@ -297,6 +306,7 @@ drainEvRes me inp n acc _ _ _ = drainRes me inp (n - 1) acc.
 
 drainKey : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> List Ev .
 drainKey me inp n acc a 1 = drain me inp (n - 1) (EKey a :: acc).
+drainKey me inp n acc a 0 = drain me inp (n - 1) (EKeyUp a :: acc).
 drainKey me inp n acc _ _ = drain me inp (n - 1) acc.
 
 # keys only when subscribed AND an input service exists
@@ -448,7 +458,8 @@ drainUntil deadline me calls input n acc = if n == 0 then Ok (revK Nil acc) else
         (kind, a, b) = ev;
         if kind == 0 then Ok (revK Nil acc) else
           drainUntil deadline me calls input (n - 1) (inputEvent kind a b acc).
-inputEvent 4 a b acc = if b == 1 then EKey a :: acc else acc.
+inputEvent 4 a b acc =
+  if b == 1 then EKey a :: acc else if b == 0 then EKeyUp a :: acc else acc.
 inputEvent 1 a _ acc = EKey (ascii2code a) :: acc.
 inputEvent 5 a b acc = EResize a b :: acc.
 inputEvent 6 a b acc = EWheel a b :: acc.
