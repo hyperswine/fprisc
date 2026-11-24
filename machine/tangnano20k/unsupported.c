@@ -120,6 +120,10 @@ static V h_fpr_g_receiveFromRes(V a0,V a1){(void)a0;(void)a1;fpr_cpanic("Base: r
 FPR_FN(fpr_g_receiveFromRes,h_fpr_g_receiveFromRes,2);
 static V h_receive_from_now(V me,V from){(void)me;(void)from;return unavailable("Base: receiveFromNow unavailable");}
 FPR_FN(fpr_g_receiveFromNow,h_receive_from_now,2);
+static V h_receive_until(V me,V deadline){(void)me;(void)deadline;fpr_cpanic("Base: receiveUntil unavailable");return V_UNIT;}
+FPR_FN(fpr_g_receiveUntil,h_receive_until,2);
+static V h_receive_from_until(V me,V from,V deadline){(void)me;(void)from;(void)deadline;return unavailable("Base: receiveFromUntil unavailable");}
+FPR_FN(fpr_g_receiveFromUntil,h_receive_from_until,3);
 static V h_fpr_g_receiveFrom(V a0,V a1){(void)a0;(void)a1;fpr_cpanic("Base: receiveFrom unavailable");return V_UNIT;}
 FPR_FN(fpr_g_receiveFrom,h_fpr_g_receiveFrom,2);
 static V h_fpr_g_receiveNow(V a0){(void)a0;fpr_cpanic("Base: receiveNow unavailable");return V_UNIT;}

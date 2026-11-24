@@ -294,7 +294,7 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 26u
 #endif
 #endif
-#define FPR_PLANE_ACTORS_ABI 6u /* v6: packed integer-pair send; v5: fused flat-string send; v4: recyclable actor execution state; v3: opt-in transactional spawn_inbox; v2: receive_from_now */
+#define FPR_PLANE_ACTORS_ABI 7u /* v7: deadline receives (receive_until, receive_from_until); v6: packed integer-pair send; v5: fused flat-string send; v4: recyclable actor execution state; v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #ifdef FPR_COMPACT_CELLS
 #define FPR_PLANE_MEMORY_ABI 5u
 #else
@@ -324,6 +324,8 @@ typedef struct fpr_plane_actors {
   V (*send_arc)(V target, V m);       /* preserves same-process shares */
   V (*send_concat)(V target, V left, V right);
   V (*send_int_pair)(V target, V left, V right);
+  V (*receive_until)(V me, V deadline_ms);           /* v7: Some message | None at the deadline */
+  V (*receive_from_until)(V me, V from, V deadline_ms); /* v7: Ok | Err deadline | Err dead actor */
 } fpr_plane_actors_t;
 typedef struct fpr_plane_memory {
   uw abi;                             /* FPR_PLANE_MEMORY_ABI of the exporter */

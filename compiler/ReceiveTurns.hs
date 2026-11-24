@@ -85,7 +85,7 @@ validateSource (Rewrite _ _ _ groups _ (Authority before membership context shar
                        external=reaches (edges (current `M.union` context)) seeds `S.intersection` shared
                    in reaches (edges current) (seeds<>external)
       managed=effect ["Sys.poolReset","Sys.arena","Sys.loop","Sys.loopWith","$receiveLoop","$loopLeave"]
-      receiving=effect ["receive","receiveFrom","receiveRes","receiveNow","receiveFromRes","receiveFromNow"]
+      receiving=effect ["receive","receiveFrom","receiveRes","receiveNow","receiveFromRes","receiveFromNow","receiveUntil","receiveFromUntil"]
   forM_ groups $ \g->do
     let members=S.fromList (groupMembers g)
         invariantsNow=Analysis.invariantParameters current (groupMembers g)
@@ -132,7 +132,7 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
       let seeds = S.fromList names
           external = reaches (edges context) seeds `S.intersection` shared
        in reaches (edges prog) (seeds `S.union` external)
-    receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow"]
+    receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow", "receiveUntil", "receiveFromUntil"]
     managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop", "$loopLeave"]
     recGroups = [ns | CyclicSCC ns <- stronglyConnComp
                   [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n,(ps,b)) <- M.toList prog]]

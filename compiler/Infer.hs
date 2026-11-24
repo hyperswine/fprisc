@@ -518,6 +518,10 @@ builtinEnv =
       ("receiveNow", scheme [0] (TFn tInt (tcon "Result" [sv 0, tStr]))),
       ("receiveFromRes", scheme [0] (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr])))),
       ("receiveFromNow", scheme [0] (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr])))),
+      -- the deadline-aware blocking receive (runtime/actors.c): park until a
+      -- message or the deadline (absolute Sys.uptimeMs milliseconds)
+      ("receiveUntil", scheme [0] (TFn tInt (TFn tInt (tcon "Option" [sv 0])))),
+      ("receiveFromUntil", scheme [0] (TFn tInt (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr]))))),
       ("spawnHeap", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) (tcon "Result" [tInt, tStr])))),
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),

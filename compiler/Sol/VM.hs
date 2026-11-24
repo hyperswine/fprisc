@@ -40,6 +40,7 @@ import Control.Monad (forM, forM_, when)
 import Data.List (minimumBy)
 import Data.Ord (comparing)
 import GHC.Clock (getMonotonicTime)
+import System.Timeout (timeout)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
@@ -437,7 +438,7 @@ builtinArities :: M.Map Name Int
 builtinArities =
   M.union schemeArities $
     M.fromList
-      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("receiveFromNow", 2), ("Sys.nextId", 1),
+      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("receiveFromNow", 2), ("receiveUntil", 2), ("receiveFromUntil", 3), ("Sys.nextId", 1),
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
@@ -597,6 +598,39 @@ actorTake actors wants = do
         Just m -> pure m
         Nothing -> takeMVar (abSig b) >> loop b
 
+-- the deadline receives' wait (runtime/actors.c a_receive_until): take the
+-- first queued message `wants` accepts; otherwise Left True once `gone`
+-- says the sender ended, Left False once the deadline (absolute
+-- Sys.uptimeMs milliseconds) has passed, and between them park on the
+-- mailbox signal for no longer than the time left.  A wake that finds
+-- nothing (another sender's message, a death elsewhere) re-checks and
+-- parks again: no polling interval.
+actorTakeUntil :: ActorRuntime -> (Int -> Bool) -> IO Bool -> Integer -> IO (Either Bool Value)
+actorTakeUntil actors wants gone deadline = do
+  i <- actorSelf actors
+  reg <- readIORef (arReg actors)
+  case IM.lookup i reg of
+    Nothing -> vmPanic "receiveUntil: the current actor has no mailbox"
+    Just b -> loop b
+  where
+    loop b = do
+      dead <- gone
+      r <- modifyMVar (abQ b) $ \q ->
+        case break (\(s, _) -> wants s) q of
+          (pre, (_, m) : post) -> pure (pre ++ post, Just m)
+          _ -> pure (q, Nothing)
+      case r of
+        Just m -> pure (Right m)
+        Nothing
+          | dead -> pure (Left True)
+          | otherwise -> do
+              now <- floor . (* 1e3) <$> getMonotonicTime
+              if now >= deadline
+                then pure (Left False)
+                else do
+                  _ <- timeout (fromInteger (min (deadline - now) 1000000) * 1000) (takeMVar (abSig b))
+                  loop b
+
 -- Sys.nextId: correlation ids for std/actor call
 {-# NOINLINE solNextId #-}
 solNextId :: IORef Int
@@ -607,7 +641,7 @@ solNextId = unsafePerformIO (newIORef 0)
 actorNames :: S.Set Name
 actorNames =
   S.fromList
-    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "receiveFromNow", "Sys.nextId", "kill", "yield",
+    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "receiveFromNow", "receiveUntil", "receiveFromUntil", "Sys.nextId", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
       "Sys.poolReset", "Sys.mtime", "Sys.uptimeMs", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo", "Sys.loop"
@@ -711,6 +745,20 @@ actorCall env "receiveFromNow" [VInt _me, VInt from] = do
       pure $ case r of
         Just m -> VData 3 0 [m]
         Nothing -> VData 3 1 [VStr (if gone then "dead actor" else "empty")]
+-- Some m | None at the deadline (absolute Sys.uptimeMs milliseconds)
+actorCall env "receiveUntil" [VInt _me, VInt deadline] = do
+  r <- actorTakeUntil (vmActors env) (const True) (pure False) deadline
+  pure $ case r of
+    Right m -> VData 7 1 [m]
+    Left _ -> VData 7 0 []
+-- Ok m | Err "deadline" | Err "dead actor" once `from` ended with nothing queued
+actorCall env "receiveFromUntil" [VInt _me, VInt from, VInt deadline] = do
+  let actors = vmActors env
+  r <- actorTakeUntil actors (== fromIntegral from) (not . IM.member (fromIntegral from) <$> readIORef (arReg actors)) deadline
+  pure $ case r of
+    Right m -> VData 3 0 [m]
+    Left True -> VData 3 1 [VStr "dead actor"]
+    Left False -> VData 3 1 [VStr "deadline"]
 actorCall _ "Sys.nextId" [_] = VInt . fromIntegral <$> atomicModifyIORef' solNextId (\n -> (n + 1, n + 1))
 actorCall env "kill" [VInt i] = do
   let actors = vmActors env

@@ -350,7 +350,7 @@ impureViewPrimitives = S.fromList
     "CPU.csrRead", "CPU.csrWrite", "CPU.irqSave", "CPU.irqRestore", "CPU.irqEnable", "CPU.wait", "CPU.instructionFence",
     "device", "reg8", "reg32",
     "send", "sendLinear", "sendArc", "receive", "receiveRes", "receiveNow",
-    "receiveFrom", "receiveFromRes", "receiveFromNow",
+    "receiveFrom", "receiveFromRes", "receiveFromNow", "receiveUntil", "receiveFromUntil",
     "spawn", "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap",
     "myself", "myPid", "kill", "yield", "hartId",
     "Sys.sleepUs", "Sys.mtime", "Sys.uptimeMs", "Sys.nextId", "Sys.actLive", "Sys.actInfo", "Sys.spawnApp", "Sys.poolReset",
