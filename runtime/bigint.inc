@@ -266,22 +266,8 @@ static int bi_divmod_mag(uint64_t *qout, uw *qnout,
     *qnout = 1;
     return 0;
   }
-#if defined(__SIZEOF_INT128__)
-  if (bn == 1) {
-    uint64_t d = b[0];
-    uint64_t rem = 0;
-    for (uw i = an; i-- > 0;) {
-      unsigned __int128 cur = ((unsigned __int128)rem << 64) | (unsigned __int128)a[i];
-      qout[i] = (uint64_t)(cur / d);
-      rem = (uint64_t)(cur % d);
-    }
-    uw qn = an;
-    while (qn > 0 && qout[qn - 1] == 0) qn--;
-    *qnout = qn;
-    return rem != 0;
-  }
-#endif
-  /* Unpack 64-bit limbs to base-2^32 limbs. */
+  /* Unpack 64-bit limbs to base-2^32 limbs (avoids 128-bit division helpers
+   * like __udivti3 that are unavailable in freestanding -nostdlib targets). */
   uw un = an * 2u;
   uw vn = bn * 2u;
   uint32_t ustack[BI_STACK_LIMBS * 2u + 2u];
