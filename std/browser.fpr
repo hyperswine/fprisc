@@ -47,10 +47,10 @@ Handler = Type (On String (List Effect) | Every Int (List Effect) |
   OnSuspend (List Effect) | Key Target String (List Effect) |
   Click Target (List Effect)).
 
-n = JS.Name.
-t = JS.Text.
-f = JS.Field.
-num = JS.Number.
+n name = JS.Name name.
+t text = JS.Text text.
+f target name = JS.Field target name.
+num value = JS.Number value.
 call name args = JS.Call (n name) args.
 method target name args = JS.Call (f target name) args.
 doMethod target name args = JS.Do (method target name args).
