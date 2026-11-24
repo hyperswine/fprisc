@@ -84,13 +84,17 @@ discharge width fn
       [ (param, arg)
       | b <- fnBlocks fn
       , bId b /= fnEntry fn
-      , Just [(p, args)] <- [M.lookup (bId b) inEdgesMap]
-      , p /= bId b
-      , S.member p (M.findWithDefault S.empty (bId b) doms)
-      , ((param, _), arg) <- zip (bParams b) args ]
-    resolveParam v = case M.lookup v paramAliases of
-      Just w | w /= v -> resolveParam w
-      _ -> v
+      , Just edges <- [M.lookup (bId b) inEdgesMap]
+      , not (null edges)
+      , all ((== length (bParams b)) . length . snd) edges
+      , (idx, (param, _)) <- zip [0 ..] (bParams b)
+      , [arg] <- [S.toList (S.delete param (S.fromList [args !! idx | (_, args) <- edges]))] ]
+    resolveParam = go S.empty
+      where
+        go seen v
+          | S.member v seen = v
+          | Just w <- M.lookup v paramAliases, w /= v = go (S.insert v seen) w
+          | otherwise = v
     -- A pure operation repeated across blocks is the same value: resolve
     -- every such definition to one representative so a comparison's fact
     -- reaches an operation whose operand was untagged or projected again.
@@ -121,6 +125,19 @@ discharge width fn
     consts = M.fromList [(resolve v, n) | Instr (Just (v, TInt)) (OConstInt n) <- instrs]
     -- Direct producer bounds: constants, string byte lengths (>= 0), byte reads
     -- (0..255), and bitwise AND with a non-negative constant mask (in 0..mask).
+    -- Values statically known to be non-zero: bitwise OR with any non-zero
+    -- constant always has at least one bit set, regardless of the other operand.
+    nonZero :: S.Set VId
+    nonZero = S.union rawNonZero taggedNonZero
+      where
+        rawNonZero = S.fromList
+          [ resolve v
+          | Instr (Just (v, TInt)) (OBit BOr a b) <- instrs
+          , maybe False (/= 0) (M.lookup (resolve a) consts) || maybe False (/= 0) (M.lookup (resolve b) consts) ]
+        taggedNonZero = S.fromList
+          [ resolve v
+          | Instr (Just (v, TVal)) (OTag x) <- instrs
+          , S.member (resolve x) rawNonZero ]
     producerBounds :: M.Map VId (Integer, Integer)
     producerBounds = M.fromListWith (\(l1, u1) (l2, u2) -> (max l1 l2, min u1 u2)) $ [(capNode, (capValue, capValue)) | capped] ++ concat
       [ case op of
@@ -337,7 +354,9 @@ discharge width fn
     -- a comparison holds by a difference walk, or by the two values' own
     -- ranges (a product or a sum of bounded values has a range and no walk:
     -- `7 * i + 3 >= 0` under `0 <= i`, the lower half of a bounds test)
-    cmpHolds extraLB extraUB fs o a b = cmpWalk extraLB extraUB fs o a b || cmpRange extraLB extraUB fs o (resolve a) (resolve b)
+    cmpHolds extraLB extraUB fs o a b = cmpWalk extraLB extraUB fs o a b || cmpRange extraLB extraUB fs o (resolve a) (resolve b) || cmpNonZero o (resolve a) (resolve b)
+    cmpNonZero Ne x y = (S.member x nonZero && M.lookup y consts == Just 0) || (S.member y nonZero && M.lookup x consts == Just 0)
+    cmpNonZero _ _ _ = False
     cmpRange extraLB extraUB fs o a b =
       let below x y c = case (varUB extraLB extraUB fs x, varLB extraLB extraUB fs y) of
             (Just u, Just l) -> u - l <= c
@@ -529,7 +548,17 @@ discharge width fn
               (Just k, _) | k > 0, Just l <- divMulLB extraLB extraUB fs ry k, Just u <- varUB extraLB extraUB fs ry, l >= lo && u * k <= hi -> True
               (Just k, _) | k > 0, Just u <- divMulUB extraLB extraUB fs ry k, Just l <- varLB extraLB extraUB fs ry, l * k >= lo && u <= hi -> True
               _ -> fitsRange extraLB extraUB fs rx ry Mul
-            _ -> False
+            Div ->
+              let divisorNonZero =
+                    S.member ry nonZero
+                      || maybe False (> 0) (varLB extraLB extraUB fs ry)
+                      || maybe False (< 0) (varUB extraLB extraUB fs ry)
+                  noMinNegOne =
+                    maybe False (> lo) (varLB extraLB extraUB fs rx)
+                      || maybe False (/= (-1)) (M.lookup ry consts)
+                      || maybe False (>= 0) (varLB extraLB extraUB fs ry)
+                      || maybe False (< (-1)) (varUB extraLB extraUB fs ry)
+               in divisorNonZero && noMinNegOne
     -- Walk instructions top-down so a checked arithmetic instruction is
     -- proven only from facts established BEFORE it, then contributes its
     -- post-fact (v = x +/- k) to subsequent instructions and the terminator.
@@ -541,7 +570,7 @@ discharge width fn
         stepInstr (fs, acc) i =
           let i' = case i of
                 Instr (Just (v, TInt)) (OArith o x y)
-                  | o `elem` [Add, Sub, Mul], arithProof extraLB extraUB fs o x y ->
+                  | o `elem` [Add, Sub, Mul, Div], arithProof extraLB extraUB fs o x y ->
                       Instr (Just (v, TInt)) (OArithU o x y)
                 _ -> i
            in (fs ++ instrFacts i', i' : acc)
@@ -554,7 +583,7 @@ discharge width fn
             -- a raw-Int copy's fit test (Codegen.RawInts): the exact result
             -- stays small when the operands' bounds say so
             | Just (OArithFits o x y) <- M.lookup p rawDefs
-            , o `elem` [Add, Sub, Mul]
+            , o `elem` [Add, Sub, Mul, Div]
             , arithProof extraLB extraUB fsEnd o x y -> TBr yes ys
           t -> t
     results = map rewrite (fnBlocks fn)
