@@ -2,7 +2,7 @@ module Core.Analysis.FusionSafety (fusionSafe, fusionUnsafeReason) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives
-import Core.FusionPolicy (safePrimitives)
+import Core.FusionPolicy (safePrimitives,safePrimitiveArity)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -35,7 +35,7 @@ fusionUnsafeReason prog = go S.empty
     body' _ _ e | Just _ <- floatLitBits e = Nothing
     body' seen env e = case spineOf e of
       (CVar h, args@(_ : _))
-        | h `elem` safePrims, Just ar <- lookup h primArities, length args == ar -> firstJust (map (body' seen env) args)
+        | h `elem` safePrims, Just ar <- safePrimitiveArity h, length args == ar -> firstJust (map (body' seen env) args)
         | h `elem` safePrims -> Just ("a partial application of `" ++ h ++ "`")
         | h == entryTickName -> Nothing
         | S.member h env -> Just ("a call through the parameter `" ++ h ++ "` (unknown function)")

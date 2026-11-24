@@ -3,7 +3,7 @@ module Core.Typed.FusionSafety (Safety,Reason(..),planSafety,unsafeTarget,unsafe
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
 import Core.Typed.Walk (mapChildrenM)
-import Core.FusionPolicy (safePrimitives,trapFreePrimitives)
+import Core.FusionPolicy (safePrimitives,trapFreePrimitives,safePrimitiveArity)
 import Core.Primitives (primArities,entryTickName)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Lazy as M
@@ -81,7 +81,7 @@ facts prims templates e=case exprNode (unNote e) of
           if length ps==length args then concatMap (facts prims templates) args++[Ref key]
           else [Refusal (Partial key)]
       | name `elem` prims=
-          if lookup name primArities==Just (length args) then concatMap (facts prims templates) args
+          if safePrimitiveArity name==Just (length args) then concatMap (facts prims templates) args
           else [Refusal (Partial key)]
       | otherwise=[Refusal (Primitive name)]
     int x=case exprNode (unNote x) of IntValue _->True;_->False

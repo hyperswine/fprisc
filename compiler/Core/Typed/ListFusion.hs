@@ -13,8 +13,7 @@ import Core.Typed.Callback.Catalog
 import Core.Typed.Callback.Model
 import qualified Core.Typed.FusionSafety as Safety
 import Core.Typed.Fusion (FusionNote(..),Decline(..))
-import Core.FusionPolicy (safePrimitives)
-import Core.Primitives (primArities)
+import Core.FusionPolicy (safePrimitives,safePrimitiveArity)
 import Core.Typed.Walk (allBinders,mapChildrenM,renameUses)
 import Core.Identity
 import Type.Syntax
@@ -220,7 +219,7 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
     -- judgment (an unknown or exact-arity call is not movable by itself).
     underApplied name args
       | Just (Template _ ps _ _ _)<-M.lookup (RootTarget name) (catalogTemplates snapshot)=length args<length ps
-      | Just arity<-lookup name primArities=name `elem` safePrimitives&&length args<arity
+      | Just arity<-safePrimitiveArity name=name `elem` safePrimitives&&length args<arity
       | otherwise=False
     go scope e=mapChildrenM (go scope) e >>= \e'->case site e' of
       Nothing->pure e'
