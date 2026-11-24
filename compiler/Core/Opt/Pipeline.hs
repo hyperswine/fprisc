@@ -133,7 +133,8 @@ verifyPassResult before after sigs = do
 -- String and one copy, where the chain made a String per piece and copied
 -- the front again at every step. str comes off each piece when calling
 -- $strcatT: the runtime renders a non-String piece as str would (a float
--- piece is already its String: Infer's str! sites).
+-- piece is already its String: Infer's str! sites). Three or four pieces
+-- are the arguments of $strcat3 / $strcat4 instead: no tuple is allocated.
 buildStrings :: Prog -> Prog
 buildStrings=M.map (\fn@(ps,b)->if hasStrcat b then (ps,go b) else fn)
   where
@@ -143,6 +144,8 @@ buildStrings=M.map (\fn@(ps,b)->if hasStrcat b then (ps,go b) else fn)
             built = case folded of
               [x] -> x
               [a, b] -> CApp (CApp (CVar "strcat") a) b
+              xs@[_, _, _] -> foldl CApp (CVar "$strcat3") (map unstr xs)
+              xs@[_, _, _, _] -> foldl CApp (CVar "$strcat4") (map unstr xs)
               xs -> CApp (CVar "$strcatT") (CMk (tupleTid (length xs)) 0 (map unstr xs))
         in wrapFuel ticks built
       Nothing -> case e of
