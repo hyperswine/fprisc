@@ -1,12 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
--- Case of a known constructor, through case-of-case. A `case` whose scrutinee
--- is (or ends in, through lets, sequences, ifs and nested cases) a constructor
--- or tuple value selects its alternative statically and binds the fields in
--- place, so the value is never built. Evaluation and trap order are kept: the
--- fields are evaluated by the same lets, in the same order, before the chosen
--- alternative. Alternatives are moved, never copied, so a rewrite declines
--- whenever two leaves would select the same one. Anything not provably known
--- (an unknown leaf, a guard, a nested pattern) leaves the case untouched.
+-- Case of a known constructor, through case-of-case and let-bound constructors.
+-- A `case` whose scrutinee is (or ends in, through lets, sequences, ifs,
+-- nested cases, or let-bound constructors/tuples with trivial fields) a
+-- constructor or tuple value selects its alternative statically and binds the
+-- fields in place, so the value is never built. Evaluation and trap order are
+-- kept: the fields are evaluated by the same lets, in the same order, before
+-- the chosen alternative. Alternatives are moved, never copied, so a rewrite
+-- declines whenever two leaves would select the same one. Anything not
+-- provably known (an unknown leaf, a guard, a nested pattern) leaves the case
+-- untouched.
 module Core.Typed.CaseKnown (caseKnownClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Close
@@ -30,16 +32,78 @@ data Known=Con String [Expr] | Tup [Expr]
 data Result=NoMatch | Unsure | Yes [Expr -> Expr]
 
 rewrite :: TypeContext -> Function -> (Function,Bool)
-rewrite (TypeContext _ constructors) input=(input {functionBody=body},changed)
+rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input)
   where
-    (body,Any changed)=runWriter (walk (functionBody input))
-    walk e=mapChildrenM walk e >>= \e'->case exprNode e' of
-      -- Closure conversion lowers `case x of ...` to a let of the scrutinee
-      -- and a match tail on that fresh, otherwise unused, binder.
-      Let sb rhs m | MatchTail CaseMatch [x] alts fb<-exprNode m,Var (Local sid)<-exprNode x,sid==binderId sb,
-                     not (usedInArms sid alts fb),
-                     Just r<-evalStateT (leaf e' alts rhs) S.empty->tell (Any True) >> pure r
-      _->pure e'
+    go 0 anyChanged b=(input {functionBody=b},anyChanged)
+    go rounds anyChanged b=
+      let (b',Any changed)=runWriter (walk M.empty b)
+       in if changed then go (rounds-1) True b' else (input {functionBody=b'},anyChanged)
+
+    walk env e=case exprNode e of
+      Let b rhs body -> do
+        rhs'<-walk env rhs
+        let (rhsWrap,rhsCore)=stripEntryTicks rhs'
+            env1=case known env (unNote rhsCore) of
+              Just k | all trivial (fields k)->M.insert (binderId b) k env
+              _->env
+        body'<-walk env1 body
+        let e'=e {exprNode=Let b rhs' body'}
+        case peelCaseTarget (binderId b) body' of
+          Just (bodyWrap,alts,fb) | Just r<-evalStateT (leaf env e' alts rhs') S.empty ->
+            tell (Any True) >> pure (bodyWrap r)
+          _->case M.lookup (binderId b) env1 of
+            Just _ | binderId b `notElem` localUses body' ->
+              tell (Any True) >> pure (rhsWrap body')
+            _->pure e'
+      MatchTail CaseMatch [x] alts fb -> do
+        alts'<-mapM (walkAlt env) alts
+        fb'<-walk env fb
+        let e'=e {exprNode=MatchTail CaseMatch [x] alts' fb'}
+        case exprNode (unNote x) of
+          Var (Local sid) | Just k<-M.lookup sid env,
+            Just r<-evalStateT (select e' alts' x k) S.empty ->
+              tell (Any True) >> pure r
+          _->pure e'
+      _->mapChildrenM (walk env) e
+
+    walkAlt env (Alternative ps gs body)=do
+      gs'<-mapM (walkGuard env) gs
+      body'<-walk env body
+      pure (Alternative ps gs' body')
+    walkGuard env (BoolGuard g)=BoolGuard <$> walk env g
+    walkGuard env (PatternGuard p g)=PatternGuard p <$> walk env g
+
+    -- Strip leading EntryTick wrappers (inserted by Core.Typed.Inline) while
+    -- returning a wrapper that preserves the tick in place.
+    stripEntryTicks e=case exprNode (unNote e) of
+      Sequence a rest | isEntryTick a ->
+        let (w,core)=stripEntryTicks rest
+         in (\x->generated x (Sequence a (w x)),core)
+      Let tb a rest | isEntryTick a, binderId tb `notElem` localUses rest ->
+        let (w,core)=stripEntryTicks rest
+         in (\x->generated x (Sequence a (w x)),core)
+      _->(id,e)
+
+    isEntryTick e=case exprNode (unNote e) of EntryTick->True; _->False
+
+    -- Match `body` when it is either `MatchTail CaseMatch [Var sid] alts fb`
+    -- (with `sid` unused in `alts`/`fb`) or a chain of single-use aliases and
+    -- inlined EntryTicks leading to that MatchTail.
+    peelCaseTarget sid body=case exprNode (unNote body) of
+      MatchTail CaseMatch [x] alts fb
+        | Var (Local xid)<-exprNode (unNote x), xid==sid, not (usedInArms sid alts fb) ->
+            Just (id,alts,fb)
+      Sequence a rest | isEntryTick a -> do
+        (w,alts,fb)<-peelCaseTarget sid rest
+        pure (\x->generated x (Sequence a (w x)),alts,fb)
+      Let tb a rest | isEntryTick a, binderId tb `notElem` localUses rest -> do
+        (w,alts,fb)<-peelCaseTarget sid rest
+        pure (\x->generated x (Sequence a (w x)),alts,fb)
+      Let b rhs rest
+        | Var (Local xid)<-exprNode (unNote rhs), xid==sid, sid `notElem` localUses rest ->
+            peelCaseTarget (binderId b) rest
+      _->Nothing
+
     usedInArms sid alts fb=sid `elem` localUses fb || any usedInAlt alts
       where
         usedInAlt (Alternative _ gs b)=sid `elem` localUses b || any (elem sid . guardUses) gs
@@ -58,37 +122,43 @@ rewrite (TypeContext _ constructors) input=(input {functionBody=body},changed)
     trivial e=case exprNode (unNote e) of
       Var {}->True;IntValue _->True;StringValue _->True;BoolValue _->True;ClosureValue {}->True
       _->False
-    known e=case exprNode e of
+    known env e=case exprNode e of
+      Var (Local sid)->M.lookup sid env
       Construct n xs->Just (Con n xs)
       TupleValue xs->Just (Tup xs)
       Var (Global n _) | arity n==Just 0->Just (Con n [])
       Apply {} | (h,args)<-spine e [],Var (Global n _)<-exprNode h,Just k<-arity n,k>0,k==length args->Just (Con n args)
       _->Nothing
     -- One scrutinee leaf, in the context that `outer` (the whole case) replaces.
-    leaf outer alts s=let e=unNote s in case exprNode e of
-      Let b rhs rest->node e . Let b rhs <$> leaf outer alts rest
-      Sequence a rest->node e . Sequence a <$> leaf outer alts rest
-      If c t f->node e <$> (If c <$> leaf outer alts t <*> leaf outer alts f)
+    leaf env outer alts s=let e=unNote s in case exprNode e of
+      Let b rhs rest->
+        let (_,rhsCore)=stripEntryTicks rhs
+            env'=case known env (unNote rhsCore) of
+              Just k | all trivial (fields k)->M.insert (binderId b) k env
+              _->env
+         in node e . Let b rhs <$> leaf env' outer alts rest
+      Sequence a rest->node e . Sequence a <$> leaf env outer alts rest
+      If c t f->node e <$> (If c <$> leaf env outer alts t <*> leaf env outer alts f)
       MatchTail style xs inner fb->do
-        inner'<-mapM (\(Alternative ps gs b)->Alternative ps gs <$> leaf outer alts b) inner
-        fb'<-leaf outer alts fb
+        inner'<-mapM (\(Alternative ps gs b)->Alternative ps gs <$> leaf env outer alts b) inner
+        fb'<-leaf env outer alts fb
         pure (node e (MatchTail style xs inner' fb'))
       Fail m->pure (node e (Fail m))
-      _->lift (known e) >>= select e
+      _->lift (known env e) >>= select outer alts e
       where
         node old n=old {exprType=exprType outer,exprShape=exprShape outer,exprOrigin=Generated,exprNode=n}
-        select e k=go (0::Int) alts
-          where
-            go _ []=lift Nothing
-            go i (Alternative [p] gs body:rest)=case matchPat e k p of
-              NoMatch->go (i+1) rest
-              Yes binds | null gs->do
-                used<-get
-                guard (i `S.notMember` used)
-                put (S.insert i used)
-                pure (foldr ($) body binds)
-              _->lift Nothing
-            go _ _=lift Nothing
+    select _ alts e k=goAlt (0::Int) alts
+      where
+        goAlt _ []=lift Nothing
+        goAlt i (Alternative [p] gs body:rest)=case matchPat e k p of
+          NoMatch->goAlt (i+1) rest
+          Yes binds | null gs->do
+            used<-get
+            guard (i `S.notMember` used)
+            put (S.insert i used)
+            pure (foldr ($) body binds)
+          _->lift Nothing
+        goAlt _ _=lift Nothing
     matchPat leafExpr k p=case (patNode p,k) of
       (Wildcard,_)->Yes [skip a | a<-fields k,not (trivial a)]
       (Bind b,_)->Yes [\rest->generated rest (Let b leafExpr rest)]
