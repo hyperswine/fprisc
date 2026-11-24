@@ -1,0 +1,11 @@
+queued: Some 5 Some 6
+expired: None Err deadline
+deadline: Err deadline None
+woken: Ok 41 Some 42
+other senders: Err deadline, kept 10 of 10
+ended: Err dead actor
+callUntil: Ok 42 Ok 44
+slow: Ok in time | Err deadline exceeded (outcome unknown) | Ok next
+stale dropped: Ok 7, event kept: event
+stale stream: Err deadline exceeded (outcome unknown)
+timedrecv: HOLDS

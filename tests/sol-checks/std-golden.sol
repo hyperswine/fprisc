@@ -16,6 +16,8 @@ special = [
   ("storeconc-4", "storeconc", ["@/store4"], "tmp", [("FPR_HARTS","4")]),
   ("call-4", "call", [], "root", [("FPR_HARTS","4")]),
   ("call", "call", [], "root", []),
+  ("timedrecv-4", "timedrecv", [], "root", [("FPR_HARTS","4")]),
+  ("timedrecv", "timedrecv", [], "root", []),
   ("durable", "durable", ["@/durable.kvlog"], "tmp", []),
   ("compact", "compact", [], "tmp", []),
   ("kvwire", "kvwire", [], "tmp", []),

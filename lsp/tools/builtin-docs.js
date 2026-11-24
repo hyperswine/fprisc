@@ -115,6 +115,8 @@ const docs = {
   receiveFrom: 'Wait for a message from the specified sender, leaving other senders queued. Prefer receiveFromRes when the sender may die.',
   receiveFromRes: 'Wait for a message from the specified sender. Return Ok message, or Err when the sender has died and its queued messages are drained. Other senders remain queued.',
   receiveFromNow: 'Poll for a message from the specified sender without blocking. Return Ok message, Err "empty" while it is alive with no message, or a dead-sender error after its queue drains.',
+  receiveUntil: 'Wait for a message from any sender until the deadline (absolute Sys.uptimeMs milliseconds). Return Some message, or None once the deadline has passed. A queued message is taken even when the deadline has already passed; the wait parks, it never polls.',
+  receiveFromUntil: 'Wait for a message from the specified sender until the deadline (absolute Sys.uptimeMs milliseconds), leaving other senders queued. Return Ok message, Err "deadline" once the deadline has passed, or a dead-sender error after its queue drains.',
   spawn: 'Start an actor with an entry function that receives its own actor ID; return the new actor ID.',
   spawnOn: 'Start an actor on the requested hart, passing its actor ID to the entry function.',
   spawnCap: 'Start an actor with mailbox mode and capacity, then its entry function. Mode 0 is a fixed ring; mode 1 allows growth.',

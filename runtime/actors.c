@@ -2484,10 +2484,24 @@ static int spin_until(acb_t *a, pred_t pred, uw arg) {
 #ifndef FPR_DIRECT_HANDOFF
 #define FPR_DIRECT_HANDOFF 64
 #endif
+/* The sleepers this hart's loop must watch, other than the two actors of the
+ * handoff: a deadline receive (receiveFromUntil) keeps its caller on the
+ * sleeper list while it waits for the peer's reply, and the peer may be one
+ * too.  The incoming actor checks its own deadline when it resumes; the
+ * outgoing one is late by at most the incoming actor's turn -- as under the
+ * hart loop, which drains sleepers only between turns -- and every
+ * FPR_DIRECT_HANDOFF handoffs the hart loop runs regardless.  Any other
+ * sleeper needs the hart loop now. */
+static int other_sleepers(fpr_hart_t *h, acb_t *a, acb_t *b) {
+  int seen = 0;
+  for (acb_t *s = h->slp_head; s; s = s->slp_next)
+    if ((s != a && s != b) || ++seen > 2) return 1;
+  return 0;
+}
 static int direct_handoff(fpr_hart_t *h, acb_t *a) {
   acb_t *b = h->wake_hint;
   if (!FPR_DIRECT_HANDOFF || !b || b == a || fpr_plane_actors) return 0;
-  if (h->direct_run >= FPR_DIRECT_HANDOFF || h->rq_head || h->slp_head) return 0;
+  if (h->direct_run >= FPR_DIRECT_HANDOFF || h->rq_head || other_sleepers(h, a, b)) return 0;
   /* A miss falls back to ordinary scheduling. Recheck under the lock
    * below because another hart can steal while we inspect the rings. */
   if (__atomic_load_n(&h->bl_len, __ATOMIC_RELAXED) != 1) return 0;
@@ -2729,6 +2743,24 @@ static void sleeper_unlink_local(acb_t *a) {
   }
 }
 
+/* Leave every sleeper list before linking on one: unlink a stale entry on
+ * THIS hart's list here, and ask the owning hart to drop an entry on a list
+ * it owns (the actor migrated mid-sleep), parking until it is gone.  Shared
+ * by Sys.sleepUs and the deadline receives (receiveUntil/receiveFromUntil),
+ * which link on the same list. */
+static void sleeper_settle(acb_t *a) {
+  sleeper_unlink_local(a);
+  while (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    uw owner = a->slp_hart;
+    __atomic_store_n(&a->slp_cancel, 1, __ATOMIC_RELEASE);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    hal_ipi_send(owner);
+    block_unless(a, p_unlinked, 0, WAIT_ANY);
+    sleeper_unlink_local(a); /* it migrated back onto the owner meanwhile */
+  }
+  __atomic_store_n(&a->slp_cancel, 0, __ATOMIC_RELAXED);
+}
+
 static V a_sleep_us(V usv) {
   if (!ISINT(usv)) fpr_trap("Sys.sleepUs: microseconds must be an Int");
   sw us = UNTAG(usv);
@@ -2757,16 +2789,7 @@ static V a_sleep_us(V usv) {
    * hart; now it asks the owning hart to drop the entry (slp_cancel, then the
    * doorbell: that hart's loop runs slp_drain on every pass and again after
    * clearing its doorbell) and parks until the entry is gone. */
-  sleeper_unlink_local(a); /* a stale entry on THIS hart's list: unlink it here */
-  while (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
-    uw owner = a->slp_hart;
-    __atomic_store_n(&a->slp_cancel, 1, __ATOMIC_RELEASE);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
-    hal_ipi_send(owner);
-    block_unless(a, p_unlinked, 0, WAIT_ANY);
-    sleeper_unlink_local(a); /* it migrated back onto the owner meanwhile */
-  }
-  __atomic_store_n(&a->slp_cancel, 0, __ATOMIC_RELAXED);
+  sleeper_settle(a);
   h = fpr_hart(); /* parking may have moved us to another hart */
   sleeper_link(h, a, now + (uint64_t)us * 10);
   while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0, WAIT_ANY);
@@ -4183,8 +4206,11 @@ static int wait_mailbox_until(V me, V from, uint64_t deadline) {
   if (!a || (V)a != me || (from && (ISINT(from) || TID(from) != T_ACTOR)))
     fpr_cpanic("waitFromUntil: invalid actor");
   if ((from ? p_from_dead(a, (uw)from) : p_any(a, 0)) || hal_mtime() >= deadline) return 1;
-  /* An earlier ordinary sleep can still be linked on a remote hart. */
-  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) return 0;
+  /* An earlier ordinary sleep can still be linked, here or on a remote hart
+   * (it migrated mid-sleep): leave that list first, never link twice. */
+  sleeper_settle(a);
+  h = fpr_hart(); /* settling may have parked us onto another hart */
+  if ((from ? p_from_dead(a, (uw)from) : p_any(a, 0)) || hal_mtime() >= deadline) return 1;
   /* Only the running actor changes its pin after spawn. Thieves read it
    * under bl_lock, so synchronize transitions only for migratable actors. */
   int temporary_pin = FPR_NHARTS > 1 && !a->pin;
@@ -4217,6 +4243,127 @@ int fpr_wait_from_until_c(V me, V from, uint64_t deadline) {
 int fpr_wait_any_until_c(V me, uint64_t deadline) {
   return wait_mailbox_until(me, 0, deadline);
 }
+
+/* ---- receiveUntil / receiveFromUntil: the DEADLINE-AWARE blocking receive ----
+ * (2026-11-24.)  std/actor's deadline calls used to wait by polling
+ * receiveFromNow and napping 100 us between looks: 154 us per call where a
+ * blocking receive answers in under 1 us (QOS overhead review).  These park
+ * the actor on BOTH wake sources at once -- its mailbox (a send from any
+ * hart wakes it, as any blocked receiver) and its hart's sleeper list (the
+ * hart loop wakes it once mtime passes the deadline) -- through
+ * wait_mailbox_until's block/recheck handshake, so neither wake is lost.
+ *
+ *   receiveUntil me deadline          : Option a
+ *       Some message (any sender), or None once the deadline has passed
+ *   receiveFromUntil me from deadline : Result a String
+ *       Ok message from `from` (others stay queued), Err "deadline" once
+ *       the deadline has passed, or the dead-sender Err of receiveFromRes
+ *       once `from` has exited with nothing from it queued
+ *
+ * The deadline is ABSOLUTE MILLISECONDS on the Sys.uptimeMs clock, as
+ * std/actor's deadlines are.  The mailbox is looked at FIRST, so a message
+ * already queued is taken even when the deadline has passed (an expired
+ * deadline is one non-blocking poll, never a park).  A wake that finds
+ * nothing (a spurious wake, a message from another sender) re-checks the
+ * clock and parks again for the time that is left: no polling interval,
+ * no busy wait.  The Err/None answers are static: a timeout allocates
+ * nothing.  Bounded: the wait ends by the deadline (plus the hart's timer
+ * latency -- immediate on bare metal's CLINT, the hart loop's poll on a
+ * hosted plane), so a deadline receive is the blocking form fit for
+ * code with a time budget. */
+static const struct { uint32_t tid, var; uw len; uint8_t bytes[16]; } __attribute__((aligned(8))) recv_deadline_s = {T_STR, 0, 8, "deadline"};
+static const struct { uint32_t tid, var; V f; } __attribute__((aligned(8))) recv_deadline = {T_RESULT, 1, (V)&recv_deadline_s};
+
+/* ms on the uptimeMs clock -> absolute mtime ticks (10 MHz).  At or before
+ * 0: already due.  A deadline past the 64-bit tick range (or a positive
+ * BigInt) never comes due: the wait then ends only by a message. */
+static uint64_t deadline_ticks(V dlv, const char *who) {
+  if (ISINT(dlv)) {
+    sw ms = UNTAG(dlv);
+    if (ms <= 0) return 0;
+    if ((uint64_t)ms > UINT64_MAX / 10000) return UINT64_MAX;
+    return (uint64_t)ms * 10000;
+  }
+  if (dlv && TID(dlv) == T_BIGINT) return ((hdr_t *)dlv)->var ? 0 : UINT64_MAX;
+  fpr_cpanic(who);
+  return 0;
+}
+
+/* the any-sender poll of receiveNow, consuming the message without a box */
+static int receive_any_native(V me, V *message) {
+  fpr_hart_t *h = fpr_hart();
+  if (ISINT(me) || (acb_t *)me != h->current)
+    fpr_cpanic("receiveUntil: not the current actor's handle");
+  acb_t *a = h->current;
+  drop_drain(a);
+  chan_t *c = next_ready_channel(a);
+  if (!c) return 0;
+  *message = take_at(a, c, c->rh);
+  return 1;
+}
+
+static V some_of(V m) {
+  V *some = (V *)fpr_alloc(8 + sizeof(uw));
+  ((hdr_t *)some)->tid = T_OPTION;
+  ((hdr_t *)some)->var = 1;
+  FPR_FLD(some, 0) = m;
+  return (V)some;
+}
+
+/* A plane built before ABI v7 has no deadline receive: wait on its own
+ * receive_now/sleep_us in slices no longer than the time left.  Only an
+ * older kernel serving a newer process takes this path. */
+static uint64_t plane_poll_slice_us(uint64_t deadline) {
+  uint64_t now = hal_mtime();
+  uint64_t left = deadline > now ? (deadline - now) / 10 : 0;
+  return left < 100 ? (left ? left : 1) : 100;
+}
+
+static V a_receive_until(V me, V dlv) {
+  uint64_t deadline = deadline_ticks(dlv, "receiveUntil: deadline must be an Int (ms)");
+  if (fpr_plane_actors) {
+    if (fpr_plane_actors->abi >= 7 && fpr_plane_actors->receive_until)
+      return fpr_plane_actors->receive_until(me, dlv);
+    for (;;) {
+      V r = fpr_plane_actors->receive_now(me);
+      if (((hdr_t *)r)->var == 0) return some_of(FPR_FLD(r, 0));
+      if (hal_mtime() >= deadline) return V_NONE;
+      fpr_plane_actors->sleep_us((uw)plane_poll_slice_us(deadline));
+    }
+  }
+  for (;;) {
+    V message;
+    if (receive_any_native(me, &message)) return some_of(message);
+    if (hal_mtime() >= deadline) return V_NONE;
+    wait_mailbox_until(me, 0, deadline);
+  }
+}
+
+static V a_receive_from_until(V me, V fromv, V dlv) {
+  uint64_t deadline = deadline_ticks(dlv, "receiveFromUntil: deadline must be an Int (ms)");
+  if (fpr_plane_actors) {
+    if (fpr_plane_actors->abi >= 7 && fpr_plane_actors->receive_from_until)
+      return fpr_plane_actors->receive_from_until(me, fromv, dlv);
+    for (;;) {
+      V r = fpr_plane_actors->receive_from_now(me, fromv);
+      if (((hdr_t *)r)->var == 0) return r;
+      str_t *why = (str_t *)FPR_FLD(r, 0);
+      if (!(why->len == 5 && why->bytes[0] == 'e' && why->bytes[4] == 'y')) return r; /* dead sender */
+      if (hal_mtime() >= deadline) return (V)&recv_deadline;
+      fpr_plane_actors->sleep_us((uw)plane_poll_slice_us(deadline));
+    }
+  }
+  for (;;) {
+    V message;
+    int status = receive_from_native(me, fromv, &message);
+    if (status > 0) return ok_of(message);
+    if (status < 0) return dead_of((acb_t *)fromv);
+    if (hal_mtime() >= deadline) return (V)&recv_deadline;
+    wait_mailbox_until(me, fromv, deadline);
+  }
+}
+FPR_FN(fpr_g_receiveUntil, a_receive_until, 2);
+FPR_FN(fpr_g_receiveFromUntil, a_receive_from_until, 3);
 
 static V a_receive_from_res(V me, V fromv) {
   if (fpr_plane_actors) return fpr_plane_actors->receive_from_res(me, fromv);
@@ -4922,6 +5069,8 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->cleanup_clear = fpr_actor_cleanup_clear;
   actors->fail = fpr_actor_fail;
   actors->receive_from_now = a_receive_from_now;
+  actors->receive_until = a_receive_until;
+  actors->receive_from_until = a_receive_from_until;
   actors->spawn_inbox = a_spawn_inbox;
   actors->send_linear = a_send_linear;
   actors->send_concat = a_send_concat;

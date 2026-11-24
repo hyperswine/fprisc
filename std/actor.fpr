@@ -171,8 +171,15 @@ deadlineAfter ms =
   maxMs = 2 ^ 62 - 1;
   if ms < 0 or ms > maxMs - now then Err "invalid deadline duration"
   else Ok (now + ms).
-# Sleep no further than the remaining budget; yielding on an expired budget
-# would let an already-expired request through. No helper actor per request.
+# Waiting for a REPLY parks on receiveFromUntil (runtime/actors.c): the
+# actor sleeps until a message from the service or the deadline, whichever
+# comes first -- woken at once by a reply from any hart, never polling.
+# (Until 2026-11-24 it polled receiveFromNow and napped 100 us between looks:
+# 154 us per call where the blocking wait answers in under one.)
+# napUntil remains for ADMISSION only (sendSureUntil: room in someone else's
+# mailbox, for which no event exists). Sleep no further than the remaining
+# budget; yielding on an expired budget would let an already-expired request
+# through. No helper actor per request.
 napUntil deadline =
   left = deadline - nowMs Unit;
   if left <= 0 then Unit else _ = Sys.sleepUs 100; Unit.
@@ -206,14 +213,17 @@ sendSureUntil deadline me a msg =
         sendSureUntil deadline me a msg
       else Err why.
 awaitReplyUntil : unsafe Int -> Int -> Int -> Int -> Result r String .
+# The deadline is checked before every wait, including after a stale reply,
+# so a stream of stale replies cannot hold a caller past its budget. Messages
+# from other senders stay queued: the wait is selective by sender.
 awaitReplyUntil deadline me a id =
   if nowMs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
-  case receiveFromNow me a of
-      Err why -> if why == "empty" then
-          _ = napUntil deadline;
-          awaitReplyUntil deadline me a id
-        else Err why
+  case receiveFromUntil me a deadline of
+      Err why -> Err (untilWhy why)
     | Ok m -> replyUntil deadline me a id m.
+# receiveFromUntil's Err "deadline" is this module's outcome-unknown timeout;
+# a dead service's Err passes through unchanged.
+untilWhy why = if why == "deadline" then "deadline exceeded (outcome unknown)" else why.
 replyUntil deadline me a id m =
   (rid, r) = m;
   if rid == id then replyKept m r else
@@ -231,11 +241,8 @@ sendAwaitUntil deadline me a msg =
 awaitFromUntil : unsafe Int -> Int -> Int -> Result r String .
 awaitFromUntil deadline me a =
   if nowMs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
-  case receiveFromNow me a of
-      Err why -> if why == "empty" then
-          _ = napUntil deadline;
-          awaitFromUntil deadline me a
-        else Err why
+  case receiveFromUntil me a deadline of
+      Err why -> Err (untilWhy why)
     | Ok m -> replyKept m m.
 
 # Reusable legacy session, one per owner lifetime, not one per request.

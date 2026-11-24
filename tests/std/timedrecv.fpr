@@ -1,0 +1,117 @@
+# Deadline receives (receiveUntil / receiveFromUntil, runtime/actors.c) and the
+# std/actor deadline calls built on them: a queued message is taken at once,
+# even past its deadline; an empty mailbox times out at the deadline, not
+# before and not ~forever; a reply wakes the waiter long before its deadline,
+# from its own hart or another; messages from other senders and stale replies
+# neither end the wait nor get lost; a sender that ends is an answer.
+# Run with one hart and with FPR_HARTS=4 (tests/sol-checks/std-golden.sol).
+AC = use "std/actor".
+
+check ok why = if ok then Unit else error "timedrecv: {why}".
+quiet self = _ = receive self; _ = receive self; Unit.
+# (to, ms, v): sleep ms, then send v
+later self = (to, ms, v) = receive self; _ = Sys.sleepUs (ms * 1000); _ = send to v; Unit.
+# a correlated service on any hart
+doubler : unsafe Int -> a .
+doubler self = m = receive self; (from, id, q) = m; _ = AC.reply (from, id) (q * 2); doubler self.
+# answers after ms: (from, id, (ms, q))
+slow : unsafe Int -> a .
+slow self = m = receive self; (from, id, (ms, q)) = m; _ = Sys.sleepUs (ms * 1000); _ = AC.reply (from, id) q; slow self.
+# a stale reply (id 0) first, then the real one
+staleFirst : unsafe Int -> a .
+staleFirst self = m = receive self; (from, id, q) = m; _ = send from (0, 999); _ = Sys.sleepUs 5000; _ = AC.reply (from, id) 7; staleFirst self.
+# keeps sending stale replies until killed
+flood self = (from, id, q) = receive self; Sys.loop from (fn target -> (AC.sendSure self target (0, "stale"), target)).
+# sends a message to `to` every 2 ms, n times: traffic while someone waits
+chatter : unsafe Int -> Unit .
+chatter self = (to, n) = receive self; tick to n.
+tick : unsafe Int -> Int -> Unit .
+tick to n = if n == 0 then Unit else _ = send to "chatter"; _ = Sys.sleepUs 2000; tick to (n - 1).
+drainAll : unsafe Int -> Int -> Int -> Int .
+drainAll me who n = case receiveFromNow me who of Ok m -> _ = drop m; drainAll me who (n + 1) | Err e -> n.
+
+elapsed t0 = Sys.uptimeMs Unit - t0.
+other = if harts 0 > 1 then 1 else 0.
+
+main =
+  me = myself 0;
+  q = spawn quiet;
+  # 1. queued: taken at once, also with an expired deadline (one poll, no park)
+  _ = send me 5;
+  a1 = receiveUntil me (Sys.uptimeMs Unit + 5000);
+  _ = send me 6;
+  a2 = receiveUntil me 0;
+  _ = print "queued: {a1} {a2}";
+  # 2. expired and empty: answered at once
+  t0 = Sys.uptimeMs Unit;
+  e1 = receiveUntil me 0;
+  e2 = receiveFromUntil me q (t0 - 1);
+  _ = check (elapsed t0 < 50) "expired deadline parked";
+  _ = print "expired: {e1} {e2}";
+  # 3. a live silent sender: Err deadline at the deadline, no earlier
+  t1 = Sys.uptimeMs Unit;
+  d1 = receiveFromUntil me q (t1 + 40);
+  w1 = elapsed t1;
+  _ = check (w1 >= 39 and w1 < 2000) "selective deadline waited {w1} ms";
+  t2 = Sys.uptimeMs Unit;
+  d2 = receiveUntil me (t2 + 40);
+  w2 = elapsed t2;
+  _ = check (w2 >= 39 and w2 < 2000) "any deadline waited {w2} ms";
+  _ = print "deadline: {d1} {d2}";
+  # 4. a message wakes the waiter long before its deadline: own hart, other hart
+  l0 = spawnOn 0 later;
+  _ = send l0 (me, 20, 41);
+  t3 = Sys.uptimeMs Unit;
+  w3 = receiveFromUntil me l0 (t3 + 10000);
+  _ = check (elapsed t3 < 5000) "same-hart wake was late";
+  l1 = spawnOn other later;
+  _ = send l1 (me, 20, 42);
+  t4 = Sys.uptimeMs Unit;
+  w4 = receiveUntil me (t4 + 10000);
+  _ = check (elapsed t4 < 5000) "cross-hart wake was late";
+  _ = print "woken: {w3} {w4}";
+  # 5. other senders while a selective wait runs: neither end it nor are lost
+  c = spawn chatter;
+  _ = send c (me, 10);
+  t5 = Sys.uptimeMs Unit;
+  d3 = receiveFromUntil me q (t5 + 60);
+  _ = check (elapsed t5 >= 59) "chatter ended the selective wait";
+  _ = Sys.sleepUs 30000;
+  kept = drainAll me c 0;
+  _ = print "other senders: {d3}, kept {kept} of 10";
+  # 6. a sender that ends is an answer, before the deadline
+  _ = send q 0;
+  _ = send q 0;
+  t6 = Sys.uptimeMs Unit;
+  dd = receiveFromUntil me q (t6 + 10000);
+  _ = check (elapsed t6 < 5000) "dead sender held the waiter";
+  _ = print "ended: {dd}";
+  # 7. std/actor: callUntil on the same hart and across harts
+  s0 = spawnOn 0 doubler;
+  s1 = spawnOn other doubler;
+  r0 = AC.callWithin 5000 me s0 21;
+  r1 = AC.callWithin 5000 me s1 22;
+  _ = print "callUntil: {r0} {r1}";
+  # 8. a reply in time / a reply too late (outcome unknown), then the late one is not read as the next answer
+  sl = spawnOn other slow;
+  t7 = Sys.uptimeMs Unit;
+  r2 = AC.callWithin 5000 me sl (20, "in time");
+  _ = check (elapsed t7 < 4000) "reply in time was late";
+  r3 = AC.callWithin 20 me sl (200, "too late");
+  r4 = AC.callWithin 5000 me sl (0, "next");
+  _ = print "slow: {r2} | {r3} | {r4}";
+  # 9. a stale reply is dropped, an unrelated event stays queued
+  st = spawn staleFirst;
+  _ = send me "event";
+  r5 = AC.callWithin 5000 me st 0;
+  ev = receiveFrom me me;
+  _ = print "stale dropped: {r5}, event kept: {ev}";
+  # 10. a stream of stale replies cannot hold the caller past its budget
+  fl = spawn flood;
+  t8 = Sys.uptimeMs Unit;
+  r6 = AC.callWithin 20 me fl 0;
+  _ = check (elapsed t8 < 2000) "stale stream held the caller";
+  _ = kill fl;
+  _ = drainAll me fl 0;
+  _ = print "stale stream: {r6}";
+  print "timedrecv: HOLDS".

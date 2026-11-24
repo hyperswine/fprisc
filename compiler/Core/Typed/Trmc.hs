@@ -128,7 +128,7 @@ planTrmc snapshot=TrmcPlan (reverseHelpers snapshot) (close sensitive)
     -- planner. Match the planner's known effects, including indirect calls
     -- and referenced callback bodies; opaque callbacks remain opaque to both.
     sensitive=S.fromList (map RootTarget
-      ["receive","receiveFrom","receiveRes","receiveNow","receiveFromRes","receiveFromNow",
+      ["receive","receiveFrom","receiveRes","receiveNow","receiveFromRes","receiveFromNow","receiveUntil","receiveFromUntil",
        "Sys.poolReset","Sys.arena","Sys.loop","Sys.loopWith","$receiveLoop","$loopLeave"])
     graph=M.map (\(Template _ _ body _ _)->refs body) (catalogTemplates snapshot)
     refs e=(case exprNode e of

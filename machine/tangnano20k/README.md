@@ -45,7 +45,7 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | `Sys.sleepUs` | Local cycle-counter wait |
 | Stream files, directory APIs, watch-open | `Err` with a named unavailable capability |
 | Actors, IRQ routing, polling/watch operations without a Result error channel | Named panic / failing exit |
-| Selective nonblocking `receiveFromNow` | Named unavailable `Err`; no actor or mailbox is fabricated |
+| Selective nonblocking `receiveFromNow`, selective deadline `receiveFromUntil` | Named unavailable `Err`; no actor or mailbox is fabricated |
 | Temporary reclamation | Compiler-placed regions in the heap: loops, costly calls, `Sys.loop`, `Sys.arena`; no collector |
 | Unlisted primitives | Link failure; never automatic success stubs |
 
