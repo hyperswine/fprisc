@@ -25,6 +25,8 @@ module Codegen.InlineCalls (inlineCalls) where
 
 import Codegen.IR
 import Data.Graph (SCC (..), stronglyConnComp)
+import Data.List (isPrefixOf, minimumBy)
+import Data.Ord (comparing)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -34,9 +36,10 @@ import qualified Data.Set as S
 -- compiler allocated 6% to 14% more on the prelude alone (every loop of
 -- every program grows by its helpers) for nothing on the benchmarks at 12
 -- instructions, and a few percent on three of them at 24.
-calleeLimit, callerLimit :: Int
+calleeLimit, callerLimit, mutualLimit :: Int
 calleeLimit = 400
 callerLimit = 450
+mutualLimit = 80
 
 size :: Fn -> Int
 size = sum . map (length . bInstrs) . fnBlocks
@@ -54,7 +57,17 @@ inlineCalls program = foldl component M.empty (stronglyConnComp [(f, n, called f
     called f = S.toList (S.fromList [calleeName c | b <- fnBlocks f, c <- blockCallees b, M.member (calleeName c) program])
     component done scc = case scc of
       AcyclicSCC f -> M.insert (fnName f) (expand done f) done
-      CyclicSCC fs -> foldl (\d f -> M.insert (fnName f) f d) done (map (expand done) fs)
+      CyclicSCC fs ->
+        let expanded = map (expand done) fs
+            userFns = filter (not . ("$loop." `isPrefixOf`) . fnName) expanded
+            merged = case userFns of
+              (_ : _ : _) ->
+                let headFn = minimumBy (comparing fnName) userFns
+                    peers = M.fromList [(fnName g, g) | g <- userFns, fnName g /= fnName headFn]
+                    headFn' = splitSelfLoop (expandMutualTail peers headFn)
+                 in [if fnName f == fnName headFn then headFn' else f | f <- expanded]
+              _ -> expanded
+         in foldl (\d f -> M.insert (fnName f) f d) done merged
 
 blockCallees :: Block -> [Callee]
 blockCallees b = [c | Instr _ op <- bInstrs b, c <- opCallee op] ++ (case bTerm b of TTailCall c _ -> [c]; _ -> [])
@@ -148,3 +161,78 @@ splice fn b k results args g = fn {fnBlocks = concatMap place (fnBlocks fn)}
             TCondBr p t as e bs -> ([], TCondBr p (label t) as (label e) bs)
             other -> ([], other)
        in Block (label (bId x)) [(value v, ty) | (v, ty) <- bParams x] (instrs ++ more) term
+
+-- Break small mutual tail-recursion cycles (e.g. ev <-> od) into a direct
+-- self-loop in the canonical SCC member so self-loop formation and RawInts
+-- apply. Each peer is spliced at most once, preserving every safepoint.
+expandMutualTail :: M.Map Name Fn -> Fn -> Fn
+expandMutualTail peers = go S.empty
+  where
+    entryTys f = case [b | b <- fnBlocks f, bId b == fnEntry f] of
+      [e] -> Just (map snd (bParams e))
+      _ -> Nothing
+    go seen fn =
+      let room = callerLimit - size fn
+       in case [ (b, g)
+               | b <- fnBlocks fn,
+                 TTailCall c args <- [bTerm b],
+                 calleeKind c == Local,
+                 S.notMember (calleeName c) seen,
+                 Just g <- [M.lookup (calleeName c) peers],
+                 size g <= mutualLimit, size g <= room,
+                 fnResult g == fnResult fn,
+                 entryTys g == Just (calleeParams c),
+                 length args == length (calleeParams c) ] of
+            (b, g) : _ -> go (S.insert (fnName g) seen) (spliceTail fn b g)
+            [] -> fn
+
+-- When mutual tail splicing introduces a back-edge to fnEntry, separate the
+-- entry prefix (stack check + initial fuel tick) into a dedicated entry block
+-- just like Codegen.LoopForm.formSelfLoop, so downstream RawInts and native
+-- backends see a clean preheader + loop header with an entry fuel tick.
+splitSelfLoop :: Fn -> Fn
+splitSelfLoop fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
+  [entry]
+    | not (null backs), all directEntryEdge (fnBlocks fn) ->
+        let (prefix, rest) = span (\(Instr _ op) -> op `elem` [OStackCheck, OSafepoint]) (bInstrs entry)
+            hasFuel = any (\(Instr _ op) -> op == OSafepoint) prefix
+            nextV = 1 + maximum (0 : [i | x <- fnBlocks fn, (VId i, _) <- blockDefs x])
+            nextB = 1 + maximum (0 : [i | x <- fnBlocks fn, BId i <- [bId x]])
+            arrivals = [(VId (nextV + i), ty) | (i, (_, ty)) <- zip [0 ..] (bParams entry)]
+            pre = Block (BId nextB) arrivals prefix (TBr (fnEntry fn) (map fst arrivals))
+            rewrite b =
+              let self = case bTerm b of TBr target _ -> target == fnEntry fn; _ -> False
+                  ops = if bId b == fnEntry fn then rest else bInstrs b
+               in b {bInstrs = ops ++ [Instr Nothing OSafepoint | self && hasFuel]}
+         in fn {fnEntry = bId pre, fnBlocks = pre : map rewrite (fnBlocks fn)}
+  _ -> fn
+  where
+    backs = [b | b <- fnBlocks fn, TBr target _ <- [bTerm b], target == fnEntry fn]
+    directEntryEdge b = case bTerm b of
+      TBr target _ | target == fnEntry fn -> True
+      t -> all ((/= fnEntry fn) . fst) (termSuccs t)
+
+spliceTail :: Fn -> Block -> Fn -> Fn
+spliceTail fn b g = fn {fnBlocks = concatMap place (fnBlocks fn)}
+  where
+    firstV = 1 + maximum (0 : [i | x <- fnBlocks fn, (VId i, _) <- blockDefs x])
+    firstB = 1 + maximum (0 : [i | x <- fnBlocks fn, BId i <- [bId x]])
+    value (VId i) = VId (i + firstV)
+    label (BId i) = BId (i + firstB)
+    selfTys = case [x | x <- fnBlocks fn, bId x == fnEntry fn] of
+      [e] -> Just (map snd (bParams e))
+      _ -> Nothing
+    entryFirst bs = [x | x <- bs, bId x == fnEntry g] ++ [x | x <- bs, bId x /= fnEntry g]
+    place x
+      | bId x /= bId b = [x]
+      | TTailCall _ args <- bTerm b =
+          [b {bTerm = TBr (label (fnEntry g)) args}] ++ map copy (entryFirst (fnBlocks g))
+      | otherwise = [x]
+    copy x =
+      let instrs = [Instr (fmap (\(v, ty) -> (value v, ty)) d) (mapOpUses value op) | Instr d op <- bInstrs x, op /= OStackCheck]
+          term = case mapTermUses value (bTerm x) of
+            TBr t as -> TBr (label t) as
+            TCondBr p t as e bs -> TCondBr p (label t) as (label e) bs
+            TTailCall h as | calleeKind h == Local, calleeName h == fnName fn, Just (calleeParams h) == selfTys -> TBr (fnEntry fn) as
+            other -> other
+       in Block (label (bId x)) [(value v, ty) | (v, ty) <- bParams x] instrs term

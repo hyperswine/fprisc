@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 261 -- v1.0 010 small immediates (Unit, Bool, Nil, None) (260: exact Int bignum promotion)
+codegenRev = 262 -- mutual tail-recursion loop splicing (261: v1.0 010 small immediates)
 -- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))

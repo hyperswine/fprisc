@@ -171,4 +171,36 @@ main=do
           [(0,[1]),(1,[]),(2,[3]),(3,[2])],
           [(0,[1,4]),(1,[2]),(2,[3,1]),(3,[5]),(4,[5,4]),(5,[6,0]),(6,[])] ] $ \edges->
     check ("dominators of "++show edges) (dominators (analyze (graph edges))==reference (graph edges))
-  putStrLn "Inline calls: single-site merge, tail and product exits, shared and recursive callees kept, single-valued parameters, dominators PASS"
+  -- mutual tail recursion: ev <-> od becomes a direct self-loop in ev
+  let evFn = Fn "ev" ["n", "acc"] TVal (b 0)
+        [Block (b 0) [(v 0, TVal), (v 1, TVal)]
+          [Instr Nothing OStackCheck, Instr Nothing OSafepoint,
+           instr 2 TInt (OConstInt 0), instr 3 TVal (OTag (v 2)), instr 4 TPred (OEqVal True (v 0) (v 3))]
+          (TCondBr (v 4) (b 1) [] (b 2) []),
+         Block (b 1) [] [] (TRet (v 1)),
+         Block (b 2) []
+          [instr 5 TInt (OConstInt 1), instr 6 TVal (OTag (v 5)),
+           instr 7 TVal (OArithVal Sub (v 0) (v 6)), instr 8 TVal (OArithVal Add (v 1) (v 6))]
+          (TTailCall (callee "od" 2) [v 7, v 8])]
+      odFn = Fn "od" ["n", "acc"] TVal (b 0)
+        [Block (b 0) [(v 0, TVal), (v 1, TVal)]
+          [Instr Nothing OStackCheck, Instr Nothing OSafepoint,
+           instr 2 TInt (OConstInt 0), instr 3 TVal (OTag (v 2)), instr 4 TPred (OEqVal True (v 0) (v 3))]
+          (TCondBr (v 4) (b 1) [] (b 2) []),
+         Block (b 1) [] [] (TRet (v 1)),
+         Block (b 2) []
+          [instr 5 TInt (OConstInt 1), instr 6 TVal (OTag (v 5)),
+           instr 7 TInt (OConstInt 2), instr 8 TVal (OTag (v 7)),
+           instr 9 TVal (OArithVal Sub (v 0) (v 6)), instr 10 TVal (OArithVal Add (v 1) (v 8))]
+          (TTailCall (callee "ev" 2) [v 9, v 10])]
+      mutual = program [evFn, odFn]
+      mergedMutual = inlineCalls mutual
+      inEv = mergedMutual M.! "ev"
+  check "mutual tail recursion verifies" (verifyProgram mergedMutual == Right ())
+  check "mutual tail recursion eliminates calls in canonical member" (calls inEv == [])
+  check "mutual tail recursion keeps one stack check" (length [() | x <- fnBlocks inEv, Instr _ OStackCheck <- bInstrs x] == 1)
+  forM_ [W32, W64] $ \width -> forM_ [0, 1, 2, 5, 10] $ \n ->
+    check ("ev " ++ show n ++ ": answer and fuel charges preserved")
+      (seen (evalProgramWidth width mutual "ev" [RInt n, RInt 0]) == seen (evalProgramWidth width mergedMutual "ev" [RInt n, RInt 0]))
+
+  putStrLn "Inline calls: single-site merge, tail and product exits, shared and recursive callees kept, mutual tail loops, single-valued parameters, dominators PASS"
