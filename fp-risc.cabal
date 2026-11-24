@@ -604,3 +604,8 @@ test-suite CallableAnalysis
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            CallableAnalysis.hs
+
+test-suite OptRegression
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            OptRegression.hs

@@ -216,11 +216,21 @@ buildStrings=M.map (\fn@(ps,b)->if hasStrcat b then (ps,go b) else fn)
           all (\(b, _) -> not (occurs b b1)) ts1,
           Just (ts2, ls2) <- consumeLeft k b1 ->
             Just (ts ++ ts1 ++ ts2, ls1 ++ ls2)
+      -- Hoist a leading non-strcat let only when its RHS is a value.
+      -- An effectful or trapping r1 would otherwise run before earlier
+      -- strcat pieces, which become arguments of the combined $strcatT.
       (ts, CLet k r1 b1)
         | not (isFuel r1),
+          isValue r1,
           Just (ts2, ls2) <- chainFromRhs b1 ->
             Just (ts ++ ((k, go r1) : ts2), ls2)
       _ -> Nothing
+    isValue x = case x of
+      CVar _ -> True
+      CInt _ -> True
+      CStr _ -> True
+      CLam _ _ -> True
+      _ -> False
     consumeLeft k body = case stripFuel body of
       (ts, CApp (CApp (CVar "strcat") (CVar v)) b) | v == k, not (occurs k b) ->
         let (tsB, lsB) = chainArg b in Just (ts ++ tsB, lsB)

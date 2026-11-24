@@ -83,7 +83,11 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
       RecordField base [field] -> do
         base'<-walk env base
         case known env (unNote base') of
-          Just (Rec fm) | Just val<-M.lookup field fm, sameType (exprType e) (exprType val) ->
+          -- Inline record literals can reach this fold (not only env
+          -- entries, which already require every field trivial). Dropping
+          -- a non-trivial sibling would skip its traps/effects.
+          Just (Rec fm) | Just val<-M.lookup field fm, sameType (exprType e) (exprType val),
+            all trivial [v | (f,v) <- M.toList fm, f /= field] ->
             tell (Any True) >> pure val
           _->pure e {exprNode=RecordField base' [field]}
       _->mapChildrenM (walk env) e

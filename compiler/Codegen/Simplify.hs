@@ -225,17 +225,83 @@ dropPhantomLoopRegions prog =
           fnAllocFree s fn =
             let live = reachable (analyze fn)
              in all (\b -> S.notMember (bId b) live || not (blockAllocates s b)) (fnBlocks fn)
+      -- Exhaustive over Op/Term: a new allocating constructor is a missing
+      -- pattern (GHC warning), not a silent False that would drop a live
+      -- ORegionRoom. True means "may allocate on the heap". Conservative
+      -- when a runtime path could promote or build a cell.
       opAllocates s = \case
         OMake {} -> True
         OMakeSpine {} -> True
         OApply {} -> True
-        OArithVal {} -> True
+        OArithVal {} -> True -- T_BIGINT promotion
         OCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
         OCallProduct c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
-        _ -> False
+        OConstInt {} -> False
+        ONullary {} -> False
+        OString {} -> False
+        OBoxedFloat {} -> False
+        OReuse {} -> False -- overwrites a uniquely owned cell
+        OAddress {} -> False
+        OVectorView {} -> False
+        OIndex {} -> False
+        OIndexByte {} -> False
+        OLoad {} -> False
+        OLoadByte {} -> False
+        OStore {} -> False
+        OSetField {} -> False
+        OField {} -> False
+        OStrLen {} -> False
+        OCharAt {} -> False
+        OTag {} -> False
+        OUntag {} -> False
+        OBoolOf {} -> False
+        OTruth {} -> False
+        ONot {} -> False
+        OIsInt {} -> False
+        OTagTest {} -> False
+        OVariantTest {} -> False
+        OVariantOf {} -> False
+        OSymbol {} -> False
+        OFunValue {} -> False
+        OKernelArith {} -> False
+        OArith {} -> False
+        OArithFits {} -> False
+        OArithU {} -> False
+        OBit {} -> False
+        OShift {} -> False
+        OCmp {} -> False
+        OCmpVal {} -> False
+        OEqVal {} -> False
+        OBits {} -> False
+        OFloatBin {} -> False
+        OI64Arith {} -> False
+        OI64Bit {} -> False
+        OI64Cmp {} -> False
+        OFloatOfInt {} -> False
+        OFloatCmp {} -> False
+        OFloatTree {} -> False
+        OFloatCmpTree {} -> False
+        OFloat32Tree {} -> False
+        OFloat32CmpTree {} -> False
+        OFloat32Bin {} -> False
+        OFloat32Cmp {} -> False
+        OSafepointN {} -> False
+        OSimdPair {} -> False
+        ORvvVlMax -> False
+        ORvvLanes {} -> False
+        ORvvSumLoaded {} -> False
+        OResult {} -> False
+        OSafepoint -> False
+        OStackCheck -> False
+        OHartCell {} -> False
+        ORegionRoom {} -> False
       termAllocates s = \case
         TTailCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
-        _ -> False
+        TRet {} -> False
+        TRetProduct {} -> False
+        TBr {} -> False
+        TCondBr {} -> False
+        TUnreachable {} -> False
       blockAllocates s b = any (\(Instr _ op) -> opAllocates s op) (bInstrs b) || termAllocates s (bTerm b)
       sizeOf f = sum (map (length . bInstrs) (fnBlocks f))
       dropInFn fn
