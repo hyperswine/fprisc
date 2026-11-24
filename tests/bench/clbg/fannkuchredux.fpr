@@ -15,10 +15,10 @@ swapUp i j p = if i >= j then p else
   (b, p2) = Vec.get j p1;
   swapUp (i + 1) (j - 1) (Vec.set j a (Vec.set i b p2)).
 
-flipsOf : unsafe Int -> Vector Int -> Int .
+flipsOf : unsafe Int -> Vector Int -> (Int, Vector Int) .
 flipsOf acc p =
   (k, p1) = Vec.get 0 p;
-  if k == 0 then freeThen p1 acc else flipsOf (acc + 1) (swapUp 0 k p1).
+  if k == 0 then (acc, p1) else flipsOf (acc + 1) (swapUp 0 k p1).
 
 shiftLeft : (r : Int) -> (i : Int | measure (r - i)) -> Vector Int -> Vector Int .
 shiftLeft r i p = if i >= r then p else
@@ -38,19 +38,19 @@ advance n r p c = if r == n then (r, p, c) else
   c2 = Vec.set r (cr - 1) c1;
   if cr - 1 > 0 then (r, p1, c2) else advance n (r + 1) p1 c2.
 
-loop : unsafe Int -> Int -> Int -> Int -> Int -> Vector Int -> Vector Int -> (Int, Int) .
-loop n r idx maxF sum p c =
+loop : unsafe Int -> Int -> Int -> Int -> Int -> Vector Int -> Vector Int -> Vector Int -> (Int, Int) .
+loop n r idx maxF sum p c scratch =
   (r1, c1) = fillCounts r c;
-  (perm, p1) = Vec.dup p;
-  f = flipsOf 0 perm;
+  (p1, perm) = Vec.copyInto p scratch;
+  (f, scratch1) = flipsOf 0 perm;
   maxF1 = if f > maxF then f else maxF;
   sum1 = if idx % 2 == 0 then sum + f else sum - f;
   (r2, p2, c2) = advance n r1 p1 c1;
-  if r2 == n then freeThen p2 (freeThen c2 (sum1, maxF1))
-  else loop n r2 (idx + 1) maxF1 sum1 p2 c2.
+  if r2 == n then freeThen scratch1 (freeThen p2 (freeThen c2 (sum1, maxF1)))
+  else loop n r2 (idx + 1) maxF1 sum1 p2 c2 scratch1.
 
 main =
   n = case Sys.args Unit of a :: _ -> (case String.toInt a of Ok v -> v | Err _ -> 10) | Nil -> 10;
-  (sum, maxF) = loop n n 0 0 0 (Vec.range 0 (n - 1)) (Vec.range 0 (n - 1));
+  (sum, maxF) = loop n n 0 0 0 (Vec.range 0 (n - 1)) (Vec.range 0 (n - 1)) (Vec.range 0 (n - 1));
   _ = print "{sum}";
   print "Pfannkuchen({n}) = {maxF}".

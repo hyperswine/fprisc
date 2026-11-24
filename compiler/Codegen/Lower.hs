@@ -54,10 +54,10 @@ type Reason = String
 data Prim = Prim {primArity :: Int, primEntry :: Maybe String, primObject :: Maybe String}
   deriving (Eq, Show)
 
-data Cur = Cur BId [(VId, Ty)] [Instr] -- instructions reversed
+data Cur = Cur !BId ![(VId, Ty)] ![Instr] -- instructions reversed
 
 -- stCold: blocks named as rarely run (a vector access's C entry), laid out after the rest
-data St = St {stV :: Int, stB :: Int, stCur :: Maybe Cur, stDone :: [Block], stCold :: [BId]}
+data St = St {stV :: !Int, stB :: !Int, stCur :: !(Maybe Cur), stDone :: ![Block], stCold :: ![BId]}
 
 -- A terminated expression has no value. Keep its closed blocks and prior
 -- effects; a lowering refusal still discards the whole function.
@@ -86,13 +86,13 @@ ended action = catchError (Just <$> action) (\() -> pure Nothing)
 fresh :: L VId
 fresh = do
   n <- gets stV
-  modify (\s -> s {stV = n + 1})
+  modify' (\s -> s {stV = n + 1})
   pure (VId n)
 
 freshB :: L BId
 freshB = do
   n <- gets stB
-  modify (\s -> s {stB = n + 1})
+  modify' (\s -> s {stB = n + 1})
   pure (BId n)
 
 newBlock :: [Ty] -> L (BId, [VId])
@@ -111,21 +111,21 @@ open :: BId -> [(VId, Ty)] -> L ()
 open b ps = do
   cur <- gets stCur
   case cur of
-    Nothing -> modify (\s -> s {stCur = Just (Cur b ps [])})
+    Nothing -> modify' (\s -> s {stCur = Just (Cur b ps [])})
     Just _ -> refuse "internal: a block is already open"
 
 suspend :: L Cur
 suspend = do
   cur <- gets stCur
   case cur of
-    Just c -> modify (\s -> s {stCur = Nothing}) >> pure c
+    Just c -> modify' (\s -> s {stCur = Nothing}) >> pure c
     Nothing -> refuse "internal: no block to suspend"
 
 resume :: Cur -> L ()
 resume c = do
   cur <- gets stCur
   case cur of
-    Nothing -> modify (\s -> s {stCur = Just c})
+    Nothing -> modify' (\s -> s {stCur = Just c})
     Just _ -> refuse "internal: a block is already open"
 
 emit :: Ty -> Op -> L VId
@@ -156,14 +156,14 @@ push :: Instr -> L ()
 push i = do
   cur <- gets stCur
   case cur of
-    Just (Cur b ps is) -> modify (\s -> s {stCur = Just (Cur b ps (i : is))})
+    Just (Cur b ps is) -> modify' (\s -> s {stCur = Just (Cur b ps (i : is))})
     Nothing -> refuse "internal: no open block"
 
 close :: Term -> L ()
 close t = do
   cur <- gets stCur
   case cur of
-    Just (Cur b ps is) -> modify (\s -> s {stCur = Nothing, stDone = Block b ps (reverse is) t : stDone s})
+    Just (Cur b ps is) -> modify' (\s -> s {stCur = Nothing, stDone = Block b ps (reverse is) t : stDone s})
     Nothing -> refuse "internal: no open block to close"
 
 spineOf :: Core -> (Core, [Core])
@@ -198,7 +198,7 @@ vectorBuilder :: ScalarVector.Builder L
 vectorBuilder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 newBlock open emitDo close chill
 
 chill :: BId -> L ()
-chill b = modify (\s -> s {stCold = b : stCold s})
+chill b = modify' (\s -> s {stCold = b : stCold s})
 
 -- An element read (`$vec.get`, `$vec.at`, and their names for an Int or a
 -- float element) or an in-place store (`Vec.set`, `Vec.put`) of a flat

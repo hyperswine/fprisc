@@ -98,8 +98,9 @@ buildTargetConfig
   -> Maybe Integer -- ^ heapBudget
   -> M.Map String Int -- ^ halAr
   -> String -- ^ contractHash
+  -> String -- ^ compilerStamp (executable fingerprint for cache invalidation)
   -> TargetConfig
-buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contractHash =
+buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contractHash compilerStamp =
   TargetConfig
     { tcPolicy = irPolicy,
       tcNativeMode = nativeMode,
@@ -217,6 +218,7 @@ buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contra
         ++ Options.nativeOptionFlags (a64 && not qapp) native
 
     tag =
-      "g" ++ show codegenRev ++ backendTag ++ Options.optimizationFlags codegen
+      "g" ++ show codegenRev ++ (if null compilerStamp then "" else "-b" ++ compilerStamp)
+        ++ backendTag ++ Options.optimizationFlags codegen
         ++ "rt3pc6-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "")
         ++ Options.vectorOptionFlags codegen ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
