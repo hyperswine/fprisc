@@ -1,12 +1,12 @@
 # Pure, bounded Bambu report projection shared by the native collector/tests.
 # Only display fields survive; printer codes and arbitrary report data do not.
-J = use "json".
-M = use "map".
-O = use "option".
-L = use "list".
-S = use "string".
-C = use "clock".
-Ord = use "order".
+J = use "std/json".
+M = use "std/map".
+O = use "std/option".
+L = use "std/list".
+S = use "std/string".
+C = use "std/clock".
+Ord = use "std/order".
 Alerts = use "printeralerts".
 initial = {fields = M.empty S.compare, buckets = M.empty Ord.int, reports = 0, last = 0, wall = 0}.
 get key value = O.withDefault J.Null (J.field key value).

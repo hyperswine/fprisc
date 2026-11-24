@@ -4,7 +4,7 @@ profile base.
 Dir = use "std/dir".
 File = use "std/file".
 Path = use "std/path".
-GitRevision = use "std/gitrevision".
+GitRevision = use "../lib/gitrevision".
 Program = use "std/program".
 Clock = use "std/clock".
 List = use "std/list".

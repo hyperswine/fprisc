@@ -46,7 +46,7 @@ OS = use "os".
 S = use "string".
 Ord = use "order".
 W = use "wire".
-LF = use "logfile".
+LF = use "log".
 
 # how a shard's file is written: JSON lines, or Wire frames at a level of the dial
 # (std/wire); `open` keeps what each file is and starts new ones as JSON lines,

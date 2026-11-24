@@ -2,7 +2,6 @@ profile base.
 # std/durable: a model's durable fields as one value, opened, saved, reopened;
 # a save is ANSWERED, and a refused one leaves the program running.
 #   ./fpr run tests/std/durable.fpr PATH
-D = use "std/durable".
 Live = use "std/live".
 KV = use "std/kvlog".
 Program = use "std/program".
@@ -20,30 +19,30 @@ fields = [Live.field Live.Always @Model.count, Live.field Live.Always @Model.nam
 
 said r = case r of Ok _ -> "Ok" | Err why -> (if S.endsWith "is no longer a regular file" why then "Err (not a regular file)" else "Err {why}").
 records path = case KV.records path of Ok (rs, _) -> List.length rs | Err why -> 0 - 1.
-opened path = case D.open fields path init of Ok pair -> pair | Err why -> error why.
+opened path = case Live.durableOpen fields path init of Ok pair -> pair | Err why -> error why.
 
 main =
   path = case Program.args Unit of p :: _ -> p | Nil -> error "durable test: a path";
   (m0, st) = opened path;
   _ = print "fresh: {m0.count} {List.length m0.names} {m0.note}";
   m1 = { m0 | count = 3, names = ["ann", "bo"], items = [{ id = 1, text = "one" }, { id = 2, text = "two" }], note = "changed in memory only" };
-  _ = print "save: {said (D.save st m1)}";
+  _ = print "save: {said (Live.durableSave st m1)}";
   n1 = records path;
-  _ = print "a second save of the same model writes nothing: {said (D.save st m1)} {records path == n1}";
+  _ = print "a second save of the same model writes nothing: {said (Live.durableSave st m1)} {records path == n1}";
   # one element of a list kept per element changes: that record is written
   m2 = { m1 | items = [{ id = 1, text = "one" }, { id = 2, text = "TWO" }] };
-  _ = print "one element changed: {said (D.save st m2)}, {records path - n1} record written";
+  _ = print "one element changed: {said (Live.durableSave st m2)}, {records path - n1} record written";
   # the log's file is moved aside and a directory put in its place: the save is
   # refused and the program goes on; with the file back, the next save writes
   # what still differs
   _ = File.rename path "{path}.aside";
   _ = Dir.create path;
   m3 = { m2 | count = 7 };
-  _ = print "refused: {said (D.save st m3)}";
+  _ = print "refused: {said (Live.durableSave st m3)}";
   _ = Dir.remove path;
   _ = File.rename "{path}.aside" path;
-  _ = print "and again with the file back: {said (D.save st m3)}";
-  _ = print "close: {said (D.close st { m3 | count = 8 })}";
+  _ = print "and again with the file back: {said (Live.durableSave st m3)}";
+  _ = print "close: {said (Live.durableClose st { m3 | count = 8 })}";
   (m4, st2) = opened path;
   _ = print "reopened: {m4.count} {m4.names} {List.map (fn it -> it.text) m4.items} note={m4.note}";
   _ = print "the undeclared field came from init: {m4.note == init.note}";

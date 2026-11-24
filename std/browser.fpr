@@ -11,11 +11,8 @@ L = use "list".
 G = use "view".
 JS = use "javascript".
 Clock = use "clock".
-Money = use "money".
 
 ClientCalc = use "clientcalc".
-formatCents = Money.format.
-taxCents = Money.tax.
 
 # ---- DOM effect projections (BrowserCalc) --------------------------------------
 # Declarative Live-local projections (ExtBase). All reads, computations and

@@ -17,7 +17,6 @@ profile base.
 
 Term = use "std/term".
 Live = use "std/live".
-Durable = use "std/durable".
 List = use "std/list".
 String = use "std/string".
 Program = use "std/program".
@@ -32,7 +31,7 @@ fields = Live.field Live.Always @Model.items :: Nil.
 init = {items = Nil, at = 0, draft = "", note = "", seconds = 0}.
 
 # a save is answered: the note says which
-save store m = Term.Run (fn u -> case Durable.save store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
+save store m = Term.Run (fn u -> case Live.durableSave store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
 
 count m = List.length m.items.
 clampAt m = {m | at = (if m.at < 0 then 0 else if m.at >= count m then (if count m == 0 then 0 else count m - 1) else m.at)}.
@@ -75,5 +74,5 @@ subs m = Term.Every 1000 Second :: Nil.
 
 main =
   path = (case Program.args Unit of p :: _ -> p | Nil -> "todo.kvlog");
-  (model, store) = (case Durable.open fields path init of Ok pair -> pair | Err why -> Program.fail 1 "todo: {why}");
+  (model, store) = (case Live.durableOpen fields path init of Ok pair -> pair | Err why -> Program.fail 1 "todo: {why}");
   Term.run { init = model, update = updateWith store, view = view, subs = subs }.

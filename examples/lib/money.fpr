@@ -1,6 +1,6 @@
 # Integer cents and basis-point tax. One computation describes both native
 # checkout and generated browser display. No floating point or JS formula.
-C = use "clientcalc".
+C = use "std/clientcalc".
 
 positive : C.IntExpr -> C.IntExpr .
 positive n = C.IfInt (C.Less n (C.Literal 0)) (C.Sub (C.Literal 0) n) n.

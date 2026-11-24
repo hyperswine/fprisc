@@ -25,7 +25,7 @@
 # compares the fold with the model.
 
 A = use "actor".
-LF = use "logfile".
+LF = use "log".
 F = use "file".
 S = use "string".
 L = use "list".

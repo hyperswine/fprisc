@@ -1,5 +1,5 @@
 profile base.
-P = use "std/pagination".
+P = use "../../examples/lib/pagination".
 
 show size count request =
   p = P.plan size count request;

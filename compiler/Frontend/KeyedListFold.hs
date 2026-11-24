@@ -102,7 +102,7 @@ listAlias prog = case pLists prog of a : _ -> a; [] -> "List"
 
 pureModules :: [String]
 pureModules = ["std/list", "std/option", "std/order", "std/string", "std/json", "std/decode",
-               "std/map", "std/char", "std/result", "std/money", "std/text"]
+               "std/map", "std/char", "std/result", "std/text"]
 
 data Gen = Gen { gFresh :: Int, gTwins :: [STop], gSites :: [Name] }
 

@@ -1,7 +1,7 @@
 # Explicit page appearance shared by POS and inventory. Every palette and
 # gradient belongs to the supplied element; no body/ancestor theme selectors.
-G = use "view".
-UI = use "ui".
+G = use "std/view".
+UI = use "std/ui".
 day = { bg = G.Rgb 243 245 249, ink = G.Rgb 13 21 38, dim = G.Rgb 91 106 134,
   card = G.Rgb 255 255 255, panel = G.Rgb 255 255 255, line = G.Rgb 211 219 232 }.
 night = { bg = G.Rgb 6 10 18, ink = G.Rgb 233 239 247, dim = G.Rgb 124 138 163,

@@ -1,8 +1,8 @@
 # Bounded native printer faults. Only numeric codes enter the public snapshot.
-J = use "json".
-O = use "option".
-L = use "list".
-S = use "string".
+J = use "std/json".
+O = use "std/option".
+L = use "std/list".
+S = use "std/string".
 Codes = use "printeralertcodes".
 u32 value = case value of J.Integer n -> n >= 0 and n <= 4294967295 | _ -> False.
 value key obj = O.withDefault J.Null (J.field key obj).

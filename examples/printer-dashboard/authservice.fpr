@@ -12,7 +12,7 @@ L = use "std/list".
 M = use "std/map".
 O = use "std/option".
 S = use "std/string".
-PT = use "std/printertelemetry".
+PT = use "printertelemetry".
 limits = {Auth.defaults | sessionMs = 2592000000}.
 Stored = {digest : String, origin : String, expiresMs : Int}.
 Running = {policy : Auth.State, entries : List Stored, problem : Bool}.

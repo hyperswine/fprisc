@@ -56,7 +56,7 @@ F = use "file".
 C = use "clock".
 A = use "actor".
 W = use "wire".
-LF = use "logfile".
+LF = use "log".
 OS = use "os".
 L = use "list".
 

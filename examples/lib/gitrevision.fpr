@@ -1,11 +1,11 @@
 # Read-only revision metadata from native files: no Git executable. Full object
 # ids avoid ambiguous fixed-width abbreviations. Supports bare repos, gitfiles,
 # linked worktrees, loose/packed refs and detached HEAD; follows no hooks/config.
-F = use "file".
-P = use "path".
-S = use "string".
-O = use "option".
-OS = use "os".
+F = use "std/file".
+P = use "std/path".
+S = use "std/string".
+O = use "std/option".
+OS = use "std/os".
 
 hex : String -> (i : Int | measure i) -> Bool .
 hex s i = if i < 0 then True else

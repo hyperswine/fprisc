@@ -1,6 +1,6 @@
 unsafe base.
 F = use "examples/printer-dashboard/cameraframe".
-MJ = use "std/mjpeg".
+MJ = use "../../examples/lib/mjpeg".
 T = use "std/transport".
 B = use "std/binary".
 S = use "std/string".

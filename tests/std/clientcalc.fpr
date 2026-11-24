@@ -1,7 +1,7 @@
 B = use "std/browser".
 unsafe base.
 C = use "std/clientcalc".
-M = use "std/money".
+M = use "../../examples/lib/money".
 J = use "std/json".
 L = use "std/list".
 P = use "std/program".

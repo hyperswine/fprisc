@@ -57,11 +57,11 @@ profile base.
 Live = use "std/live".
 G = use "std/view".
 UI = use "std/ui".
-Appearance = use "std/appearance".
+Appearance = use "lib/appearance".
 LJ = use "std/livejs".
 VC = use "std/viewcache".
 List = use "std/list".
-Pagination = use "std/pagination".
+Pagination = use "lib/pagination".
 S = use "std/string".
 File = use "std/file".
 Stream = use "std/stream".

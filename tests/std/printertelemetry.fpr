@@ -1,10 +1,10 @@
 unsafe base.
-PT = use "std/printertelemetry".
+PT = use "../../examples/printer-dashboard/printertelemetry".
 J = use "std/json".
 L = use "std/list".
 S = use "std/string".
 M = use "std/map".
-Alerts = use "std/printeralerts".
+Alerts = use "../../examples/printer-dashboard/printeralerts".
 check name yes = if yes then Unit else error "printer telemetry: {name}".
 need r = case r of Ok x -> x | Err _ -> error "printer telemetry fixture".
 main =

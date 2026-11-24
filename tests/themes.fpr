@@ -1,6 +1,6 @@
 unsafe base.
 G = use "../std/view".
-A = use "../std/appearance".
+A = use "../examples/lib/appearance".
 UI = use "../std/ui".
 J = use "../std/json".
 P = use "../std/program".

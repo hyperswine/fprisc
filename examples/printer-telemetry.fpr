@@ -4,7 +4,7 @@ unsafe base.
 Q = use "std/mqtt".
 OT = use "std/ownedtransport".
 RC = use "printer-dashboard/resourcecore".
-PT = use "std/printertelemetry".
+PT = use "printer-dashboard/printertelemetry".
 T = use "std/transport".
 TLS = use "std/tls".
 Ready = use "std/readiness".

@@ -819,3 +819,28 @@ watcher reg cfg seen self =
 # a config to start from: Live.defaults |> change what you need
 defaults = { address = "127.0.0.1", port = 8080, title = "Live", store = "live.kvlog", journal = True,
              script = "", watch = Nil, rebuild = Nil, restart = Nil }.
+
+# ---- Durable model fields store (formerly std/durable.fpr) ----------------------
+DurableStore m = Type (DurableStore (List (Field m)) KV.KvLog String).
+
+durableOpen : List (Field m) -> String -> m -> Result (m, DurableStore m) String .
+durableOpen fields path init = case KV.open path of
+    Err why -> Err "durable: {path}: {why}"
+  | Ok db -> (case restore fields db init of
+      Err why -> Err "durable: {path}: restore failed: {why}"
+    | Ok model -> (case durableSave (DurableStore fields db path) model of
+        Err why -> Err why
+      | Ok _ -> Ok (model, DurableStore fields db path))).
+
+durableSave : DurableStore m -> m -> Result Unit String .
+durableSave store model = case store of DurableStore fields db path ->
+  _ = start fields db model (M.empty S.compare);
+  (case KV.trySync db of
+      Err why -> Err "durable: {path}: {why}"
+    | Ok _ -> Ok Unit).
+
+durableClose : DurableStore m -> m -> Result Unit String .
+durableClose store model = durableSave store model.
+
+durableLog : DurableStore m -> KV.KvLog .
+durableLog store = case store of DurableStore _ db _ -> db.

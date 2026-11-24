@@ -3,7 +3,6 @@
 profile base.
 Term = use "std/term".
 Live = use "std/live".
-Durable = use "std/durable".
 List = use "std/list".
 String = use "std/string".
 Program = use "std/program".
@@ -16,7 +15,7 @@ fields = [Live.field Live.Always @Model.items].
 init = {items = Nil, at = 0, draft = "", note = "", seconds = 0}.
 
 # a save is answered: the note says which
-save store m = Term.Run (fn u -> case Durable.save store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
+save store m = Term.Run (fn u -> case Live.durableSave store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
 changed store m = (m, save store m :: Nil).
 unchanged m = (m, Nil).
 quit m = (m, Term.Quit :: Nil).
@@ -82,6 +81,6 @@ pathOf Nil = "todo.kvlog".
 opened (Ok (model, store)) = Term.run {init = model, update = updateWith store, view = view, subs = subs}.
 opened (Err why) = Program.fail 1 "todo: {why}".
 run : String -> Int .
-run path = Durable.open fields path init |> opened.
+run path = Live.durableOpen fields path init |> opened.
 main : Int .
 main = Program.args Unit |> pathOf |> run.
