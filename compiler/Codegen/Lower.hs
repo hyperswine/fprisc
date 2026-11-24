@@ -539,8 +539,8 @@ foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
     -- A `$`-name outside them ($receiveLoop, $vec.at/get/len)
     -- is a direct C entry
     expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$trmc.", entryTickName]
-    -- the plain names lowered in place (arithOps, cmpOps, bitOps, shiftOps, the string primitives)
-    inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
+    -- the plain names lowered in place (arithOps, cmpOps, bitOps, shiftOps, the string primitives, deprecated int bounds)
+    inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "intMin", "intMax", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
 -- a head is a primitive only when nothing shadows it
 isPrim :: Cx -> Env -> Name -> Bool
@@ -1027,6 +1027,14 @@ lowerVal cx env = \case
             Nothing -> do
               v <- emit TInt (OCharAt str index)
               pure (v, TInt)
+      -- Deprecated compatibility primitives: fixed at the old 64-bit small-Int
+      -- bounds on W64 (2^62 - 1 / -2^62) and W32 bounds on W32 so frozen pins
+      -- continue to compile; refused in newly committed modules (Commit.hs).
+      | isPrim cx env h, h `elem` ["intMin", "intMax"], [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
+          _ <- lowerVal cx env a
+          let (lo, hi) = intBounds (policyWidth (cxPolicy cx))
+          v <- emit TInt (OConstInt (if h == "intMin" then lo else hi))
+          pure (v, TInt)
       -- the raw forms of the scalar workers
       | isPrim cx env h, h == scalarPrefix ++ "unbox", [a] <- args -> lowerVal cx env a >>= asInt >>= \v -> pure (v, TInt)
       | isPrim cx env h, h == scalarPrefix ++ "box", [a] <- args -> lowerVal cx env a >>= asVal >>= \v -> pure (v, TVal)

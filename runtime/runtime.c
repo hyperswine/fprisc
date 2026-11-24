@@ -5753,6 +5753,11 @@ static V g_strlen(V s) {
  * editor and path splitter build strings incrementally with this. */
 /* the Int's bounds on this word, as primitives: a 63-bit literal is refused
  * where the Int is narrower, and a module cannot name a prelude constant */
+/* Deprecated compatibility bounds fixed at the old 64-bit small-Int range
+ * (2^62 - 1 / -2^62 on 64-bit; 2^30 - 1 / -2^30 on 32-bit) so frozen pins
+ * continue to compile. */
+static V g_intMax(V u) { (void)u; return TAG(INT_MAX_TAGGED); }
+static V g_intMin(V u) { (void)u; return TAG(INT_MIN_TAGGED); }
 static V g_chr(V c) {
   if (!ISINT(c)) fpr_trap("chr: not an Int");
   /* chr makes ONE BYTE; a value outside 0..255 used to be truncated
@@ -6540,6 +6545,8 @@ FPR_FN(fpr_prim_obj_error, fpr_prim_fn_error, 1);
 FPR_FN(fpr_g_charAt, g_charAt, 2);
 FPR_FN(fpr_g_strlen, g_strlen, 1);
 FPR_FN(fpr_g_chr, g_chr, 1);
+FPR_FN(fpr_g_intMax, g_intMax, 1);
+FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
 FPR_FN(fpr_g_strCompare, g_strCompare, 2);

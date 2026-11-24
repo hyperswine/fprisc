@@ -41,6 +41,8 @@ PRIM1(print,fpr_prim_fn_print)
 PRIM1(str,fpr_prim_fn_str)
 PRIM1(strlen,fpr_prim_fn_String_x2elen)
 PRIM2(strcat,fpr_prim_fn_strcat)
+PRIM1(intMax,fpr_g_intMax_call1)
+PRIM1(intMin,fpr_g_intMin_call1)
 /* I32 is a tagged immediate in the RV64 raw ABI. Text and Result outputs
  * are owned objects; parse borrows its String only for this call. Keep
  * these consuming adapters before RAW's Word/Addr non-owning adapters. */

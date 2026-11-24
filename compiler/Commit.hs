@@ -36,8 +36,9 @@ import Control.Monad (unless, when)
 import qualified Compile
 import qualified Data.IORef
 import Data.IORef (newIORef, readIORef)
-import Data.List (isInfixOf, isPrefixOf, sort)
+import Data.List (intercalate, isInfixOf, isPrefixOf, nub, sort)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.Maybe (fromMaybe)
 import Frontend.Syntax
 import Frontend.Traverse (stripPosTops)
@@ -128,6 +129,10 @@ commitMain args = do
     hPutStrLn stderr "commit refused: committed modules must be closed under their pin hash (all uses pinned)"
     exitFailure
   -- Check before any store/database mutation, including no-op commits.
+  let deprecated = deprecatedIntBounds (muTops mu)
+  unless (null deprecated) $ do
+    hPutStrLn stderr ("commit refused: " ++ intercalate ", " deprecated ++ " deprecated (Int is arbitrary-precision in v1.0); remove them before committing a new version")
+    exitFailure
   inferred <- Compile.checkedInterface file
   let name = takeBaseName file
       h = muHash mu
@@ -188,6 +193,53 @@ commitMain args = do
         Right mu -> do
           unless (muHash mu == h) $ hPutStrLn stderr "commit refused: prior version blob hash mismatch" >> exitFailure
           pure mu
+
+-- Free references to deprecated intMax/intMin in a module being committed.
+-- Local bindings (e.g. a module defining its own `intMax`) shadow the builtin.
+deprecatedIntBounds :: [STop] -> [String]
+deprecatedIntBounds tops = nub (concatMap top tops)
+  where
+    defined = S.fromList [n | TBind n _ _ _ <- tops]
+    top = \case
+      TBind _ pats gs body ->
+        let bound0 = foldl patNames defined pats
+            (usedG, bound1) = foldl guardStep ([], bound0) gs
+         in usedG ++ expr bound1 body
+      TStruct _ _ fs -> concatMap (expr defined . snd) fs
+      _ -> []
+    guardStep (acc, b) = \case
+      GBool e -> (acc ++ expr b e, b)
+      GPat p e -> (acc ++ expr b e, patNames b p)
+    patNames b = \case
+      PVar n -> S.insert n b
+      PCon _ ps -> foldl patNames b ps
+      PTup ps -> foldl patNames b ps
+      PRec fs -> foldr S.insert b fs
+      PSig n _ -> S.insert n b
+      _ -> b
+    expr b = \case
+      SMark _ e -> expr b e
+      SVar n | n `elem` ["intMax", "intMin"], S.notMember n b -> [n]
+      SStrI segs -> concat [expr b e | SegExpr e <- segs]
+      SApp f a -> expr b f ++ expr b a
+      SLam ps body -> expr (foldr S.insert b ps) body
+      SBlock ss e -> let (u, b') = stmts b ss in u ++ expr b' e
+      SCase s arms -> expr b s ++ concat [expr (patNames b p) e | (p, e) <- arms]
+      SBin _ l r -> expr b l ++ expr b r
+      SProj e _ -> expr b e
+      SRec fs -> concatMap (expr b . snd) fs
+      SUpd m as -> expr b m ++ concatMap (expr b . snd) as
+      STup es -> concatMap (expr b) es
+      SList es -> concatMap (expr b) es
+      _ -> []
+    stmts b [] = ([], b)
+    stmts b (SBind n ps e : rest) =
+      let inner = foldr S.insert (S.insert n b) ps
+          (u, b') = stmts (S.insert n b) rest
+       in (expr inner e ++ u, b')
+    stmts b (SBindPat p e : rest) =
+      let (u, b') = stmts (patNames b p) rest
+       in (expr b e ++ u, b')
 
 -- ---- push / pull: the pkgstore seam, wired -----------------------------
 -- .fpr IS pkgstore one level down (docs/VERSIONING.md), so push is two

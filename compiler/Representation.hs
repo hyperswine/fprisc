@@ -216,7 +216,9 @@ primitiveShape n = M.lookup n shapes
                ("print", sh [AnyValue] u),
                ("strcat", sh [s, s] s),
                ("String.len", sh [s] t),
-               ("error", sh [s] AnyValue)
+               ("error", sh [s] AnyValue),
+               ("intMax", sh [u] t),
+               ("intMin", sh [u] t)
              ]
           ++ [("$uniform.boxAggregate",sh [AnyValue,s,KnownValue (DataRep 0x1fff0001)] tagged),
               ("$uniform.unboxAggregate",sh [tagged,s,KnownValue (DataRep 0x1fff0001)] AnyValue),

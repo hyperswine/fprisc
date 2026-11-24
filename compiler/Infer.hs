@@ -490,6 +490,8 @@ builtinEnv =
       ("String.len", mono (TFn tStr tInt)),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("chr", mono (TFn tInt tStr)),
+      ("intMax", mono (TFn tUnit tInt)), -- deprecated: fixed at 2^62-1 for frozen pins; refused in new commits
+      ("intMin", mono (TFn tUnit tInt)),
       ("fileRead", mono (TFn tStr tStr)),
       -- the Base environment (machine/posix/base.c; docs/2026-09-18-BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
