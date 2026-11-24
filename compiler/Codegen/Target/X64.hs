@@ -41,7 +41,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 40 -- OVariantOf multi-arm dispatch hoisting (39: known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal)
+x64SelectionRev = 41 -- G8: fuse OArithFits/OIsInt/ONot/ORegionRoom/OI64Cmp/known-small OEqVal/OCmpVal branches + bare OArithU Mul (40: OVariantOf)
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -530,10 +530,18 @@ selectBlock cfg fn facts next b = do
       -- a comparison whose only reader is this block's branch: compare and
       -- branch on the flags (no set, no zero-extension, no test).  The edge
       -- moves come after the branch and x86 moves leave the flags alone.
+      rawOfF v = M.lookup v (fTagSrc facts)
       fused = case (reverse rest, bTerm b) of
         (Instr (Just (p, _)) op : _, TCondBr p' t as e bs)
           | p == p', M.lookup p (fUses facts) == Just 1 -> case op of
               OCmp {} -> Just op
+              OI64Cmp {} -> Just op
+              OIsInt {} -> Just op
+              ONot {} -> Just op
+              ORegionRoom {} -> Just op
+              OArithFits {} -> Just op
+              OCmpVal _ a b' | isJust (rawOfF a) && isJust (rawOfF b') -> Just op
+              OEqVal _ a b' | isJust (rawOfF a) || isJust (rawOfF b') -> Just op
               OVariantTest {} -> Just op
               OTagTest {} -> Just op
               -- an ordered float comparison: ucomis and an unsigned branch,
@@ -550,12 +558,75 @@ selectBlock cfg fn facts next b = do
     (Just op, TCondBr _ t as e bs) -> do
       run (init rest)
       let flags c = condBranch fn facts next (bcond c) (bcond (negateCond c)) t as e bs
+          rawVF u = case M.lookup u (fConsts facts) of
+            Just n -> do tmp <- freshV False; emitI (li tmp n); pure tmp
+            Nothing -> pure (vreg u)
+          taggedVF v = case rawOfF v of
+            Just u | S.member v (fLazyTags facts) -> case M.lookup u (fConsts facts) of
+              Just n -> do tmp <- freshV True; emitI (li tmp (2 * n + 1)); pure tmp
+              Nothing -> do tmp <- freshV True; emitI (tagw tmp (vreg u)); pure tmp
+            _ -> pure (vreg v)
+          flipCmp = \case Lt -> Gt; Gt -> Lt; Le -> Ge; Ge -> Le; Eq -> Eq; Ne -> Ne
       case op of
         OCmp o x y -> do
           case immediateForm (fImmediates facts) op of
             Just (_, _, n) -> emitI (cmpi (vreg x) n)
             Nothing -> emitI (cmp (vreg x) (vreg y))
           flags (cmpCond o)
+        OI64Cmp o x y -> do
+          emitI (cmp (vreg x) (vreg y))
+          flags (cmpCond o)
+        OIsInt v -> do
+          emitI (testi (vreg v) 1)
+          flags O.NotEqual
+        ONot p' -> condBranch fn facts next (cbz (vreg p')) (cbnz (vreg p')) t as e bs
+        ORegionRoom mark -> do
+          clock <- freshV False
+          used <- freshV False
+          scaled <- freshV False
+          untagged <- freshV False
+          emitI (plain (O.Common O.LoadSpill) [any' clock] [OI 58])
+          emitI (rri O.ShiftRightArithmeticImmediate untagged (vreg mark) 1)
+          emitI (rrr O.Subtract used clock untagged)
+          emitI (rri O.ShiftLeftImmediate scaled used 3)
+          emitI (cmpi scaled (65536 * 8))
+          flags O.UnsignedBelow
+        OArithFits o a b' -> testBranchWith O.NoOverflow $ \miss -> do
+          tmp <- freshV False
+          case o of
+            Add -> emitI (rrr O.Add tmp (vreg a) (vreg b'))
+            Sub -> emitI (rrr O.Subtract tmp (vreg a) (vreg b'))
+            Mul -> emitI (rrr O.Multiply tmp (vreg a) (vreg b')) >> emitI (bcond O.Overflow miss)
+            Div -> emitI (cbz (vreg b') miss) >> emitI (divide tmp (vreg a) (vreg b'))
+          n <- freshV False
+          emitI (rri O.ShiftLeftImmediate n tmp 1)
+        OCmpVal o a b' | Just ua <- rawOfF a, Just ub <- rawOfF b' -> do
+          case (M.lookup ua (fConsts facts), M.lookup ub (fConsts facts)) of
+            (Nothing, Just n) -> cmpConst (vreg ua) n >> flags (cmpCond o)
+            (Just n, Nothing) -> cmpConst (vreg ub) n >> flags (cmpCond (flipCmp o))
+            _ -> do
+              xa <- rawVF ua
+              xb <- rawVF ub
+              emitI (cmp xa xb)
+              flags (cmpCond o)
+        OEqVal eq a b' | Just ua <- rawOfF a, Just ub <- rawOfF b' -> do
+          case (M.lookup ua (fConsts facts), M.lookup ub (fConsts facts)) of
+            (Nothing, Just n) -> cmpConst (vreg ua) n
+            (Just n, Nothing) -> cmpConst (vreg ub) n
+            _ -> do
+              xa <- rawVF ua
+              xb <- rawVF ub
+              emitI (cmp xa xb)
+          flags (if eq then O.Equal else O.NotEqual)
+        OEqVal eq a b' -> do
+          case (rawOfF a >>= \u -> M.lookup u (fConsts facts), rawOfF b' >>= \u -> M.lookup u (fConsts facts)) of
+            (Nothing, Just n) -> cmpConst (vreg a) (2 * n + 1)
+            (Just n, Nothing) -> cmpConst (vreg b') (2 * n + 1)
+            _ -> do
+              ta <- taggedVF a
+              tb <- taggedVF b'
+              emitI (cmp ta tb)
+          flags (if eq then O.Equal else O.NotEqual)
         OVariantTest tg c v | Just imm <- immediateNullary tg c -> do
           emitI (cmpi (vreg v) imm)
           flags O.Equal
@@ -617,14 +688,15 @@ selectBlock cfg fn facts next b = do
           emitI ((plain (O.X64 (O.TreeTest w o)) [] []) {siFlags = FlagsDef})
           flags' (floatCond o)
         -- A layout test leaves early to the no-match side and ends in the
-        -- flags of a compare that holds on a match.  Without block-parameter
-        -- moves on the no-match edge, every early exit is a direct branch to
-        -- that block and the final compare takes condBranch's layout.  With
-        -- them, the early exits and the final miss share one edge that
-        -- performs the moves; the match side is branched to (or through its
-        -- own edge when it has moves too).
-        testBranch body
-          | null movesE = body (blockLabel e) >> condBranch fn facts next (bcond O.Equal) (bcond O.NotEqual) t as e bs
+        -- flags of a compare that holds on a match (`hitCond`).  Without
+        -- block-parameter moves on the no-match edge, every early exit is a
+        -- direct branch to that block and the final compare takes condBranch's
+        -- layout.  With them, the early exits and the final miss share one
+        -- edge that performs the moves; the match side is branched to (or
+        -- through its own edge when it has moves too).
+        testBranch = testBranchWith O.Equal
+        testBranchWith hitCond body
+          | null movesE = body (blockLabel e) >> condBranch fn facts next (bcond hitCond) (bcond (negateCond hitCond)) t as e bs
           | otherwise = do
               miss <- freshL "miss"
               body miss
@@ -632,20 +704,20 @@ selectBlock cfg fn facts next b = do
                   hitEdge = parallelMoves movesT >> unless (Just t == next) (emitI (jump (blockLabel t)))
               if null movesT
                 then do
-                  emitI (bcond O.Equal (blockLabel t))
+                  emitI (bcond hitCond (blockLabel t))
                   emitL miss
                   parallelMoves movesE
                   unless (Just e == next) (emitI (jump (blockLabel e)))
                 else if Just e == next
                   then do
-                    emitI (bcond O.NotEqual miss)
+                    emitI (bcond (negateCond hitCond) miss)
                     parallelMoves movesT
                     emitI (jump (blockLabel t))
                     emitL miss
                     parallelMoves movesE
                   else do
                     hit <- freshL "hit"
-                    emitI (bcond O.Equal hit)
+                    emitI (bcond hitCond hit)
                     emitL miss
                     missEdge
                     emitL hit
@@ -897,11 +969,11 @@ selectInstr cfg facts (Instr d op) = case op of
   OArithVal o a b -> def (\r -> arithVal o r (vreg a) (vreg b))
   OArithU o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op ->
     def (\r -> emitI (addi r (vreg x) (if o == Sub then negate n else n)))
-  -- proven not to trap; Mul/Div keep the checked form here (correct, not
-  -- yet the bare instruction)
+  -- proven not to trap; Div keeps the checked form here (floored division)
   OArithU o a b -> def (\r -> case o of
     Add -> emitI (rrr O.Add r (vreg a) (vreg b))
     Sub -> emitI (rrr O.Subtract r (vreg a) (vreg b))
+    Mul -> emitI (rrr O.Multiply r (vreg a) (vreg b))
     _ -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))

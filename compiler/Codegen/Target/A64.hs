@@ -100,7 +100,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 34 -- OVariantOf multi-arm dispatch hoisting (33: fall-through layout, compares fused across edge moves, loop-carried floats in the float registers)
+a64SelectionRev = 35 -- G8: fuse OI64Cmp/ONot/ORegionRoom/known-small OEqVal/OCmpVal branches (34: OVariantOf)
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -434,7 +434,17 @@ selectBlock cfg fn tyMap b = do
       -- a comparison leaves its answer in the flags, which the edge moves
       -- keep; the tag tests branch to the else block mid-test, so they fuse
       -- only when that edge carries nothing
-      fusable op bare = case op of OCmp {} -> True; OVariantTest {} -> bare; OTagTest {} -> bare; OArithFits {} -> bare; _ -> False
+      fusable op bare = case op of
+        OCmp {} -> True
+        OI64Cmp {} -> True
+        ONot {} -> True
+        ORegionRoom {} -> True
+        OCmpVal _ a b' -> isJust (M.lookup a tagSrc) && isJust (M.lookup b' tagSrc)
+        OEqVal _ a b' -> isJust (M.lookup a tagSrc) || isJust (M.lookup b' tagSrc)
+        OVariantTest {} -> bare
+        OTagTest {} -> bare
+        OArithFits {} -> bare
+        _ -> False
       -- a small constant this block makes for the comparison alone: an
       -- immediate operand, and no register
       immediateOf y = case [n | Instr (Just (v, _)) (OConstInt n) <- rest, v == y] of
@@ -447,6 +457,22 @@ selectBlock cfg fn tyMap b = do
       let -- branch to t when the condition holds, to e otherwise, falling
           -- through to whichever comes next
           branch c c' = condBranch fn b (bcond c) (bcond c') t as e bs
+          cmpConstA64 v n
+            | n >= 0 && n < 4096 = emitI (cmpi v n)
+            | otherwise = do want <- freshV False; emitI (li want n); emitI (cmp v want)
+          rawVF u = case M.lookup u consts of
+            Just n -> do tmp <- freshV False; emitI (li tmp n); pure tmp
+            Nothing -> pure (vreg u)
+          taggedVF v = case M.lookup v tagSrc of
+            Just u | S.member v lazyTags -> case M.lookup u consts of
+              Just n -> do tmp <- freshV False; emitI (li tmp (2 * n + 1)); pure tmp
+              Nothing -> do
+                sh <- freshV False; tmp <- freshV False
+                emitI (rri A.ShiftLeftImmediate sh (vreg u) 1)
+                emitI (rri A.OrImmediate tmp sh 1)
+                pure tmp
+            _ -> pure (vreg v)
+          flipCmp = \case Lt -> Gt; Gt -> Lt; Le -> Ge; Ge -> Le; Eq -> Eq; Ne -> Ne
       case op of
         OCmp o x y -> do
           let imm = immediateOf y
@@ -456,6 +482,53 @@ selectBlock cfg fn tyMap b = do
             Just n -> emitI (cmpi (vreg x) n)
             Nothing -> emitI (cmp (vreg x) (vreg y))
           branch (cmpCond o) (cmpCond (negateOp o))
+        OI64Cmp o x y -> do
+          run (init rest)
+          emitI (cmp (vreg x) (vreg y))
+          branch (cmpCond o) (cmpCond (negateOp o))
+        ONot p' -> do
+          run (init rest)
+          condBranch fn b (cbz (vreg p')) (cbnz (vreg p')) t as e bs
+        ORegionRoom mark -> do
+          run (init rest)
+          clock <- freshV False
+          used <- freshV False
+          scaled <- freshV False
+          emitI ((plain (O.Common O.LoadSpill) [any' clock] [OI 58]) {siImplicitDefs = [x 9, x 16, x 17]})
+          emitI (rrr A.SubtractShifted1 used clock (vreg mark))
+          emitI (rri A.ShiftLeftImmediate scaled used 3)
+          emitI (cmpi scaled (65536 * 8))
+          branch O.UnsignedBelow O.UnsignedAboveEqual
+        OCmpVal o a b' | Just ua <- M.lookup a tagSrc, Just ub <- M.lookup b' tagSrc -> do
+          run (init rest)
+          case (M.lookup ua consts, M.lookup ub consts) of
+            (Nothing, Just n) -> cmpConstA64 (vreg ua) n >> branch (cmpCond o) (cmpCond (negateOp o))
+            (Just n, Nothing) -> cmpConstA64 (vreg ub) n >> branch (cmpCond (flipCmp o)) (cmpCond (negateOp (flipCmp o)))
+            _ -> do
+              xa <- rawVF ua
+              xb <- rawVF ub
+              emitI (cmp xa xb)
+              branch (cmpCond o) (cmpCond (negateOp o))
+        OEqVal eq a b' | Just ua <- M.lookup a tagSrc, Just ub <- M.lookup b' tagSrc -> do
+          run (init rest)
+          case (M.lookup ua consts, M.lookup ub consts) of
+            (Nothing, Just n) -> cmpConstA64 (vreg ua) n
+            (Just n, Nothing) -> cmpConstA64 (vreg ub) n
+            _ -> do
+              xa <- rawVF ua
+              xb <- rawVF ub
+              emitI (cmp xa xb)
+          if eq then branch O.Equal O.NotEqual else branch O.NotEqual O.Equal
+        OEqVal eq a b' -> do
+          run (init rest)
+          case (M.lookup a tagSrc >>= \u -> M.lookup u consts, M.lookup b' tagSrc >>= \u -> M.lookup u consts) of
+            (Nothing, Just n) -> cmpConstA64 (vreg a) (2 * n + 1)
+            (Just n, Nothing) -> cmpConstA64 (vreg b') (2 * n + 1)
+            _ -> do
+              ta <- taggedVF a
+              tb <- taggedVF b'
+              emitI (cmp ta tb)
+          if eq then branch O.Equal O.NotEqual else branch O.NotEqual O.Equal
         OVariantTest tg c v | Just imm <- immediateNullary tg c -> do
           run (init rest)
           emitI (cmpi (vreg v) imm)
