@@ -34,7 +34,7 @@ import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.VectorRead (expandViews)
 import Codegen.Interval (discharge)
-import Codegen.RawInts (versionRawInts)
+import Codegen.RawInts (versionRawIntsWith)
 import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, carryRawI64, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
@@ -70,7 +70,7 @@ passesWith options=
     ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
     -- raw-word copies of Int loops (Codegen.RawInts), before the proof
     -- that drops the copies' fit tests
-    ++ [("version-raw-ints", \f -> if hasCycle f then dropDeadPure (versionRawInts f) else f) | Just W64 <- [intervalWidth options]]
+    ++ [("version-raw-ints", \f -> if hasCycle f then dropDeadPure (versionRawIntsWith (inlineFloats options) f) else f) | Just W64 <- [intervalWidth options]]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     -- a versioned function's fast copy has no slow-path calls, so its
