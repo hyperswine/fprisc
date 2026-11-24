@@ -28,8 +28,11 @@ linkAndOptimize opts codegen irPolicy remarkMode callbackMode artifactResults = 
     if oArc opts || oNoInline opts
       then pure original
       else do
-        inlined <- checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 original)
-        checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined)
+        inlined1 <- checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 original)
+        specialized2 <- checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined1)
+        inlined2 <- checkedStage "checked Base inlining after specialization" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 specialized2)
+        specialized3 <- checkedStage "callback specialization round 3" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined2)
+        checkedStage "checked Base inlining round 3" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 specialized3)
   known <-
     if not (Options.cgCaseKnown codegen) || ((oArc opts || oBuiltin opts) && not (Options.cgTypeSpec codegen))
       then pure inlined

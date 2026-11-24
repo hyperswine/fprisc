@@ -104,6 +104,7 @@ trimCallbacks types@(TypeContext linears _) arities schemas templates plans remo
                         _->Nothing
                   in maybe False (>length args) n && all (evaluated arities) args
         IntValue _->True;StringValue _->True;BoolValue _->True;LayoutLiteral _->True
+        RecordValue fs->all (pureValue graph . snd) fs
         _->False
   (root0,graph,active,dead)<-run active0
   let dummyLabels=S.fromList [label | (label,f)<-M.toList graph,codeKind f==JoinCode,

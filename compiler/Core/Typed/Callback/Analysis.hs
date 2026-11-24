@@ -25,12 +25,13 @@ stableCallback (CallbackAnalysis templates sites demands groups _) target slot=
   stableRole templates demands sites (M.findWithDefault (S.singleton target) target groups) target slot
 
 -- Symbolic callback roles use term identities, never analysis-only spellings.
-data AValue=AParam BinderId | AKnown Target [AValue] [AValue] | AOther (S.Set BinderId) deriving (Eq,Show)
+data AValue=AParam BinderId | AField BinderId [String] | AKnown Target [AValue] [AValue] | AOther (S.Set BinderId) deriving (Eq,Show)
 data Site=Site (Either BinderId Target) (M.Map Slot AValue)
 slots (Template cs ps _ _ _)=zip (map CaptureSlot [0..]) cs++zip (map ArgumentSlot [0..]) ps
 bodyOf (Template _ _ body _ _)=body
 refs value=case value of
   AParam uid->S.singleton uid
+  AField uid _->S.singleton uid
   AKnown _ cs ps->S.unions (map refs (cs++ps))
   AOther us->us
 
@@ -43,6 +44,10 @@ templateSites templates template=go initial (bodyOf template)
       Var (Local uid)->local env uid
       Var (Global n _)->AKnown (RootTarget n) [] []
       ClosureValue label cs->AKnown (CodeTarget label) (map (local env) cs) []
+      RecordField base path->case abstract env base of
+        AParam uid->AField uid path
+        AField uid p0->AField uid (p0++path)
+        other->AOther (refs other)
       Apply {}->let (head',args)=spine e [] in case abstract env head' of
         AKnown target cs leading | Just (Template _ ps _ _ _)<-M.lookup target templates,
           length leading+length args<length ps->AKnown target cs (leading++map (abstract env) args)
@@ -67,6 +72,7 @@ templateSites templates template=go initial (bodyOf template)
       Apply {}->let (head',args)=spine e []
                     site=case abstract env head' of
                       AParam uid->[Site (Left uid) M.empty]
+                      AField uid _->[Site (Left uid) M.empty]
                       AKnown target cs leading->[Site (Right target) (fields cs (leading++map (abstract env) args))]
                       _->[]
                 in site++concatMap (go env) (head':args)

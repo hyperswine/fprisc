@@ -15,12 +15,14 @@ import Core.Typed.Walk
 import Core.Typed.Verify (instanceOf,sameType)
 import Core.Identity
 import Type.Syntax
+import Type.Relation (fieldType)
 import qualified Type.Substitution as U
 import Ownership.Shape (isLin)
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
 import Control.Monad (unless,foldM,when)
 import Data.Functor.Const (Const(..))
+import Data.List (sortOn)
 import Data.Monoid (Sum(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -30,8 +32,9 @@ data Callbacks=Callbacks ClosedFunction (S.Set CodeId) [D.Decision]
 callbackClosed (Callbacks p _ _)=p
 callbackClones (Callbacks _ ns _)=ns
 callbackDecisions (Callbacks _ _ ds)=ds
-data Known=Known Target [BinderId] [Expr] deriving Show
-type Key=(Target,[(Slot,Target,Int)])
+data Known=Known Target [BinderId] [Expr] | KnownRec [(String,Known)] deriving Show
+data KeyVal=KeyFn Target Int | KeyRec [(String,Target,Int)] deriving (Eq,Ord)
+type Key=(Target,[(Slot,KeyVal)])
 data Scope=Scope (M.Map BinderId Binder) (M.Map BinderId Known) (S.Set BinderId)
 data Work=Work
   { code :: M.Map CodeId CodeFunction, keys :: M.Map Key CodeId,
@@ -133,11 +136,15 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
       Var (Global n _) | Just nArgs<-M.lookup n arities,nArgs>0,
         Just signature<-M.lookup n schemas,instanceOf signature (exprType e)->Just (Known (RootTarget n) [] [])
       ClosureValue label caps | Just c<-M.lookup label baseContracts,contractKind c==ClosureCode->Just (Known (CodeTarget label) caps [])
+      RecordValue fs | not (null fs), Just ks<-mapM (\(n,x)->(,) n <$> knownFn s x) (sortOn fst fs)->
+        Just (KnownRec ks)
+      RecordField base [field] | Just (KnownRec fs)<-known s base->lookup field fs
       Apply {}->let (head',args)=spine e [] in do
         Known t caps leading<-known s head'
         n<-count t
         if length leading+length args<n then Just (Known t caps (leading++args)) else Nothing
       _->Nothing
+    knownFn s x=case known s x of Just k@(Known {})->Just k; _->Nothing
     binderAt (Scope env _ _) uid=maybe (bad "absent value identity") pure (M.lookup uid env)
     safeValue s@(Scope env values assumed) visited e=case exprNode (unNote e) of
       Var (Local uid)
@@ -151,6 +158,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
     safeKnown s@(Scope env _ _) visited (Known _ caps leading)=
       all (\uid->case M.lookup uid env of Just b->safeValue s visited (ref b);_->False) caps
       && all (safeValue s visited) leading
+    safeKnown s visited (KnownRec fs)=all (safeKnown s visited . snd) fs
     -- A local closure can be called directly with already evaluated captures
     -- even when a capture is an opaque non-linear container. This does not
     -- authorize cloning callbacks through that container or rebuilding an
@@ -193,6 +201,11 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
                          pure (generated fullType (Var (Global n sc)))
         CodeTarget label->pure (generated fullType (ClosureValue label caps))
       apply head' leading
+    value s desired (KnownRec fs)=do
+      fields<-mapM (\(n,k)->do
+        ft<-maybe (bad ("missing record callback field type: "++n)) pure (fieldType desired [n])
+        (,) n <$> value s ft k) fs
+      pure (generated desired (RecordValue fields))
     apply=foldM (\fn arg->case exprType fn of
       TFn ty result->do require "application argument" (sameType ty (exprType arg));pure (generated result (Apply fn arg))
       _->bad "application has no checked arrow")
@@ -211,6 +224,35 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
     convert f=do
       body<-walk 0 (scope (codeCaptures f++codeParameters f)) (codeBody f)
       modify (\w->w {code=M.insert (codeId f) (f {codeBody=body}) (code w)})
+    peelArg s0 arg=case exprNode (unNote arg) of
+      Sequence tick rest | EntryTick<-exprNode (unNote tick)->
+        let (s1,w,core)=peelArg s0 rest
+         in (s1,\x->generated (exprType x) (Sequence tick (w x)),core)
+      Let b rhs rest | EntryTick<-exprNode (unNote rhs)->
+        let (s1,w,core)=peelArg (extend [b] s0) rest
+         in (s1,\x->generated (exprType x) (Let b rhs (w x)),core)
+      Let b rhs rest | evaluated arities rhs->
+        let s'=case known s0 rhs of
+                 Just k | usable s0 k->know b k s0
+                 _->extend [b] s0
+            (s1,w,core)=peelArg s' rest
+         in (s1,\x->generated (exprType x) (Let b rhs (w x)),core)
+      MatchTail (FunctionMatch _) margs [Alternative ps [] rest] _
+        | length ps==length margs, all (evaluated arities) margs,
+          Just pairs<-zipBinders ps margs ->
+            let s'=foldl (\sc (b,a)->case known sc a of Just k | usable sc k->know b k sc; _->extend [b] sc) s0 pairs
+                (s1,w,core)=peelArg s' rest
+             in (s1,\x->foldr (\(b,a) acc->generated (exprType acc) (Let b a acc)) (w x) pairs,core)
+      _->(s0,id,arg)
+    zipBinders ps margs=mapM (\(p,a)->case patNode p of
+      Bind b | sameType (binderType b) (exprType a)->Just (b,a)
+      _->Nothing) (zip ps margs)
+    hoistArgs s0 []=(s0,id,[])
+    hoistArgs s0 (a:rest)=
+      let (s1,w1,a')=peelArg s0 a
+       in if evaluated arities a'
+          then let (s2,w2,rest')=hoistArgs s1 rest in (s2,w1 . w2,a':rest')
+          else (s1,w1,a':rest)
     walk depth s e=case exprNode e of
       Let b rhs body->do
         rhs'<-walk depth s rhs
@@ -226,17 +268,22 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
                 initializer<-if originalAlias then pure rhs' else value scope' (exprType rhs') k'
                 body'<-walk depth (know b k' scope') body
                 pure (if binderId b `notElem` localUses body' then body' else e {exprNode=Let b initializer body'})
+          Just k@(KnownRec _) | usable s k, not (poly (binderScheme b))->do
+            body'<-walk depth (know b k s) body
+            pure (if binderId b `notElem` localUses body' then body' else e {exprNode=Let b rhs' body'})
           _->do body'<-walk depth (extend [b] s) body
                 pure e {exprNode=Let b rhs' body'}
       Apply {}->do
         let (head0,args0)=spine e []
         head'<-walk depth s head0
-        args<-mapM (walk depth s) args0
-        case known s head' of
-          Just k | safeKnown s S.empty k->invoke depth s e k args
-                 | localClosure s k->direct s e k args
+        args1<-mapM (walk depth s) args0
+        let (s',wrapArgs,args)=if evaluated arities head' then hoistArgs s args1 else (s,id,args1)
+        res<-case known s' head' of
+          Just k@(Known {}) | safeKnown s' S.empty k->invoke depth s' e k args
+                            | localClosure s' k->direct s' e k args
           _->do record "<dynamic>" D.UnknownTarget
                 result<-apply head' args;pure result {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
+        pure (wrapArgs res)
       CodeCall label caps args->mapM (walk depth s) args >>= invoke depth s e (Known (CodeTarget label) caps [])
       JoinCall label caps args->mapM (walk depth s) args >>= invoke depth s e (Known (CodeTarget label) caps [])
       MatchTail style args alternatives fallback->do
@@ -250,8 +297,8 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
         pure e {exprNode=LetPattern p rhs' body'}
       _->mapChildrenM (walk depth s) e
     patternScope s p argument=case patNode p of
-      Bind b | Just k@(Known _ _ leading)<-known s argument,
-        all (evaluated arities) leading->know b k (extend [b] s)
+      Bind b | Just k<-known s argument,
+        all (evaluated arities) (knownLeading k)->know b k (extend [b] s)
       _->extend (patternBinders p) s
     alt depth s args (Alternative ps guards body)=do
       let start=foldl (\scope' (p,a)->patternScope scope' p a) s (zip ps args)
@@ -291,13 +338,19 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
               pure result
           case clone of
             Right label->prepareArguments s picks ordinary $ \_ saved leadingBySlot->do
-                let extraCaps=concat [cs | (_,Known _ cs _)<-picks]
+                let extraCaps=concat [knownCaps cb | (_,cb)<-picks]
                     savedLeading=concat [M.findWithDefault [] slot leadingBySlot | (slot,_)<-picks]
                 kind<-gets (codeKind . (M.! label) . code)
                 pure old {exprNode=if kind==JoinCode then JoinCall label (caps++extraCaps) (saved++savedLeading)
                   else CodeCall label (caps++extraCaps) (saved++savedLeading)}
             Left _->direct s old k args
         _->direct s old k args
+    knownCaps (Known _ cs _)=cs
+    knownCaps (KnownRec fs)=concatMap (knownCaps . snd) fs
+    knownLeading (Known _ _ ls)=ls
+    knownLeading (KnownRec fs)=concatMap (knownLeading . snd) fs
+    knownKeyVal (Known t _ ls)=KeyFn t (length ls)
+    knownKeyVal (KnownRec fs)=KeyRec [(n,t,length ls) | (n,Known t _ ls)<-fs]
     -- A small, non-recursive imported function whose result is a sum type
     -- (String.toInt's Result, Map.get's Option) is cloned even without a
     -- callback to specialize: the private clone may return its variant in
@@ -328,7 +381,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
     prepareArguments s picks ordinary continuation=go s 0 ordinary [] captured
       where
         choices=M.fromList picks
-        captured=M.fromList [(slot,leading) | (slot@(CaptureSlot _),Known _ _ leading)<-picks]
+        captured=M.fromList [(slot,knownLeading cb) | (slot@(CaptureSlot _),cb)<-picks]
         go scope' _ [] saved leading=continuation scope' (reverse saved) leading
         go scope' i (argument:rest) saved leading=case M.lookup (ArgumentSlot i) choices of
           Nothing->snapshot scope' argument $ \scope'' value'->go scope'' (i+1) rest (value':saved) leading
@@ -338,6 +391,17 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
               _->value scope'' (exprType argument) (Known target caps supplied')
             snapshot scope'' originalValue $ \scope''' value'->
               go scope''' (i+1) rest (value':saved) (M.insert (ArgumentSlot i) supplied' leading)
+          Just (KnownRec fs)->snapshotRec scope' fs [] $ \scope'' fs' supplied'->do
+            originalValue<-case exprNode (unNote argument) of
+              Var (Local _)->pure argument
+              _->value scope'' (exprType argument) (KnownRec fs')
+            snapshot scope'' originalValue $ \scope''' value'->
+              go scope''' (i+1) rest (value':saved) (M.insert (ArgumentSlot i) supplied' leading)
+        snapshotRec scope' [] acc cont=cont scope' (reverse acc) (concatMap (knownLeading . snd) (reverse acc))
+        snapshotRec scope' ((n,Known target caps supplied):more) acc cont=
+          snapshotMany scope' supplied $ \scope'' supplied'->
+            snapshotRec scope'' more ((n,Known target caps supplied'):acc) cont
+        snapshotRec scope' ((n,other):more) acc cont=snapshotRec scope' more ((n,other):acc) cont
     direct s old k@(Known target caps leading) args=case target of
       RootTarget _->do
         head'<-value s (foldr (TFn . exprType) (exprType old) args) k
@@ -351,15 +415,16 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
           _->do head'<-value s (foldr (TFn . exprType) (exprType old) args) k
                 result<-apply head' args
                 pure result {exprOrigin=exprOrigin old,exprOffset=exprOffset old}
+    direct _ _ (KnownRec _) _=bad "direct call on callback record"
     getClone depth target picks=do
-      let key=(target,[(slot,t,length leading) | (slot,Known t _ leading)<-picks])
+      let key=(target,[(slot,knownKeyVal cb) | (slot,cb)<-picks])
       existing<-gets (M.lookup key . keys)
       case existing of
         Just label->pure (Right label)
         Nothing->do
           Template caps ps body _ _<-template target
           state<-get
-          let extra=sum [length cs+length ls | (_,Known _ cs ls)<-picks]
+          let extra=sum [length (knownCaps cb)+length (knownLeading cb) | (_,cb)<-picks]
               minimumArity=length caps+length ps-length picks+extra
           let spent=weight state+nodes body
               refusal | minimumArity>64=Just (D.OverArity minimumArity 64)
@@ -390,35 +455,55 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
           (copiedCaps,copiedPs)=splitAt (length caps) (functionParameters copied)
           selected slot=case slot of CaptureSlot i->copiedCaps!!i;ArgumentSlot i->copiedPs!!i
       modify (\w->w {nextType=after})
-      descriptors<-mapM (\(slot,cb)->do descriptor<-freshCallback cb;pure (slot,cb,descriptor)) picks
-      let flexible=flex<>mconcat [vs | (_,_,(_,_,_,vs))<-descriptors]
-          pairs=[(binderType (selected slot),remaining) | (slot,_,(_,_,remaining,_))<-descriptors]
-      next<-gets nextType
-      case U.unifyTypes flexible next pairs of
-        Left _->pure (Left D.Unification)
-        Right (solution,afterSolution)->do
-          let private=mconcat [let Forall tv rv _=binderScheme (selected slot) in (S.fromList tv,S.fromList rv) | (slot,_,_)<-descriptors]
-              extraVars=mconcat [mconcat (map (U.schemeVariables . U.applyScheme solution) captureSchemes)
-                <>mconcat (map (U.variables . U.applyType solution) leadingTypes) | (_,_,(captureSchemes,leadingTypes,_,_))<-descriptors]
-          if not (S.null (fst private `S.intersection` fst extraVars) && S.null (snd private `S.intersection` snd extraVars))
-            then pure (Left D.EscapingType) else do
-              modify (\w->w {nextType=afterSolution})
-              let instantiated=substituteFunction types solution copied
-                  (baseCaps,basePs)=splitAt (length caps) (functionParameters instantiated)
-                  selected' slot=case slot of CaptureSlot i->baseCaps!!i;ArgumentSlot i->basePs!!i
-              added<-mapM (\(slot,Known cb _ _,(captureSchemes,leadingTypes,_,_))->do
-                cs<-mapM (freshBinder . U.applyScheme solution) captureSchemes
-                ls<-mapM (freshBinder . Forall [] [] . U.applyType solution) leadingTypes
-                pure (selected' slot,Known cb (map binderId cs) (map ref ls),cs,ls)) descriptors
-              let allCaps=baseCaps++concat [cs | (_,_,cs,_)<-added]
-                  allPs=basePs++concat [ls | (_,_,_,ls)<-added]
-                  knowns=M.fromList [(binderId b,k) | (b,k,_,_)<-added]
-                  assumed=S.fromList [binderId b | (_,_,cs,ls)<-added,b<-cs++ls]
-                  scope'=case scope (allCaps++allPs) of Scope env _ _->Scope env knowns assumed
-                  clone=CodeFunction label (if kind==JoinCode then JoinCode else EntryCode) allCaps allPs (functionBody instantiated)
-                  (source,templateId)=case target of RootTarget n->(n,CodeId n);CodeTarget k->(sourceOwners M.! k,k)
-                  origin=CloneOrigin source templateId (zip (map binderId (caps++ps)) (map (Just . binderId) (baseCaps++basePs)))
-              pure (Right (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks),origin))
+      descriptors<-mapM (\(slot,cb)->case cb of
+        Known {}->do d<-freshCallback cb;pure (slot,Left (cb,d))
+        KnownRec fs->do
+          ds<-mapM (\(n,f)->do d<-freshCallback f;pure (n,f,d)) fs
+          pure (slot,Right ds)) picks
+      let descList=concat [case item of Left (_,d)->[d]; Right ds->[d | (_,_,d)<-ds] | (_,item)<-descriptors]
+          flexible=flex<>mconcat [vs | (_,_,_,vs)<-descList]
+          pairsResult=concat <$> mapM (\(slot,item)->case item of
+            Left (_,(_,_,remaining,_))->Right [(binderType (selected slot),remaining)]
+            Right ds->mapM (\(n,_,(_,_,remaining,_))->case fieldType (binderType (selected slot)) [n] of
+              Just ft->Right (ft,remaining)
+              Nothing->Left D.Unification) ds) descriptors
+      case pairsResult of
+        Left why->pure (Left why)
+        Right pairs->do
+          next<-gets nextType
+          case U.unifyTypes flexible next pairs of
+            Left _->pure (Left D.Unification)
+            Right (solution,afterSolution)->do
+              let private=mconcat [let Forall tv rv _=binderScheme (selected slot) in (S.fromList tv,S.fromList rv) | (slot,_)<-descriptors]
+                  extraVars=mconcat [mconcat (map (U.schemeVariables . U.applyScheme solution) captureSchemes)
+                    <>mconcat (map (U.variables . U.applyType solution) leadingTypes) | (captureSchemes,leadingTypes,_,_)<-descList]
+              if not (S.null (fst private `S.intersection` fst extraVars) && S.null (snd private `S.intersection` snd extraVars))
+                then pure (Left D.EscapingType) else do
+                  modify (\w->w {nextType=afterSolution})
+                  let instantiated=substituteFunction types solution copied
+                      (baseCaps,basePs)=splitAt (length caps) (functionParameters instantiated)
+                      selected' slot=case slot of CaptureSlot i->baseCaps!!i;ArgumentSlot i->basePs!!i
+                  added<-mapM (\(slot,item)->case item of
+                    Left (Known cb _ _,(captureSchemes,leadingTypes,_,_))->do
+                      cs<-mapM (freshBinder . U.applyScheme solution) captureSchemes
+                      ls<-mapM (freshBinder . Forall [] [] . U.applyType solution) leadingTypes
+                      pure (selected' slot,Known cb (map binderId cs) (map ref ls),cs,ls)
+                    Right ds->do
+                      built<-mapM (\(n,Known cb _ _,(captureSchemes,leadingTypes,_,_))->do
+                        cs<-mapM (freshBinder . U.applyScheme solution) captureSchemes
+                        ls<-mapM (freshBinder . Forall [] [] . U.applyType solution) leadingTypes
+                        pure ((n,Known cb (map binderId cs) (map ref ls)),cs,ls)) ds
+                      pure (selected' slot,KnownRec [x | (x,_,_)<-built],concat [cs | (_,cs,_)<-built],concat [ls | (_,_,ls)<-built])
+                    _->bad "unexpected callback descriptor") descriptors
+                  let allCaps=baseCaps++concat [cs | (_,_,cs,_)<-added]
+                      allPs=basePs++concat [ls | (_,_,_,ls)<-added]
+                      knowns=M.fromList [(binderId b,k) | (b,k,_,_)<-added]
+                      assumed=S.fromList [binderId b | (_,_,cs,ls)<-added,b<-cs++ls]
+                      scope'=case scope (allCaps++allPs) of Scope env _ _->Scope env knowns assumed
+                      clone=CodeFunction label (if kind==JoinCode then JoinCode else EntryCode) allCaps allPs (functionBody instantiated)
+                      (source,templateId)=case target of RootTarget n->(n,CodeId n);CodeTarget k->(sourceOwners M.! k,k)
+                      origin=CloneOrigin source templateId (zip (map binderId (caps++ps)) (map (Just . binderId) (baseCaps++basePs)))
+                  pure (Right (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks),origin))
     freshCallback (Known target _ leading)=do
       first<-gets nextType
       (captureSchemes,parameters,result,flex,next)<-case target of
