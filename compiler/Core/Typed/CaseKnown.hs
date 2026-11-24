@@ -27,7 +27,7 @@ caseKnownClosed :: TypeContext -> ClosedFunction -> Either String (ClosedFunctio
 caseKnownClosed types=mapClosedChanged types (Right . rewrite types)
   (\code->let (f,changed)=rewrite types (codeAsFunction code) in Right (code {codeBody=functionBody f},changed))
 
-data Known=Con String [Expr] | Tup [Expr]
+data Known=Con String [Expr] | Tup [Expr] | Rec (M.Map String Expr)
 -- Yes carries the binding wrappers, outermost (first field) first.
 data Result=NoMatch | Unsure | Yes [Expr -> Expr]
 
@@ -80,6 +80,12 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
             Just r<-evalStateT (select e' alts' x k) S.empty ->
               tell (Any True) >> pure r
           _->pure e'
+      RecordField base [field] -> do
+        base'<-walk env base
+        case known env (unNote base') of
+          Just (Rec fm) | Just val<-M.lookup field fm, sameType (exprType e) (exprType val) ->
+            tell (Any True) >> pure val
+          _->pure e {exprNode=RecordField base' [field]}
       _->mapChildrenM (walk env) e
 
     irrefutableBinds ps args=foldr step (Just id) (zip ps args)
@@ -145,13 +151,17 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
       Apply fn arg->spine fn (arg:args)
       Note x->spine x args
       _->(e,args)
+    isIntLit e=case exprNode (unNote e) of IntValue _->True; _->False
     trivial e=case exprNode (unNote e) of
       Var {}->True;IntValue _->True;StringValue _->True;BoolValue _->True;ClosureValue {}->True
+      Apply {} | (h,args)<-spine e [], Var (Global n _)<-exprNode h,
+        n `elem` ["f64frombits","f32frombits"], all isIntLit args -> True
       _->False
     known env e=case exprNode e of
       Var (Local sid)->M.lookup sid env
       Construct n xs->Just (Con n xs)
       TupleValue xs->Just (Tup xs)
+      RecordValue fs->Just (Rec (M.fromList fs))
       Var (Global n _) | arity n==Just 0->Just (Con n [])
       Apply {} | (h,args)<-spine e [],Var (Global n _)<-exprNode h,Just k<-arity n,k>0,k==length args->Just (Con n args)
       _->Nothing
@@ -195,6 +205,7 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
       _->Unsure
     fields (Con _ xs)=xs
     fields (Tup xs)=xs
+    fields (Rec fm)=M.elems fm
     skip a rest=generated rest (Sequence a rest)
     subs ps args
       | length ps/=length args=Unsure
