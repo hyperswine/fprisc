@@ -32,6 +32,7 @@ import qualified Data.Set as S
 import Control.Monad (unless, when)
 import Data.IORef
 import GHC.Clock (getMonotonicTimeNSec)
+import qualified GHC.Stats as Stats
 import System.Directory (canonicalizePath, doesFileExist)
 import System.FilePath (takeExtension, takeDirectory, (</>))
 import System.Process (readProcess)
@@ -205,13 +206,21 @@ isMain _ = False
 bindNames :: [STop] -> S.Set String
 bindNames = M.keysSet . arities
 
+-- FPR_TIMINGS: wall time per phase, plus the bytes the phase allocated when the
+-- RTS keeps statistics (+RTS -T). The RTS counts allocation at each GC, so a
+-- phase is accurate to one nursery (-A), and laziness can move work into a later phase.
 phaseTime :: Bool -> String -> IO a -> IO a
 phaseTime False _ action = action
 phaseTime True name action = do
+  stats <- Stats.getRTSStatsEnabled
+  let allocated = if stats then Stats.allocated_bytes <$> Stats.getRTSStats else pure 0
   start <- getMonotonicTimeNSec
+  before <- allocated
   result <- action
   end <- getMonotonicTimeNSec
-  hPutStrLn stderr (printf "[fpr timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
+  after <- allocated
+  hPutStrLn stderr (printf "[fpr timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double)
+    ++ (if stats then printf ", %d bytes allocated" (after - before) else ""))
   pure result
 fst3 :: STop -> String
 fst3 (TBind n _ _ _) = n

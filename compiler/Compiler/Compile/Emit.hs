@@ -488,8 +488,12 @@ emitNative ei = do
         r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash)) extFor (artifactOf (Linked.PreludeArtifact preludeHash))
         pure [r]
   let shapesHash = hashAST [TShape (concat fs) [] | fs <- M.keys shapes]
-  unitOuts <- timed "emit-units" $ forM (if oArc opts then [] else checkedUnits) $ \(h, _, _) ->
-    emitUnit
+  -- With FPR_TIMINGS each dependency unit gets its own line (and its allocation
+  -- under +RTS -T): units are emitted whole, so this is where a std module's
+  -- size shows up in a program's compile cost.
+  let unitLabel h uts = let names = [n | TBind n _ _ _ <- uts] in "unit " ++ take 12 h ++ " (" ++ show (length names) ++ " definitions" ++ concatMap (", first " ++) (take 1 names) ++ ")"
+  unitOuts <- timed "emit-units" $ forM (if oArc opts then [] else checkedUnits) $ \(h, uts, _) ->
+    timed (unitLabel h uts) $ emitUnit
       (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash))
       extFor
       (artifactOf (Linked.DependencyArtifact h))
