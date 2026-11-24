@@ -41,7 +41,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 42 -- OBitVal exact-Int band/bor/bxor (41: G8 fused branches + bare OArithU Mul)
+x64SelectionRev = 43 -- G11: guarded OArithFits+OArithU reuse, immediate OArithFits and OBit (42: OBitVal)
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -446,17 +446,19 @@ data Facts = Facts
     fConsts :: M.Map VId Integer,
     fTagSrc :: M.Map VId VId,
     fTagOnlyConsts :: S.Set VId,
-    fLazyTags :: S.Set VId }
+    fLazyTags :: S.Set VId,
+    fReusedFits :: M.Map BId VId,
+    fReusedArith :: S.Set VId }
 
 fnFacts :: Fn -> Facts
-fnFacts fn = Facts immediates only uses params consts tagSrc tagOnlyConsts lazyTags
+fnFacts fn = Facts immediates only uses params consts tagSrc tagOnlyConsts lazyTags reusedFits reusedArith
   where
     ops = [o | blk <- fnBlocks fn, Instr _ o <- bInstrs blk]
     terms = concat [termUses (bTerm blk) | blk <- fnBlocks fn]
     termSet = S.fromList terms
     immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, abs n < 2 ^ (31 :: Int)]
-    -- a read that is not an immediate operand keeps the constant's register
-    held = S.fromList (terms ++ [u | o <- ops, u <- opUses o, M.member u immediates, fmap (\(_, iv, _) -> iv) (immediateForm immediates o) /= Just u])
+    -- a read that is not an immediate operand (or OTag, which uses fConsts directly) keeps the constant's register
+    held = S.fromList (terms ++ [u | o <- ops, case o of OTag _ -> False; _ -> True, u <- opUses o, M.member u immediates, fmap (\(_, iv, _) -> iv) (immediateForm immediates o) /= Just u])
     only = M.keysSet immediates `S.difference` held
     uses = M.fromListWith (+) [(u, 1) | u <- terms ++ concatMap opUses ops]
     params = M.fromList [(bId blk, [vreg v | (v, _) <- bParams blk]) | blk <- fnBlocks fn]
@@ -474,6 +476,23 @@ fnFacts fn = Facts immediates only uses params consts tagSrc tagOnlyConsts lazyT
       [ v | v <- M.keys tagSrc, S.notMember v termSet,
             let users = [o | o <- ops, v `elem` opUses o],
             not (null users), all smallAware users ]
+    -- G11: when a fused OArithFits branches to a single-predecessor ok block
+    -- whose first instruction is the matching OArithU, compute OArithFits
+    -- directly into that result vreg and skip the duplicate OArithU.
+    byId = M.fromList [(bId blk, blk) | blk <- fnBlocks fn]
+    predCount = M.fromListWith (+) [(dst, 1 :: Int) | blk <- fnBlocks fn, (dst, _) <- termSuccs (bTerm blk)]
+    reusedFits = M.fromList
+      [ (bId blk, r)
+      | blk <- fnBlocks fn,
+        Instr (Just (p, _)) (OArithFits o a b') : _ <- [reverse (bInstrs blk)],
+        o `elem` [Add, Sub, Mul],
+        TCondBr p' t [] e [] <- [bTerm blk],
+        p == p', M.lookup p uses == Just 1, t /= e, t /= bId blk, t /= fnEntry fn,
+        M.lookup t predCount == Just 1,
+        Just tb <- [M.lookup t byId], null (bParams tb),
+        Instr (Just (r, TInt)) (OArithU o' a' b'') : _ <- [bInstrs tb],
+        o' == o, (a' == a && b'' == b') || (o `elem` [Add, Mul] && a' == b' && b'' == a) ]
+    reusedArith = S.fromList (M.elems reusedFits)
 
 -- The instructions with an immediate form, and which operand is which:
 -- (the register operand, the constant's value id, the constant).  The one
@@ -485,8 +504,14 @@ immediateForm immediates = \case
   OArith o a b | o `elem` [Add, Sub] -> case right a b of
     Nothing | o == Add -> right b a
     form -> form
+  OArithFits o a b | o `elem` [Add, Sub] -> case right a b of
+    Nothing | o == Add -> right b a
+    form -> form
   OArithU o a b | o `elem` [Add, Sub] -> case right a b of
     Nothing | o == Add -> right b a
+    form -> form
+  OBit _ a b -> case right a b of
+    Nothing -> right b a
     form -> form
   _ -> Nothing
   where
@@ -519,6 +544,7 @@ selectBlock cfg fn facts next b = do
         run more
       run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v (fImmediateOnly facts) || S.member v (fTagOnlyConsts facts) = run more
       run (Instr (Just (v, _)) (OTag _) : more) | S.member v (fLazyTags facts) = run more
+      run (Instr (Just (v, _)) (OArithU {}) : more) | S.member v (fReusedArith facts) = run more
       -- a byte address made for one load: the load takes base and index
       run (Instr (Just (p, _)) (OIndexByte a i) : Instr (Just (v, _)) (OLoadByte p' n) : more)
         | p == p', M.lookup p (fUses facts) == Just 1 = do
@@ -592,12 +618,14 @@ selectBlock cfg fn facts next b = do
           emitI (cmpi scaled (65536 * 8))
           flags O.UnsignedBelow
         OArithFits o a b' -> testBranchWith O.NoOverflow $ \miss -> do
-          tmp <- freshV False
-          case o of
-            Add -> emitI (rrr O.Add tmp (vreg a) (vreg b'))
-            Sub -> emitI (rrr O.Subtract tmp (vreg a) (vreg b'))
-            Mul -> emitI (rrr O.Multiply tmp (vreg a) (vreg b')) >> emitI (bcond O.Overflow miss)
-            Div -> emitI (cbz (vreg b') miss) >> emitI (divide tmp (vreg a) (vreg b'))
+          tmp <- maybe (freshV False) (pure . vreg) (M.lookup (bId b) (fReusedFits facts))
+          case immediateForm (fImmediates facts) op of
+            Just (x, _, n) -> emitI (addi tmp (vreg x) (if o == Sub then negate n else n))
+            Nothing -> case o of
+              Add -> emitI (rrr O.Add tmp (vreg a) (vreg b'))
+              Sub -> emitI (rrr O.Subtract tmp (vreg a) (vreg b'))
+              Mul -> emitI (rrr O.Multiply tmp (vreg a) (vreg b')) >> emitI (bcond O.Overflow miss)
+              Div -> emitI (cbz (vreg b') miss) >> emitI (divide tmp (vreg a) (vreg b'))
           n <- freshV False
           emitI (rri O.ShiftLeftImmediate n tmp 1)
         OCmpVal o a b' | Just ua <- rawOfF a, Just ub <- rawOfF b' -> do
@@ -947,11 +975,13 @@ selectInstr cfg facts (Instr d op) = case op of
     no <- freshL "nofit"
     done <- freshL "fitdone"
     t <- freshV False
-    case o of
-      Add -> emitI (rrr O.Add t (vreg a) (vreg b))
-      Sub -> emitI (rrr O.Subtract t (vreg a) (vreg b))
-      Mul -> emitI (rrr O.Multiply t (vreg a) (vreg b)) >> emitI (bcond O.Overflow no)
-      Div -> emitI (cbz (vreg b) no) >> emitI (divide t (vreg a) (vreg b))
+    case immediateForm (fImmediates facts) op of
+      Just (x, _, n) -> emitI (addi t (vreg x) (if o == Sub then negate n else n))
+      Nothing -> case o of
+        Add -> emitI (rrr O.Add t (vreg a) (vreg b))
+        Sub -> emitI (rrr O.Subtract t (vreg a) (vreg b))
+        Mul -> emitI (rrr O.Multiply t (vreg a) (vreg b)) >> emitI (bcond O.Overflow no)
+        Div -> emitI (cbz (vreg b) no) >> emitI (divide t (vreg a) (vreg b))
     n <- freshV False
     emitI (rri O.ShiftLeftImmediate n t 1)
     emitI (bcond O.Overflow no)
@@ -976,6 +1006,8 @@ selectInstr cfg facts (Instr d op) = case op of
     Mul -> emitI (rrr O.Multiply r (vreg a) (vreg b))
     _ -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op ->
+    def (\r -> emitI (rri (bitImmX64 o) r (vreg x) n))
   OBit o a b -> def (\r -> emitI (rrr (bitX64 o) r (vreg a) (vreg b)))
   -- exact Int band/bor/bxor: both small, or one small, or a tag test and a
   -- T_BIGINT slow path through fpr_g_band/bor/bxor_call2
@@ -1255,6 +1287,7 @@ selectInstr cfg facts (Instr d op) = case op of
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
     cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
     bitX64 = \case BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor
+    bitImmX64 = \case BAnd -> O.AndImmediate; BOr -> O.OrImmediate; BXor -> O.XorImmediate
     exactCall sym args res =
       if cfgFrames cfg && keepingEnabled cfg
         then emitKeepingCall (CodeSymbol sym) args res

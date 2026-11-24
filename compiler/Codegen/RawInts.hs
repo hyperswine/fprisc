@@ -61,7 +61,7 @@ versionRawInts fn0
           out = versionTops fn
        in if out == fn then fn0 else out
   where
-    exact = \case OArithVal {} -> True; OCmpVal {} -> True; _ -> False
+    exact = \case OArithVal {} -> True; OCmpVal {} -> True; OBitVal {} -> True; _ -> False
 
 -- A self tail call jumps to the entry block, which has no way in to guard.
 -- Such a loop gets a new entry that only checks the stack and jumps to the
@@ -188,6 +188,7 @@ versionAt fn h
         seeds = S.fromList (concat [intSeeds d op | b <- fnBlocks fn, Instr d op <- bInstrs b])
         intSeeds d op = case op of
           OArithVal _ a b -> a : b : res d
+          OBitVal _ a b -> a : b : res d
           OCmpVal _ a b -> [a, b]
           OUntag a -> [a]
           OTag _ -> res d
@@ -208,6 +209,7 @@ versionAt fn h
     -- parameter, so that edge is not followed)
     intUses = \case
       OArithVal _ a b -> [a, b]
+      OBitVal _ a b -> [a, b]
       OCmpVal _ a b -> [a, b]
       OUntag a -> [a]
       OEqVal _ a b | isInt a || isInt b -> [a, b]
@@ -222,7 +224,7 @@ versionAt fn h
           Just pb | inRegion pb -> [a | (src, a) <- M.findWithDefault [] x argsOf, inRegion src, tyOf a == TVal]
           _ -> []
     taggedResults = S.fromList
-      [v | b <- regionBlocks, Instr (Just (v, TVal)) op <- bInstrs b, case op of OArithVal {} -> True; OTag {} -> True; _ -> False]
+      [v | b <- regionBlocks, Instr (Just (v, TVal)) op <- bInstrs b, case op of OArithVal {} -> True; OBitVal {} -> True; OTag {} -> True; _ -> False]
     -- a product's results are one packet: no test may split it
     testable v = not (inR v) || case M.lookup v defOp of
       Just (OCallProduct {}) -> False
@@ -263,6 +265,7 @@ versionAt fn h
       | b' <- regionBlocks, Instr _ op <- bInstrs b'
       , (a, b) <- case op of
           OArithVal _ x y -> [(x, y)]
+          OBitVal _ x y -> [(x, y)]
           OCmpVal _ x y -> [(x, y)]
           OEqVal _ x y -> [(x, y)]
           _ -> [] ]
@@ -299,7 +302,7 @@ versionAt fn h
           Just (OTag _) -> True
           _ -> False
         grow c =
-          let c' = S.union c (S.fromList [v | v <- S.toList rawSet, Just (OArithVal _ a b) <- [M.lookup v defOp], S.member a c, S.member b c])
+          let c' = S.union c (S.fromList [v | v <- S.toList rawSet, Just (a, b) <- [case M.lookup v defOp of Just (OArithVal _ x y) -> Just (x, y); Just (OBitVal _ x y) -> Just (x, y); _ -> Nothing], S.member a c, S.member b c])
            in if c' == c then c else grow c'
     cheap v = S.member v cheapSet
 
@@ -477,6 +480,11 @@ versionAt fn h
             g <- emit TVal (OArithVal o ta tc)
             exitTo contOf extra b k v g
           r <- emit TInt (OArithU o ra rc')
+          setCv v (Raw r)
+        OBitVal o a c | raw v, raw a, raw c -> do
+          ra <- rawOf a
+          rc' <- rawOf c
+          r <- emit TInt (OBit o ra rc')
           setCv v (Raw r)
         OCmpVal o a c | raw a, raw c -> do
           ra <- rawOf a

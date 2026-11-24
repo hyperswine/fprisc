@@ -100,7 +100,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 36 -- OBitVal exact-Int band/bor/bxor (35: G8 fused branches)
+a64SelectionRev = 37 -- G11: guarded OArithFits+OArithU reuse, immediate OArithFits and OBit (36: OBitVal)
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -391,10 +391,11 @@ selectBlock cfg fn tyMap b = do
         (results, more) <- either (refuse) pure (productCallResults c d following)
         callProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
-      run (i@(Instr (Just (v, _)) (OConstInt _)) : more) | S.member v immediateOnly = run more
+      run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v immediateOnly = run more
       run (Instr (Just (v, _)) (OTag _) : more) | S.member v lazyTags = run more
       run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v tagOnlyConsts = run more
-      run (i : more) = selectInstrK cfg immediates (SmallInts consts tagSrc lazyTags) i >> run more
+      run (Instr (Just (v, _)) (OArithU {}) : more) | S.member v reusedArith = run more
+      run (i : more) = selectInstrK cfg immediates bitImms (SmallInts consts tagSrc lazyTags) i >> run more
       run [] = pure ()
       -- exact Int operations know a TVal is small when it is `OTag` of a raw
       -- Int (a TInt always fits); such a tag is made only where a slow path
@@ -414,17 +415,40 @@ selectBlock cfg fn tyMap b = do
                                  not (null users), all (smallAware v) users,
                                  v `notElem` concat [termUses (bTerm blk) | blk <- fnBlocks fn]]
       -- constants (0..4095) an add or subtract can take as an immediate,
+      -- and valid A64 bitmask immediates (2^k - 1 or 2^k) for band/bor/bxor,
       -- function-wide; those used only that way are never made
       immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, n >= 0, n < 4096]
+      a64Bitmask n = n > 0 && n < 2 ^ (62 :: Int) && ((n .&. (n + 1)) == 0 || (n .&. (n - 1)) == 0)
+      bitImms = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, a64Bitmask n]
       -- (the other operand stays a register: `c + c` keeps c's register)
       immUse v (Instr _ o) = case o of
-        OArith x a b | x `elem` [Add, Sub] -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
-        OArithU x a b | x `elem` [Add, Sub] -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
+        OTag _ -> True
+        OArith x a b | x `elem` [Add, Sub], M.member v immediates -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
+        OArithFits x a b | x `elem` [Add, Sub], M.member v immediates -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
+        OArithU x a b | x `elem` [Add, Sub], M.member v immediates -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
+        OBit _ a b | M.member v bitImms -> (b == v && a /= v) || (a == v && M.notMember b bitImms)
         _ -> False
-      immediateOnly = S.fromList [v | v <- M.keys immediates,
+      immediateOnly = S.fromList [v | v <- S.toList (M.keysSet immediates `S.union` M.keysSet bitImms),
                                        let users = [i | blk <- fnBlocks fn, i@(Instr _ o) <- bInstrs blk, v `elem` opUses o],
                                        not (null users), all (immUse v) users,
                                        v `notElem` concat [termUses (bTerm blk) | blk <- fnBlocks fn]]
+      -- G11: when a fused OArithFits branches to a single-predecessor ok block
+      -- whose first instruction is the matching OArithU, compute OArithFits
+      -- directly into that result vreg and skip the duplicate OArithU.
+      byId = M.fromList [(bId blk, blk) | blk <- fnBlocks fn]
+      predCount = M.fromListWith (+) [(dst, 1 :: Int) | blk <- fnBlocks fn, (dst, _) <- termSuccs (bTerm blk)]
+      reusedFits = M.fromList
+        [ (bId blk, r)
+        | blk <- fnBlocks fn,
+          Instr (Just (p, _)) (OArithFits o a b') : _ <- [reverse (bInstrs blk)],
+          o `elem` [Add, Sub, Mul],
+          TCondBr p' t [] e [] <- [bTerm blk],
+          p == p', useCount p == 1, t /= e, t /= bId blk, t /= fnEntry fn,
+          M.lookup t predCount == Just 1,
+          Just tb <- [M.lookup t byId], null (bParams tb),
+          Instr (Just (r, TInt)) (OArithU o' a' b'') : _ <- [bInstrs tb],
+          o' == o, (a' == a && b'' == b') || (o `elem` [Add, Mul] && a' == b' && b'' == a) ]
+      reusedArith = S.fromList (M.elems reusedFits)
       -- a comparison whose only use is this block's branch: compare and
       -- branch on the flags (no cset, no cbz)
       fused = case (reverse rest, bTerm b) of
@@ -584,7 +608,8 @@ selectBlock cfg fn tyMap b = do
         -- the 63-bit fit; a zero divisor or a wide product leaves early
         OArithFits o x y -> do
           run (init rest)
-          fitsCompare o (vreg x) (vreg y) (blockLabel e)
+          dst <- maybe (freshV False) (pure . vreg) (M.lookup (bId b) reusedFits)
+          fitsCompare immediates o dst x y (blockLabel e)
           branch O.Equal O.NotEqual
         _ -> refuse "internal: an unfusable branch condition"
     Nothing -> do
@@ -619,7 +644,7 @@ headerFits :: Int -> Int -> Bool
 headerFits t c = t >= 0 && c >= 0 && t < 2147483648 && c < 2147483648
 
 selectInstr :: A64Config -> M.Map VId Integer -> Instr -> Se ()
-selectInstr cfg immediates = selectInstrK cfg immediates (SmallInts M.empty M.empty S.empty)
+selectInstr cfg immediates = selectInstrK cfg immediates M.empty (SmallInts M.empty M.empty S.empty)
 
 -- What the exact Int operations may know about an operand (v1.0 §1.2):
 -- consts holds every OConstInt; siTag maps a TVal defined as `OTag u` to its
@@ -631,42 +656,44 @@ data SmallInts = SmallInts { siConst :: M.Map VId Integer, siTag :: M.Map VId VI
 -- OArithFits (Codegen.RawInts): the exact operation on two untagged small
 -- Ints, ending in a compare whose Equal means the result is a small Int;
 -- a zero divisor, or a product that leaves 64 bits, branches to `no` first
-fitsCompare :: ArithOp -> VReg -> VReg -> Label -> Se ()
-fitsCompare o a b no = do
-  t <- freshV False
+fitsCompare :: M.Map VId Integer -> ArithOp -> VReg -> VId -> VId -> Label -> Se ()
+fitsCompare immediates o t a b no = do
   case o of
-    Add -> emitI (rrr A.Add t a b)
-    Sub -> emitI (rrr A.Subtract t a b)
+    Add | a /= b, Just n <- M.lookup b immediates -> emitI (rri A.AddImmediate t (vreg a) n)
+    Add | a /= b, Just n <- M.lookup a immediates -> emitI (rri A.AddImmediate t (vreg b) n)
+    Sub | a /= b, Just n <- M.lookup b immediates -> emitI (rri A.SubtractImmediate t (vreg a) n)
+    Add -> emitI (rrr A.Add t (vreg a) (vreg b))
+    Sub -> emitI (rrr A.Subtract t (vreg a) (vreg b))
     Div -> do
       -- the truncated quotient leaves the range exactly when the floored one
       -- does (only the smallest Int by -1), and both never trap in 64 bits
-      emitI (cbz b no)
-      emitI (rrr A.Divide t a b)
+      emitI (cbz (vreg b) no)
+      emitI (rrr A.Divide t (vreg a) (vreg b))
     Mul -> do
       wide <- freshL "fitwide"
       ok <- freshL "fitmul"
-      emitI (rrr A.Multiply t a b)
+      emitI (rrr A.Multiply t (vreg a) (vreg b))
       -- both operands within 31 bits: the product is exact; else the
       -- division check (b is not 0 there: a 31-bit operand)
-      forM_ [a, b] $ \opnd -> do
+      forM_ [vreg a, vreg b] $ \opnd -> do
         n <- freshV False
         emitI (rri A.SignExtend31 n opnd 0)
         emitI (cmp n opnd)
         emitI (bcond O.NotEqual wide)
       emitI (jump ok)
       emitL wide
-      emitI (cbz b ok)
+      emitI (cbz (vreg b) ok)
       q <- freshV False
-      emitI (rrr A.Divide q t b)
-      emitI (cmp q a)
+      emitI (rrr A.Divide q t (vreg b))
+      emitI (cmp q (vreg a))
       emitI (bcond O.NotEqual no)
       emitL ok
   n <- freshV False
   emitI (rri A.SignExtend63 n t 0)
   emitI (cmp n t)
 
-selectInstrK :: A64Config -> M.Map VId Integer -> SmallInts -> Instr -> Se ()
-selectInstrK cfg immediates small (Instr d op) = case op of
+selectInstrK :: A64Config -> M.Map VId Integer -> M.Map VId Integer -> SmallInts -> Instr -> Se ()
+selectInstrK cfg immediates bitImms small (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq Protocol.FuelOnly l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -751,7 +778,7 @@ selectInstrK cfg immediates small (Instr d op) = case op of
   OTagTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
     emitI (cmpi (vreg v) imm)
     emitI (cset O.Equal r)
-  OTagTest t c v | headerFits t c -> selectInstrK cfg immediates small (Instr d (OVariantTest t c v))
+  OTagTest t c v | headerFits t c -> selectInstrK cfg immediates bitImms small (Instr d (OVariantTest t c v))
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
@@ -821,7 +848,8 @@ selectInstrK cfg immediates small (Instr d op) = case op of
   OArithFits o a b -> def (\r -> do
     no <- freshL "nofit"
     done <- freshL "fitdone"
-    fitsCompare o (vreg a) (vreg b) no
+    t <- freshV False
+    fitsCompare immediates o t a b no
     emitI (bcond O.NotEqual no)
     emitI (li r 1)
     emitI (jump done)
@@ -847,6 +875,8 @@ selectInstrK cfg immediates small (Instr d op) = case op of
     Mul -> emitI (rrr A.Multiply r (vreg a) (vreg b))
     Div -> floorDiv r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o a b | a /= b, Just n <- M.lookup b bitImms -> def (\r -> emitI (rri (bitImmA64 o) r (vreg a) n))
+  OBit o a b | a /= b, Just n <- M.lookup a bitImms -> def (\r -> emitI (rri (bitImmA64 o) r (vreg b) n))
   OBit o a b -> def (\r -> emitI (rrr (bitA64 o) r (vreg a) (vreg b)))
   -- exact Int band/bor/bxor: both small, or one small, or a tag test and a
   -- T_BIGINT slow path through fpr_g_band/bor/bxor_call2
@@ -1129,6 +1159,7 @@ selectInstrK cfg immediates small (Instr d op) = case op of
       emitL done
     cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
     bitA64 = \case BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor
+    bitImmA64 = \case BAnd -> A.AndImmediate; BOr -> A.OrImmediate; BXor -> A.XorImmediate
     rawOf v = M.lookup v (siTag small)
     -- a raw Int operand: a constant is loaded where it is needed
     rawV u = case M.lookup u (siConst small) of
