@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "release": "0.2.0",
+  "version": "fpr 0.2.0",
+  "minimumMacOS": "27.2",
+  "nativeLibraries": [
+    "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)",
+    "\t@rpath/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)"
+  ]
+}

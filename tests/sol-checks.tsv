@@ -26,3 +26,4 @@ raw-int-hotspots	600	tests/sol-checks/raw-int-hotspots.sol	push
 stdcheck	300	tests/sol-checks/stdcheck.sol	push
 reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push
+publish-release-index	120	tests/sol-checks/publish-release-index.sol	push

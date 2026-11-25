@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "component": "fprisc",
+  "entries": [
+    {
+      "component": "fprisc",
+      "version": "0.1.0",
+      "platform": "macos-arm64",
+      "url": "https://github.com/hyperswine/fprisc/releases/download/v0.1.0/fprisc-0.1.0-macos-arm64.tar.gz",
+      "sha256": "93f40f6f747e0b588fc66add9dcd66cd92b4e9d77471e9abcdc3da1e304eb493",
+      "size": 1000,
+      "minimumOS": "27.2",
+      "requires": [
+        "xcode-clt"
+      ],
+      "yanked": false
+    },
+    {
+      "component": "fprisc",
+      "version": "0.2.0",
+      "platform": "macos-arm64",
+      "url": "https://github.com/hyperswine/fprisc/releases/download/v0.2.0/fprisc-0.2.0-macos-arm64.tar.gz",
+      "sha256": "6d5f1d8f27863e726e3f7009514a3d5d6d9ecf3346cd5f59fe75c3c5644e5e4f",
+      "size": 26,
+      "minimumOS": "27.2",
+      "requires": [
+        "xcode-clt"
+      ],
+      "yanked": false
+    },
+    {
+      "component": "fprisc",
+      "version": "0.3.0",
+      "platform": "macos-arm64",
+      "url": "https://github.com/hyperswine/fprisc/releases/download/v0.3.0/fprisc-0.3.0-macos-arm64.tar.gz",
+      "sha256": "ae03ade66c9d9fed1c25bfa4f092c108cca00802f9bc0e3d6906cce24eb2ce9a",
+      "size": 3000,
+      "minimumOS": "27.2",
+      "requires": [
+        "xcode-clt"
+      ],
+      "yanked": false
+    }
+  ]
+}
