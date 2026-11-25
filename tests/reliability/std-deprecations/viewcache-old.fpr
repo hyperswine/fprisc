@@ -1,0 +1,7 @@
+# Compile fixture: the pre-0.15.0 std/viewcache names (empty/size).
+profile base.
+VC = use "std/viewcache".
+main =
+  c = VC.empty Unit;
+  _ = print (VC.size c);
+  0.
