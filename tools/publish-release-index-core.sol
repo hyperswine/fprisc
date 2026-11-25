@@ -211,7 +211,7 @@ fromFields : (String, String, String, String, String, Int, String, List String, 
 fromFields f = (component, version, platform, url, sha, size, minimum, requires, yanked) = f;
   entryObject component version platform url sha size minimum requires yanked.
 
-entryText : unsafe (String, String, String, String, String, Int, String, List String, Bool) -> String .
+entryText : (String, String, String, String, String, Int, String, List String, Bool) -> String .
 entryText f = J.pretty (fromFields f) + "\n".
 
 indexObject : String -> List J.Json -> J.Json .
@@ -220,7 +220,7 @@ indexObject component entries = J.JObj [
   ("component", J.JStr component),
   ("entries", J.JArr entries)].
 
-indexText : unsafe String -> List J.Json -> String .
+indexText : String -> List J.Json -> String .
 indexText component entries = J.pretty (indexObject component entries) + "\n".
 
 validateEntry : String -> (String, String, String, String, String, Int, String, List String, Bool) -> Result (String, String, String, String, String, Int, String, List String, Bool) String .
@@ -320,7 +320,7 @@ readText path =
     ProcessResult code out err = unwrap (Proc.runNow (ProcessSpec ["cat", path] "" [] "" 0));
     if code == 0 then Ok out else Err "cannot read {path}: {err}".
 
-readJson : unsafe String -> Result J.Json String .
+readJson : String -> Result J.Json String .
 readJson path = readText path |>? J.parse.
 
 sha256Of : String -> Result String String .
@@ -406,7 +406,7 @@ findAssetDir : String -> String -> String -> String .
 findAssetDir root component version =
   List.fold (fn acc dir -> if acc != "" then acc else if hasReleaseFiles dir then dir else "") "" (assetCandidates root component version).
 
-githubSize : unsafe String -> String -> Result Int String .
+githubSize : String -> String -> Result Int String .
 githubSize text name =
   J.parse text |>? (fn json ->
     J.get "assets" json |>? J.items |>? (fn assets ->
@@ -570,7 +570,7 @@ updateIndex tap pub key allowUnsigned dryRun component items =
     _ = writeSignedIndex key pub indexPath sigPath body;
     [name, "{name}.sig"].
 
-writeEntry : unsafe String -> (String, String, String, String, String, Int, String, List String, Bool) -> Bool -> Unit .
+writeEntry : String -> (String, String, String, String, String, Int, String, List String, Bool) -> Bool -> Unit .
 writeEntry dest fields dryRun =
   text = entryText fields;
   _ = if dryRun then print "would write {dest}" else writeText dest text;
