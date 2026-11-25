@@ -16,6 +16,7 @@ crash-repros	300	tests/sol-checks/crash-repros.sol	push
 privileged-builtins	300	tests/sol-checks/privileged-builtins.sol	push
 ownership	300	tests/sol-checks/ownership.sol	push
 linearity	300	tests/sol-checks/linearity.sol	push
+commit-pin	300	tests/sol-checks/commit-pin.sol	push
 x64-bump-spill	300	tests/sol-checks/x64-bump-spill.sol	push
 layout-raw	300	tests/sol-checks/layout-raw.sol	push
 layout-raw-i64	300	tests/sol-checks/layout-raw-i64.sol	push
@@ -23,7 +24,9 @@ i64-raw-locals	300	tests/sol-checks/i64-raw-locals.sol	push
 list-fold-raw-int	600	tests/sol-checks/list-fold-raw-int.sol	push
 str-interp-pieces	600	tests/sol-checks/str-interp-pieces.sol	push
 raw-int-hotspots	600	tests/sol-checks/raw-int-hotspots.sol	push
+std-deprecations	300	tests/sol-checks/std-deprecations.sol	push
 stdcheck	300	tests/sol-checks/stdcheck.sol	push
 reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push
+viewcss	300	tests/sol-checks/viewcss.sol	push
 eq-cheap	300	tests/sol-checks/eq-cheap.sol	push

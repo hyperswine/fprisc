@@ -30,22 +30,24 @@
 -- .fpr/versions.db is structurally pkgstore's model (content blobs +
 -- append-only name/version->hash bindings): `fpr push` to a pkgstore
 -- is blob upload + binding registration, nothing more.
-module Commit (commitMain, versionsMain, pushMain, pullMain) where
+module Commit (commitMain, pinMain, versionsMain, pushMain, pullMain) where
 
-import Control.Monad (unless, when)
+import Control.Exception (throwIO, try)
+import Control.Monad (foldM, forM, unless, when)
 import qualified Compile
 import qualified Data.IORef
 import Data.IORef (newIORef, readIORef)
-import Data.List (intercalate, isInfixOf, isPrefixOf, nub, sort)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe)
 import Frontend.Syntax
 import Frontend.Traverse (stripPosTops)
+import Home (underHome)
 import Modules (ModUnit (..), loadModule)
-import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist)
-import System.Exit (exitFailure)
-import System.FilePath (takeBaseName)
+import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesFileExist, getCurrentDirectory, makeRelativeToCurrentDirectory)
+import System.Exit (ExitCode (..), exitFailure)
+import System.FilePath (makeRelative, splitDirectories, takeBaseName, takeDirectory, (</>))
 import System.Process (readProcess)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
@@ -99,7 +101,7 @@ commitMain args = do
       files = [a | a <- args, not ("--" `isPrefixOf` a)]
   file <- case files of
     [f] -> pure f
-    _ -> hPutStrLn stderr "usage: fpr commit <module.fpr> [--major]" >> exitFailure >> pure ""
+    _ -> hPutStrLn stderr "usage: fpr commit <module.fpr> [--major]   (pin its uses first: fpr pin <module.fpr> [--deps] [--update[=spec,...]])" >> exitFailure >> pure ""
   cache <- newIORef M.empty
   r <- loadModule cache [] file
   mu <- case r of
@@ -127,13 +129,14 @@ commitMain args = do
          hPutStrLn stderr ("  unpinned use in " ++ p ++ ":  " ++ a ++ " = use \"" ++ spec ++ "\".   -> pin it:  " ++ a ++ " = use \"" ++ spec ++ "#" ++ h ++ "\"."))
       unpinned
     hPutStrLn stderr "commit refused: committed modules must be closed under their pin hash (all uses pinned)"
+    hPutStrLn stderr ("  fix: fpr pin " ++ file ++ " --deps   (pins every unpinned use above, dependencies first, in files under this directory)")
     exitFailure
   -- Check before any store/database mutation, including no-op commits.
   let deprecated = deprecatedIntBounds (muTops mu)
   unless (null deprecated) $ do
     hPutStrLn stderr ("commit refused: " ++ intercalate ", " deprecated ++ " deprecated (Int is arbitrary-precision in v1.0); remove them before committing a new version")
     exitFailure
-  inferred <- Compile.checkedInterface file
+  inferred <- checkedOrRefuse ("commit refused: " ++ file ++ " does not pass the checker (diagnostics above); nothing was written") (Compile.checkedInterface file)
   let name = takeBaseName file
       h = muHash mu
       newSig = sigOf (muTops mu) ++ inferredSig inferred
@@ -148,7 +151,18 @@ commitMain args = do
           _ <- storeUnit ph
           putStrLn (name ++ "." ++ pv ++ "#" ++ h ++ " is already this exact content — no-op")
       | otherwise -> do
-          (oldTops, oldInferred) <- storeInterface ph
+          prior <- storeInterface ph
+          (oldTops, oldInferred) <- case prior of
+            Just x -> pure x
+            Nothing
+              | major -> do
+                  putStrLn ("  note: the prior version " ++ name ++ "." ++ pv ++ " cannot be re-checked by this compiler (above); nothing to compare, minting a major version")
+                  pure ([], [("(prior " ++ pv ++ " cannot be re-checked)", "")])
+              | otherwise -> do
+                  hPutStrLn stderr ("commit refused: the prior version " ++ name ++ "." ++ pv ++ " (.fpr/store/" ++ ph ++ ".fpr) cannot be re-checked by this compiler (above),")
+                  hPutStrLn stderr ("  so this version cannot be shown signature-compatible with it; re-run with --major to mint " ++ bump True pv)
+                  exitFailure
+                  pure ([], [])
           let oldSig = sigOf oldTops ++ inferredSig oldInferred
               compatible = oldSig `subsetOf` newSig
           if compatible
@@ -157,10 +171,18 @@ commitMain args = do
               writeVersion closure name v h file
               putStrLn ("committed " ++ name ++ "." ++ v ++ "#" ++ h ++ "  (patch: signature-compatible with " ++ pv ++ ")")
             else do
-              let missing = [s | s <- oldSig, s `notElem` newSig]
-              mapM_ (\s -> putStrLn ("  incompatible: " ++ pv ++ " exported `" ++ s ++ "`, this version does not")) missing
+              let missing = nub [s | s <- oldSig, s `notElem` newSig]
+                  -- a root-declared nominal type's identity is Type@<version
+                  -- hash> (its runtime tid follows the unit hash), so an
+                  -- export that mentions one differs in EVERY new version
+                  renamed = [s | s <- missing, ('@' : ph) `isInfixOf` s, replaceAll ('@' : ph) ('@' : h) s `elem` newSig]
+                  real = [s | s <- missing, s `notElem` renamed]
+              mapM_ (\s -> putStrLn ("  incompatible: " ++ pv ++ " exported `" ++ s ++ "`, this version does not")) real
+              unless (null renamed) $
+                putStrLn ("  incompatible: " ++ show (length renamed) ++ " export(s) differ only because they mention this module's own nominal types, whose identity is Type@<version hash> (" ++ "@" ++ ph ++ " -> @" ++ h ++ "): a value of the old type is not a value of the new one")
               unless major $ do
-                hPutStrLn stderr ("commit refused: not a compatible subset of " ++ pv ++ " — re-run with --major to mint " ++ bump True pv)
+                hPutStrLn stderr ("commit refused: not a compatible subset of " ++ pv ++ " — re-run with --major to mint " ++ bump True pv
+                  ++ (if null real && not (null renamed) then " (only nominal type identities changed; pinned users keep " ++ pv ++ " from the store until re-pinned with `fpr pin --update`)" else ""))
                 exitFailure
               let v = bump True pv
               writeVersion closure name v h file
@@ -178,10 +200,35 @@ commitMain args = do
     appendFile' p s = do
       createDirectoryIfMissing True ".fpr"
       appendFile p s
+    -- The prior version is an immutable blob that the checker of its day
+    -- admitted.  Its interface comes from the normal checker minus the
+    -- safe/unsafe lint (Compile.recordedInterface): that lint tightens
+    -- between releases and no edit can update a committed blob.  A prior
+    -- version that no longer loads, reproduces its own hash, or TYPE-checks
+    -- yields Nothing (refused, or a major version under --major).
     storeInterface h = do
-      mu <- storeUnit h
-      interface <- Compile.checkedInterface (storeDir ++ "/" ++ h ++ ".fpr")
-      pure (muTops mu, interface)
+      let p = storeDir ++ "/" ++ h ++ ".fpr"
+      ok <- doesFileExist p
+      unless ok $ hPutStrLn stderr ("commit refused: prior version blob missing: " ++ p) >> exitFailure
+      cache <- newIORef M.empty
+      loaded <- loadModule cache [] p
+      case loaded of
+        Left e -> putStrLn ("  prior version " ++ p ++ " cannot load: " ++ e) >> pure Nothing
+        Right mu
+          | muHash mu /= h -> do
+              -- only possible for a blob committed before the closure rule:
+              -- an unpinned use resolves to TODAY's file, so the blob no
+              -- longer hashes to its own name
+              let loose = [a ++ " = use \"" ++ spec ++ "\"" | TUse a spec <- muTops mu, '#' `notElem` spec]
+              putStrLn ("  prior version " ++ p ++ " no longer reproduces its hash (now #" ++ muHash mu ++ ")"
+                ++ (if null loose then "" else ": it predates the closure rule and has unpinned use(s) " ++ intercalate ", " loose ++ ", which resolve to today's files"))
+              pure Nothing
+          | otherwise -> do
+              r <- try (Compile.recordedInterface p)
+              case r of
+                Left (ExitFailure _) -> pure Nothing
+                Left ExitSuccess -> pure Nothing
+                Right interface -> pure (Just (muTops mu, interface))
     storeUnit h = do
       let p = storeDir ++ "/" ++ h ++ ".fpr"
       ok <- doesFileExist p
@@ -193,6 +240,175 @@ commitMain args = do
         Right mu -> do
           unless (muHash mu == h) $ hPutStrLn stderr "commit refused: prior version blob hash mismatch" >> exitFailure
           pure mu
+
+replaceAll :: String -> String -> String -> String
+replaceAll from to = go
+  where
+    go [] = []
+    go t@(c : rest)
+      | from `isPrefixOf` t = to ++ go (drop (length from) t)
+      | otherwise = c : go rest
+
+-- Run a checker step that reports through exitFailure; on failure name what
+-- was refused (the checker's own diagnostics are already printed above).
+checkedOrRefuse :: String -> IO a -> IO a
+checkedOrRefuse why act = do
+  r <- try act
+  case r of
+    Right x -> pure x
+    Left (ExitFailure _) -> hPutStrLn stderr why >> exitFailure
+    Left ExitSuccess -> throwIO ExitSuccess
+
+-- ---- fpr pin: write the pins `fpr commit` asks for --------------------------
+--
+--   fpr pin <module.fpr>             pin every unpinned `use "spec"` in the file
+--                                    to the hash it resolves to now
+--   fpr pin <module.fpr> --deps      first do the same, recursively and
+--                                    dependencies first, for every scratch module
+--                                    of the closure under the current directory
+--                                    (never the toolchain's files, never
+--                                    .fpr/store)
+--   fpr pin <module.fpr> --update    also RE-pin pinned uses whose scratch source
+--                                    has moved on: the supported migration (the
+--                                    old pin keeps resolving from the store until
+--                                    you run this)
+--   fpr pin <module.fpr> --update=std/actor,ep
+--                                    re-pin only those specs, plus any pin whose
+--                                    module this run rewrote (the cascade)
+--   --dry-run                        print the edits, write nothing
+--
+-- Edits are textual and exact: only the string literal after `use` changes,
+-- so comments and layout survive.  A file whose re-pinned form no longer
+-- loads is restored and reported.  Nothing is committed: run `fpr commit`
+-- afterwards, dependencies first (the order this command printed).
+pinMain :: [String] -> IO ()
+pinMain args = do
+  let flags = [a | a <- args, "--" `isPrefixOf` a]
+      files = [a | a <- args, not ("--" `isPrefixOf` a)]
+      updateOnly = concat [splitComma (drop (length "--update=") f) | f <- flags, "--update=" `isPrefixOf` f]
+      unknown = [f | f <- flags, f `notElem` ["--deps", "--dry-run", "--update"], not ("--update=" `isPrefixOf` f)]
+      mode = PinMode ("--deps" `elem` flags) ("--dry-run" `elem` flags) ("--update" `elem` flags) updateOnly
+  unless (null unknown) $ hPutStrLn stderr ("pin: unknown flag(s): " ++ unwords unknown) >> exitFailure
+  file <- case files of
+    [f] -> pure f
+    _ -> hPutStrLn stderr "usage: fpr pin <module.fpr> [--deps] [--update | --update=spec,...] [--dry-run]" >> exitFailure >> pure ""
+  ok <- doesFileExist file
+  unless ok $ hPutStrLn stderr ("pin: no such file: " ++ file) >> exitFailure
+  cwd <- getCurrentDirectory >>= canonicalizePath
+  root <- canonicalizePath file
+  (_, order) <- pinFile mode cwd ([], []) root
+  rel <- mapM makeRelativeToCurrentDirectory (reverse order)
+  putStrLn
+    ( if null rel
+        then "pin: nothing to change"
+        else (if pmDry mode then "pin: would rewrite " else "pin: rewrote ") ++ show (length rel) ++ " file(s), commit them in this order: " ++ unwords rel
+    )
+  where
+    splitComma t = case break (== ',') t of
+      (a, ',' : b) -> filter (not . null) [a] ++ splitComma b
+      (a, _) -> filter (not . null) [a]
+
+data PinMode = PinMode {pmDeps :: Bool, pmDry :: Bool, pmUpdateAll :: Bool, pmUpdateOnly :: [String]}
+
+-- (visited, rewritten newest-first) threaded through a post-order walk.
+pinFile :: PinMode -> FilePath -> ([FilePath], [FilePath]) -> FilePath -> IO ([FilePath], [FilePath])
+pinFile mode cwd (visited, changed) path
+  | path `elem` visited = pure (visited, changed)
+  | otherwise = do
+      src <- readFile path
+      length src `seq` pure ()
+      loaded <- freshLoad path
+      tops <- case loaded of
+        Left e -> hPutStrLn stderr e >> exitFailure >> pure []
+        Right mu -> pure (muTops mu)
+      let dir = takeDirectory path
+      targets <- forM [(a, spec) | TUse a spec <- tops] $ \(_, spec) -> do
+        let (nm, h) = specPartsP spec
+        p <- resolveScratch dir nm
+        pure (spec, nm, h, p)
+      -- dependencies first: a scratch dependency under this tree that this
+      -- run may rewrite (unpinned, or pinned and selected for --update)
+      let recurseInto (_, nm, h, p) = case p of
+            Just q | pmDeps mode && local q && (null h || updating nm || pmUpdateAll mode || not (null (pmUpdateOnly mode))) -> Just q
+            _ -> Nothing
+      (visited', changed') <-
+        foldM (\acc t -> maybe (pure acc) (pinFile mode cwd acc) (recurseInto t)) (path : visited, changed) targets
+      -- then this file, from each dependency's CURRENT hash
+      edits <- fmap concat $ forM targets $ \(spec, nm, h, p) -> case p of
+        Nothing
+          | null h -> hPutStrLn stderr ("pin: cannot resolve " ++ show spec ++ " from " ++ path) >> exitFailure >> pure []
+          | otherwise -> pure []
+        Just q -> do
+          let cascaded = q `elem` changed'
+          if not (null h) && not (updating nm || cascaded)
+            then pure []
+            else
+              if pmDry mode && cascaded
+                then pure [(spec, nm ++ "#<new hash>")]
+                else do
+                  r <- freshLoad q
+                  case r of
+                    Left e -> hPutStrLn stderr e >> exitFailure >> pure []
+                    Right mu
+                      | muHash mu == h -> pure []
+                      | otherwise -> pure [(spec, nm ++ "#" ++ muHash mu)]
+      if null edits
+        then pure (visited', changed')
+        else do
+          shown <- makeRelativeToCurrentDirectory path
+          mapM_ (\(old, new) -> putStrLn ("  " ++ shown ++ ": use \"" ++ old ++ "\" -> use \"" ++ new ++ "\"")) edits
+          if pmDry mode
+            then pure (visited', path : changed')
+            else do
+              let src' = foldl (\t (old, new) -> rewriteUse old new t) src edits
+              writeFile path src'
+              check <- freshLoad path
+              case check of
+                Right _ -> pure (visited', path : changed')
+                Left e -> do
+                  writeFile path src
+                  hPutStrLn stderr ("pin: " ++ shown ++ " does not load once re-pinned; restored it:\n" ++ e)
+                  exitFailure
+                  pure (visited', changed')
+  where
+    updating nm = pmUpdateAll mode || nm `elem` pmUpdateOnly mode
+    local q =
+      let r = makeRelative cwd q
+       in r /= q && take 1 (splitDirectories r) /= [".fpr"] && not (".." `isPrefixOf` r)
+    freshLoad q = do
+      cache <- newIORef M.empty
+      loadModule cache [] q
+
+-- The same lookup `use` makes for the SCRATCH file of a spec (Modules.loadDeps):
+-- importer-relative first, then the toolchain home / FPR_PATH roots.
+resolveScratch :: FilePath -> String -> IO (Maybe FilePath)
+resolveScratch dir nm = do
+  let f = if ".fpr" `isSuffixOf` nm then nm else nm ++ ".fpr"
+      p0 = if take 1 f == "/" then f else dir </> f
+  here <- doesFileExist p0
+  if here
+    then Just <$> canonicalizePath p0
+    else
+      if take 1 nm == "/"
+        then pure Nothing
+        else underHome f >>= maybe (pure Nothing) (fmap Just . canonicalizePath)
+
+specPartsP :: String -> (String, String)
+specPartsP spec = let (n, h) = break (== '#') spec in (n, drop 1 h)
+
+-- Replace the string literal of `use "old"` (any blanks after `use`) by
+-- `use "new"`; every other byte is kept.
+rewriteUse :: String -> String -> String -> String
+rewriteUse old new = go
+  where
+    lit = "\"" ++ old ++ "\""
+    go [] = []
+    go t@(c : rest)
+      | "use" `isPrefixOf` t,
+        (ws, after) <- span (`elem` " \t") (drop 3 t),
+        lit `isPrefixOf` after =
+          "use" ++ ws ++ "\"" ++ new ++ "\"" ++ go (drop (length lit) after)
+      | otherwise = c : go rest
 
 -- Free references to deprecated intMax/intMin in a module being committed.
 -- Local bindings (e.g. a module defining its own `intMax`) shadow the builtin.

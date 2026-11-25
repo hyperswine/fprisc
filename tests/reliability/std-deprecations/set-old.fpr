@@ -1,0 +1,4 @@
+# Must fail: std/set was removed with the Set type, and has no alias.
+profile base.
+Set = use "std/set".
+main = 0.

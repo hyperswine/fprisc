@@ -1,0 +1,15 @@
+# Compile fixture: pre-0.15.0 browser helper modules and their public names.
+profile base.
+B = use "std/browsercalc".
+Autocomplete = use "std/browserautocomplete".
+Feedback = use "std/browserfeedback".
+Storage = use "std/browserstorage".
+Metrics = use "std/livemetrics".
+scope = Autocomplete.scope.
+fromLoc = Autocomplete.from "loc".
+acSrc = Autocomplete.src Unit.
+theme = Feedback.theme True.
+fbSrc = Feedback.src Unit.
+stScript = Storage.script "app" "tok" (B.Id "x").
+rtt = Metrics.script (B.Id "rtt") "".
+main = _ = scope; _ = fromLoc; _ = acSrc; _ = theme; _ = fbSrc; _ = stScript; _ = rtt; 0.
