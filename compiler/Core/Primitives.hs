@@ -29,7 +29,9 @@ primArities = scalarPrimitives ++
     ("f64frombits", 2), ("f32frombits", 1),
     -- an interpolation's pieces in one tuple, one String out (runtime.c;
     -- Core.Opt.Pipeline buildStrings makes the calls, nothing else)
-    ("$strcatT", 1)
+    ("$strcatT", 1),
+    -- three or four pieces as arguments: no tuple to build
+    ("$strcat3", 3), ("$strcat4", 4)
   ]
   ++ [ ("F" ++ w ++ "." ++ op, 2)
        | w <- ["64", "32"], op <- ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="] ]

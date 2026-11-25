@@ -986,6 +986,25 @@ V fpr_alloc(V raw_bytes) {
   bump_open(fpr_hart()); /* the allocation can park: the actor can migrate */
   return r;
 }
+/* A managed object from the inline bump window (fpr.h, bump_slab), as
+ * generated code takes a constructor cell: the window is always the current
+ * pool's bump slab, so this is fpr_alloc's bucketless fast path without the
+ * pool lookup. 0 when the window is closed (a cost-probe build, the shared
+ * plane, before the first fpr_alloc), the cell does not fit, or its size
+ * class has a recycled block: the caller then calls fpr_alloc. */
+static inline __attribute__((always_inline)) V alloc_window(fpr_hart_t *h, uw raw_bytes) {
+  fpr_slab_t *sl = h->bump_slab;
+  if (!sl || raw_bytes > (uw)16 * FPR_NBUCKETS - FPR_MANAGED_PREFIX) return 0;
+  uw total = (raw_bytes + FPR_MANAGED_PREFIX + 15) & ~(uw)15;
+  if (total > (uw)(sl->end - sl->hp) || h->bump_bkt[total / 16 - 1]) return 0;
+  char *p = sl->hp;
+  sl->hp += total;
+  sl->owner->allocated += total;
+  h->region_bytes += total;
+  allocation_header(p, total, sl, FPR_MANAGED_PREFIX);
+  alloc_zero_pad(p + FPR_MANAGED_PREFIX, raw_bytes, total, FPR_MANAGED_PREFIX);
+  return (V)(p + FPR_MANAGED_PREFIX);
+}
 /* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
 V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_raw_in(h, base_pool(h), raw_bytes, 1); }
 V fpr_alloc_raw(V raw_bytes) {
@@ -5312,7 +5331,8 @@ V fpr_prim_fn_str(V v) {
     sw value = UNTAG(v);
     if (value >= 0 && value <= 9) return (V)&byte_strings['0' + value];
     uw width = decimal_width(value);
-    str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + width);
+    str_t *out = (str_t *)alloc_window(fpr_hart(), sizeof(str_t) + width);
+    if (!out) out = (str_t *)fpr_alloc(sizeof(str_t) + width);
     out->tid = T_STR; out->var = 0; out->len = width;
     write_decimal(out->bytes, width, value);
     return (V)out;
@@ -5347,49 +5367,73 @@ static uw pieces_arity(V t) {
   return 0;
 }
 #define PIECES_KEPT 16 /* the sizing pass keeps this many pieces' widths */
-V fpr_prim_fn__x24strcatT(V t) {
-  uw n = pieces_arity(t);
+/* The pieces from p[0..n): inline into each entry, so a fixed-count entry
+ * ($strcat3, $strcat4) is unrolled for its count. The sizing pass notes
+ * each kept piece's kind and width; the copy pass dispatches on the note
+ * instead of testing the tag and type again. */
+enum { PIECE_INT, PIECE_STR, PIECE_OTHER };
+static inline __attribute__((always_inline)) V strcat_pieces(const V *p, uw n) {
   uw total = 0;
-  uw kept[PIECES_KEPT]; /* an Int piece's decimal width, so the copy pass need not size it again */
+  uw kept[PIECES_KEPT]; /* each piece's width, so the copy pass need not size it again */
+  uint8_t kind[PIECES_KEPT];
+#pragma GCC unroll 4
   for (uw i = 0; i < n; i++) {
-    V v = ((V *)((char *)t + 8))[i];
+    V v = p[i];
     uw len;
-    if (ISINT(v)) len = decimal_width(UNTAG(v));
-    else if (TID(v) == T_STR) len = ((str_t *)v)->len;
+    uint8_t k = PIECE_OTHER;
+    if (ISINT(v)) { len = decimal_width(UNTAG(v)); k = PIECE_INT; }
+    else if (TID(v) == T_STR) { len = ((str_t *)v)->len; k = PIECE_STR; }
     else if (TID(v) == T_BIGINT) len = bi_to_str((const bigint_t *)v)->len;
     else { rpos = 0; render(v); len = (uw)rpos; }
-    if (i < PIECES_KEPT) kept[i] = len;
+    if (i < PIECES_KEPT) { kept[i] = len; kind[i] = k; }
     if (len > ~(uw)0 - sizeof(str_t) - total) fpr_trap("string pieces: size overflow");
     total += len;
   }
-  str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + total);
+  str_t *out = (str_t *)alloc_window(fpr_hart(), sizeof(str_t) + total);
+  if (!out) out = (str_t *)fpr_alloc(sizeof(str_t) + total);
   out->tid = T_STR;
   out->var = 0;
   out->len = total;
-  uw at = 0;
+  uint8_t *at = out->bytes;
+#pragma GCC unroll 4
   for (uw i = 0; i < n; i++) {
-    V v = ((V *)((char *)t + 8))[i];
-    if (ISINT(v)) {
+    V v = p[i];
+    uint8_t k = i < PIECES_KEPT ? kind[i] : (ISINT(v) ? PIECE_INT : TID(v) == T_STR ? PIECE_STR : PIECE_OTHER);
+    if (k == PIECE_INT) {
       sw value = UNTAG(v);
       uw width = i < PIECES_KEPT ? kept[i] : decimal_width(value);
-      write_decimal(out->bytes + at, width, value);
+      write_decimal(at, width, value);
       at += width;
-    } else if (TID(v) == T_STR) {
+    } else if (k == PIECE_STR) {
       str_t *x = (str_t *)v;
-      str_copy(out->bytes + at, x->bytes, x->len);
+      str_copy(at, x->bytes, x->len);
       at += x->len;
     } else if (TID(v) == T_BIGINT) {
       str_t *x = bi_to_str((const bigint_t *)v);
-      str_copy(out->bytes + at, x->bytes, x->len);
+      str_copy(at, x->bytes, x->len);
       at += x->len;
     } else {
       rpos = 0;
       render(v);
-      __builtin_memcpy(out->bytes + at, rbuf, (uw)rpos);
+      __builtin_memcpy(at, rbuf, (uw)rpos);
       at += (uw)rpos;
     }
   }
   return (V)out;
+}
+V fpr_prim_fn__x24strcatT(V t) {
+  uw n = pieces_arity(t);
+  return strcat_pieces((const V *)((char *)t + 8), n);
+}
+/* Three or four pieces come as arguments: no tuple is built for them
+ * (Core.Opt.Pipeline buildStrings), and the count is known here. */
+V fpr_prim_fn__x24strcat3(V a, V b, V c) {
+  V p[3] = {a, b, c};
+  return strcat_pieces(p, 3);
+}
+V fpr_prim_fn__x24strcat4(V a, V b, V c, V d) {
+  V p[4] = {a, b, c, d};
+  return strcat_pieces(p, 4);
 }
 
 fpr_lock_t fpr_con_lock; /* console: one LINE at a time across harts */
