@@ -106,6 +106,17 @@ keys decode = Keys decode.
 keysUp decode = KeysUp decode.
 wheel decode = Wheel decode.
 
+# ---- standard evdev keycodes -----------------------------------------------------------------
+# Named constants so games match readable names instead of raw integers.
+keyEsc = 1.       key1 = 2.         key2 = 3.         key3 = 4.         key4 = 5.
+key5 = 6.         key6 = 7.         key7 = 8.         key8 = 9.         key9 = 10.
+key0 = 11.        keyBackspace = 14. keyTab = 15.     keyQ = 16.        keyW = 17.
+keyE = 18.        keyR = 19.        keyP = 25.        keyEnter = 28.    keyA = 30.
+keyS = 31.        keyD = 32.        keyG = 34.        keyH = 35.        keyL = 38.
+keyC = 46.        keyN = 49.        keySpace = 57.    keyHome = 102.    keyUp = 103.
+keyPageUp = 104.  keyLeft = 105.    keyRight = 106.   keyEnd = 107.     keyDown = 108.
+keyPageDown = 109. keyDelete = 111.
+
 # ---- what view answers -----------------------------------------------------------------------
 # One frame as layers, back to front: the world (a scene the renderer walks)
 # and the overlay drawn over it (the HUD). Both are the game's own values; the
