@@ -447,6 +447,7 @@ topDecl =
   choice
     [ try unsafeModuleDecl,
       try profileDecl,
+      try deprecatedDecl,
       evalDecl,
       sigDecl,
       structDecl,
@@ -487,6 +488,17 @@ profileDecl = do
   name <- lexeme (choice (map (\w -> try (string w <* notFollowedBy (satisfy identChar))) profileNames))
   dotTerm
   pure (TSig "$profile" ([], TCon name []) [])
+
+-- `deprecated "std/binary".` — a compatibility module names its
+-- replacement.  Represented as a TSig for the reserved name
+-- `$deprecated:<path>` so Modules.hs can emit a compile warning without
+-- a new STop constructor.  Dropped before codegen (it is not a foreign).
+deprecatedDecl :: P STop
+deprecatedDecl = do
+  _ <- lexeme (string "deprecated" <* notFollowedBy (satisfy identChar))
+  spec <- rawString
+  dotTerm
+  pure (TSig ("$deprecated:" ++ spec) ([], TCon "Unit" []) [])
 
 -- the profile a file declares, from either form
 evalDecl :: P STop

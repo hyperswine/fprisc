@@ -1,0 +1,4 @@
+# Compile fixture: the pre-0.15.0 std/appearance import (inventory, pos1).
+profile base.
+Appearance = use "std/appearance".
+main = _ = print (List.len (Appearance.tokens True)); 0.

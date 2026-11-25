@@ -55,6 +55,7 @@ import Frontend.Traverse (stripPosTops)
 import Frontend.Diagnostics (Anchors, Sources, bindAnchors)
 import Numeric (showHex)
 import Home (underHome)
+import StdDeprecations
 import System.Directory (canonicalizePath, doesFileExist)
 import System.FilePath (takeDirectory, (</>))
 import Text.Megaparsec (errorBundlePretty, parse)
@@ -121,6 +122,8 @@ data ModUnit = ModUnit
   { muHash :: String,
     muTops :: [STop], -- as parsed (uses pin-normalized, not yet qualified)
     muAliases :: [(Name, String)], -- import alias -> dep hash
+    muRenames :: [(Name, M.Map Name Name)], -- import alias -> deprecated export remaps
+    muNotes :: [String], -- deprecation warnings from this unit's uses
     muAnchors :: Anchors, -- bind name -> (file, line), pre-qualification
     muSrc :: (FilePath, String) -- the unit's source (the locator scans it)
   }
@@ -143,83 +146,92 @@ loadDeps ::
   [FilePath] ->
   FilePath ->
   [STop] ->
-  IO (Either String ([(Name, String)], [String]))
+  IO (Either String ([(Name, String)], [String], [(Name, M.Map Name Name)]))
 loadDeps cache stack dir tops = do
   let uses = [(a, s) | TUse a s <- tops]
-  r <- foldM step (Right ([], [])) uses
-  pure (fmap (\(as, ns) -> (reverse as, reverse ns)) r)
+  r <- foldM step (Right ([], [], [])) uses
+  pure (fmap (\(as, ns, rs) -> (reverse as, reverse ns, reverse rs)) r)
   where
     step (Left e) _ = pure (Left e)
-    step (Right (as, ns)) (alias, spec) = do
-      let (nm, wantHash) = specParts spec
-          path0 = specFile dir nm
-      -- importer-relative first, as always; a miss then looks under the
-      -- toolchain's home (Home.hs), so a program OUTSIDE the tree can say
-      -- `use "std/mvu"` and find the installed std.  The error names
-      -- both places, because "no such module file" with one path was
-      -- exactly the message that used to send people cd-ing around.
-      here <- doesFileExist path0
-      homeHit <- if here || take 1 nm == "/" then pure Nothing else underHome (specFile "" nm)
-      let path = maybe path0 id homeHit
-      r00 <- loadModule cache stack path
-      let r0 = case (r00, homeHit, here) of
-            (Left _, Nothing, False) ->
-              Left ("use: no such module file: " ++ path0 ++ "  (nor " ++ specFile "$FPR_HOME" nm ++ ")")
-            _ -> r00
-      -- the committed-version fallback: a pinned use whose scratch file
-      -- is missing OR has drifted from the pin resolves from the local
-      -- .fpr store (fpr commit's content blobs) — the scratch file is a
-      -- working copy, the store entry is the identity.
-      r <- case r0 of
-        Right mu | null wantHash || muHash mu == wantHash -> pure r0
-        _ | not (null wantHash) -> do
-          -- the store: this tree's first, the toolchain home's second
-          -- (an installed fpr carries the versions its std was released with)
-          let sp0 = ".fpr/store/" ++ wantHash ++ ".fpr"
-          local <- doesFileExist sp0
-          homeStore <- if local then pure Nothing else underHome sp0
-          let sp = maybe sp0 id homeStore
-              inStore = local || homeStore /= Nothing
-          if not inStore
-            then pure r0
-            else do
-              rs <- loadModule cache stack sp
-              case rs of
-                Right ms | muHash ms == wantHash -> do
-                  putStrLn ("use: " ++ nm ++ "#" ++ take 8 wantHash ++ "… resolved from .fpr store (committed version)")
-                  pure rs
-                _ -> pure r0
-        _ -> pure r0
-      pure $ case r of
-        Left e -> Left e
-        Right mu
-          -- packaging rule: blanket `unsafe module.` is CORE-ONLY.  A
-          -- module used under a std.* name must carry per-function
-          -- unsafe signatures (the strict mode) -- blanket-unsafe
-          -- library code can only ship as core.*.
-          | "std/" `isInfixOf` nm || "std." `isPrefixOf` nm,
-            or [ True | TSig "$module" _ pres <- muTops mu,
-                        any (\p -> (fst <$> p) == Just "$unsafe") pres ] ->
-              Left
-                ( "use: " ++ nm ++ " declares blanket `unsafe module.` -- "
-                    ++ "std.* modules must mark unsafe per function "
-                    ++ "(blanket unsafe is core-only); "
-                    ++ "eliminate the unsafes or package it as core.*"
-                )
-          | not (null wantHash) && muHash mu /= wantHash ->
-              Left
-                ( "use: hash mismatch for " ++ nm
-                    ++ ":\n  pinned  #" ++ wantHash
-                    ++ "\n  on disk #" ++ muHash mu
-                    ++ "\n(the module's AST changed since it was pinned; `fpr commit` the module to make the pin resolvable from the store)"
-                )
-          | otherwise ->
-              let note =
-                    [ "use: " ++ alias ++ " resolves to \"" ++ nm ++ "#" ++ muHash mu
-                        ++ "\"  (pin it to freeze this exact code)"
-                      | null wantHash
-                    ]
-               in Right ((alias, muHash mu) : as, note ++ ns)
+    step (Right acc@(as, ns, rens)) (alias, spec) = do
+      let (nm0, wantHash) = specParts spec
+      case retiredStdModuleMessage nm0 of
+        Just msg | null wantHash -> pure (Left msg)
+        _ -> do
+          let dep = if null wantHash then lookupStdDeprecation nm0 else Nothing
+              nm = maybe nm0 depNew dep
+              depNotes = maybe [] (\d -> [deprecationWarning d]) dep
+              thisRenames = maybe [] depRenames dep
+              path0 = specFile dir nm
+          -- importer-relative first, as always; a miss then looks under the
+          -- toolchain's home (Home.hs), so a program OUTSIDE the tree can say
+          -- `use "std/mvu"` and find the installed std.  The error names
+          -- both places, because "no such module file" with one path was
+          -- exactly the message that used to send people cd-ing around.
+          here <- doesFileExist path0
+          homeHit <- if here || take 1 nm == "/" then pure Nothing else underHome (specFile "" nm)
+          let path = maybe path0 id homeHit
+          r00 <- loadModule cache stack path
+          let r0 = case (r00, homeHit, here) of
+                (Left _, Nothing, False) ->
+                  Left ("use: no such module file: " ++ path0 ++ "  (nor " ++ specFile "$FPR_HOME" nm ++ ")")
+                _ -> r00
+          -- the committed-version fallback: a pinned use whose scratch file
+          -- is missing OR has drifted from the pin resolves from the local
+          -- .fpr store (fpr commit's content blobs) — the scratch file is a
+          -- working copy, the store entry is the identity.
+          r <- case r0 of
+            Right mu | null wantHash || muHash mu == wantHash -> pure r0
+            _ | not (null wantHash) -> do
+              -- the store: this tree's first, the toolchain home's second
+              -- (an installed fpr carries the versions its std was released with)
+              let sp0 = ".fpr/store/" ++ wantHash ++ ".fpr"
+              local <- doesFileExist sp0
+              homeStore <- if local then pure Nothing else underHome sp0
+              let sp = maybe sp0 id homeStore
+                  inStore = local || homeStore /= Nothing
+              if not inStore
+                then pure r0
+                else do
+                  rs <- loadModule cache stack sp
+                  case rs of
+                    Right ms | muHash ms == wantHash -> do
+                      putStrLn ("use: " ++ nm ++ "#" ++ take 8 wantHash ++ "… resolved from .fpr store (committed version)")
+                      pure rs
+                    _ -> pure r0
+            _ -> pure r0
+          pure $ case r of
+            Left e -> Left e
+            Right mu
+              -- packaging rule: blanket `unsafe module.` is CORE-ONLY.  A
+              -- module used under a std.* name must carry per-function
+              -- unsafe signatures (the strict mode) -- blanket-unsafe
+              -- library code can only ship as core.*.
+              | "std/" `isInfixOf` nm || "std." `isPrefixOf` nm,
+                or [ True | TSig "$module" _ pres <- muTops mu,
+                            any (\p -> (fst <$> p) == Just "$unsafe") pres ] ->
+                  Left
+                    ( "use: " ++ nm ++ " declares blanket `unsafe module.` -- "
+                        ++ "std.* modules must mark unsafe per function "
+                        ++ "(blanket unsafe is core-only); "
+                        ++ "eliminate the unsafes or package it as core.*"
+                    )
+              | not (null wantHash) && muHash mu /= wantHash ->
+                  Left
+                    ( "use: hash mismatch for " ++ nm
+                        ++ ":\n  pinned  #" ++ wantHash
+                        ++ "\n  on disk #" ++ muHash mu
+                        ++ "\n(the module's AST changed since it was pinned; `fpr commit` the module to make the pin resolvable from the store)"
+                    )
+              | otherwise ->
+                  let note =
+                        [ "use: " ++ alias ++ " resolves to \"" ++ nm ++ "#" ++ muHash mu
+                            ++ "\"  (pin it to freeze this exact code)"
+                          | null wantHash
+                        ]
+                   in let pragmaNs = deprecatedPragmaNote nm0 [n | TSig n _ _ <- muTops mu]
+                          moreRens = if null thisRenames then rens else (alias, M.fromList thisRenames) : rens
+                       in Right ((alias, muHash mu) : as, pragmaNs ++ depNotes ++ note ++ ns, moreRens)
 
 loadModule ::
   IORef (M.Map FilePath ModUnit) ->
@@ -246,12 +258,12 @@ loadModule cache stack path0 = do
                   r <- loadDeps cache (path : stack) (takeDirectory path) tops
                   case r of
                     Left e -> pure (Left e)
-                    Right (aliases, _notes) -> do
+                    Right (aliases, notes, renames) -> do
                       -- pin-normalize this module's own uses before hashing:
                       -- the hash is a Merkle root over the dependency tree
                       let pinned = [pinUse aliases t | t <- tops]
                           h = hashAST pinned
-                          mu = ModUnit h tops aliases (bindAnchors path src tops) (path, src)
+                          mu = ModUnit h tops aliases renames notes (bindAnchors path src tops) (path, src)
                       modifyIORef' cache (M.insert path mu)
                       pure (Right mu)
   where
@@ -276,7 +288,8 @@ data REnv = REnv
     -- module members, where the whole name qualifies.
     reSelfStructs :: S.Set Name, -- this unit's own struct tops
     reDepStructs :: M.Map Name (S.Set Name), -- import alias -> dep's struct tops
-    reDepSelfNames :: M.Map Name (S.Set Name) -- import alias -> dep's own defined names
+    reDepSelfNames :: M.Map Name (S.Set Name), -- import alias -> dep's own defined names
+    reDepRenames :: M.Map Name (M.Map Name Name) -- import alias -> deprecated export remaps
   }
 
 -- resolve one name occurrence (non-binding position).
@@ -295,11 +308,18 @@ refName env conPos bound nm0
         Just t <- M.lookup h (reAliasSubst env) =
           chase (k + 1) (t ++ "." ++ rest)
       | otherwise = n
+    applyDepRenames a rest =
+      case M.lookup a (reDepRenames env) of
+        Nothing -> rest
+        Just m ->
+          case break (== '.') rest of
+            (s, more) -> M.findWithDefault s s m ++ more
     go nm
       | not conPos, Just h <- M.lookup nm (reAliases env) = Right h -- bare alias = hash string
-      | (a, '.' : rest) <- break (== '.') nm,
+      | (a, '.' : rest0) <- break (== '.') nm,
         Just h <- M.lookup a (reAliases env) =
-          case break (== '.') rest of
+          let rest = applyDepRenames a rest0
+           in case break (== '.') rest of
             -- `M.Rand.next` where Rand is a struct in M: the struct name
             -- qualifies, the field stays -- `Rand@hash.next` is the flat
             -- global expandStructs creates
@@ -339,10 +359,11 @@ renameTops env qh tops = concatMap top tops
     -- is the HAL's (an fpr_g_ symbol some C file defines), global by
     -- nature, so it is never qualified with this module's hash.
     defined = S.fromList [n | TBind n _ _ _ <- tops]
-    qualSig n = if n == "$module" || S.member n defined then qual n else n
+    qualSig n = if n == "$module" || isDeprecatedPragma n || S.member n defined then qual n else n
     top = \case
       TUse {} -> [] -- consumed by the loader
       TAlias {} -> [] -- folded into reAliasSubst
+      TSig n _ _ | isDeprecatedPragma n -> []
       TSkip -> []
       TShape n fs -> [TShape n [(f, ty t) | (f, t) <- fs]] -- structural: never qualified
       TSig n (as, r) pres -> [TSig (qualSig n) (map ty as, ty r) pres]
@@ -448,11 +469,12 @@ loadProgram preludeTops rootPath rootTops = do
   r <- loadDeps cache [] (takeDirectory rootPath) rootTops
   case r of
     Left e -> pure (Left e)
-    Right (rootAliases, notes) -> do
+    Right (rootAliases, notes, rootRenames) -> do
       units <- M.elems <$> readIORef cache -- every loaded module, once per hash
       -- notes from nested (module-internal) unpinned uses:
-      depNotes <- fmap concat . forM units $ \mu ->
-        pure ["  (inside a module) use of unpinned dep resolves to #" ++ h | (_, h) <- muAliases mu, False] -- deps are pin-normalized silently
+      -- deprecation warnings from units reached through the root
+      -- (unpinned-use pin hints stay silent for nested modules, as before)
+      let depNotes = filter ("warning:" `isPrefixOf`) (concatMap muNotes units)
       let unitSelfNames =
             M.fromList [(muHash mu, unitDefinedNames (muTops mu)) | mu <- units]
           unitStructs =
@@ -469,7 +491,8 @@ loadProgram preludeTops rootPath rootTops = do
                 reAliasSubst = M.fromList [(a, b) | TAlias a b <- rootTops],
                 reSelfStructs = S.empty, -- root structs keep their names; refs already match
                 reDepStructs = depMap unitStructs rootAliases,
-                reDepSelfNames = depMap unitSelfNames rootAliases
+                reDepSelfNames = depMap unitSelfNames rootAliases,
+                reDepRenames = M.fromList rootRenames
               }
           root' = renameTops rootEnv "" rootTops
           merged = preludeTops ++ concat unitTops ++ root'
@@ -519,6 +542,7 @@ loadProgram preludeTops rootPath rootTops = do
                   M.fromList
                     [ (a, M.findWithDefault S.empty h unitSelfNames)
                       | (a, h) <- muAliases mu
-                    ]
+                    ],
+                reDepRenames = M.fromList (muRenames mu)
               }
        in renameTops env (muHash mu) (muTops mu)

@@ -1,0 +1,6 @@
+# Compile fixture: the pre-0.15.0 std/pagination import (inventory).
+profile base.
+P = use "std/pagination".
+main =
+  r = P.plan 10 25 1;
+  _ = print r.index; _ = print r.pages; _ = print r.first; 0.
