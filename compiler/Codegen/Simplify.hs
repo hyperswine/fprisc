@@ -30,6 +30,7 @@
 module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
+import Data.List (mapAccumL)
 import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.VectorRead (expandViews)
@@ -85,6 +86,7 @@ passesWith options=
        | stringScan options]
     ++ [("carry-raw-ints", carryRawAll)]
     ++ [("carry-raw-i64", \f -> if hasCycle f && hasI64Box f then forwardI64Bits (dropUnusedParameters (dropDeadPure (carryRawI64 f))) else f)]
+    ++ [("fold-constant-arithmetic", dropDeadPure . foldConstantArith)]
     ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
@@ -744,6 +746,34 @@ foldDivisors fn=fn {fnBlocks=map block (fnBlocks fn)}
       Instr d@(Just (v,_)) (OArith Mul l r) | Just _<-product' v -> Instr d (OArithU Mul l r)
       Instr d@(Just _) (OArith Sub x p) | Just x'<-product' p, x'==x -> Instr d (OArithU Sub x p)
       _ -> i
+
+-- Exact Int +, -, * of two literals whose result is a small Int on every
+-- target width: `ctrl keyC` after inlining is `4000 + 46`
+-- (docs/2026-11-26-NULLARY-LITERAL-FOLD.md). The bound is the 32-bit
+-- targets' tagged range with room to spare, so the fast path could not have
+-- overflowed and the result needs no check on any width.
+foldConstantArith :: Fn -> Fn
+foldConstantArith fn=fn {fnBlocks=snd (mapAccumL block next0 (fnBlocks fn))}
+  where
+    defs=M.fromList [(v,o) | b<-fnBlocks fn, Instr (Just (v,_)) o<-bInstrs b]
+    next0=1+maximum (0 : [n | b<-fnBlocks fn, (VId n,_)<-blockDefs b])
+    literal v=case M.lookup v defs of
+      Just (OConstInt d) -> Just d
+      Just (OTag u) | Just (OConstInt d)<-M.lookup u defs -> Just d
+      _ -> Nothing
+    small d=abs d<2^(28::Int)
+    compute op a b=case op of Add -> Just (a+b); Sub -> Just (a-b); Mul -> Just (a*b); _ -> Nothing
+    known op x y=do
+      a<-literal x; b<-literal y
+      r<-compute op a b
+      if small a && small b && small r then Just r else Nothing
+    block next b=let (next',groups)=mapAccumL instr next (bInstrs b) in (next',b {bInstrs=concat groups})
+    instr next i=case i of
+      Instr d@(Just (_,TVal)) (OArithVal op x y) | Just r<-known op x y ->
+        (next+1,[Instr (Just (VId next,TInt)) (OConstInt r),Instr d (OTag (VId next))])
+      Instr d@(Just (_,TInt)) (OArith op x y) | Just r<-known op x y -> (next,[Instr d (OConstInt r)])
+      Instr d@(Just (_,TInt)) (OArithU op x y) | Just r<-known op x y -> (next,[Instr d (OConstInt r)])
+      _ -> (next,[i])
 
 -- raw loop-carried Ints, only where a header could carry one (a loop's
 -- header parameter is a tagged word some back edge tags)

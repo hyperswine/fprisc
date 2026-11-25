@@ -154,6 +154,7 @@ approvedLibraries =
     "std/javascript.fpr",
     "std/job.fpr",
     "std/journal.fpr",
+    "std/keys.fpr",
     "std/json.fpr",
     "std/keyedlist.fpr",
     "std/kvlog.fpr",

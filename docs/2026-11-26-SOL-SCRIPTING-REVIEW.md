@@ -152,3 +152,67 @@ Ranked by return on effort:
 5. **Unify the library with `std`** (audit item 6), so `sol/lib` and FP-RISC's `std`
    stop drifting apart. The same applies to the MVU surface: share the typed view,
    event and command types, and keep separate drivers.
+
+## 5. Amendment (26 November, later the same day)
+
+A second read of this page against the tree at `f607eb59`. Sections 1-4 stand;
+this section adds what they left out and gives each proposal a test.
+
+### 5.1 Success criteria for the proposed order
+
+Section 4 ranks five items but says how to tell none of them is done.
+
+1. **Reserved names and parser gaps.** A Sol check holds one script per row of
+   the 3.2 table. Defining `run` reports one error naming it as reserved;
+   `casesArg` parses; `exists`, `Try.stat` and `readPath` on a missing path
+   leave the parent folder absent; `"a" <= "b"` type-checks.
+2. **Step-by-step commit mode.** `tests/run.sol` and qos `checks/sweep.sol`
+   end without the "NOT atomic overall" line, with their escape counts at
+   zero or each remaining escape listed with its reason.
+3. **Libraries.** coscad `models/lib/num.sol` is deleted and the models
+   produce the same output; `spectre-uart.c` or `board-host.c` is replaced by
+   a Sol serial resource and the same board checks pass.
+4. **Linux toolchain.** `fprmeta` installs a released Linux archive on a
+   clean machine and `tests/sol-main-smoke.sol` passes from it.
+5. **One library.** A module that exists in both `sol/lib` and `std` has one
+   source.
+
+### 5.2 Findings that section 4 does not act on
+
+- **Safety opt-outs (3.3).** The `unsafe` marking that spreads from one
+  recursive function to every caller, and `unsafe program.`, are named as a
+  strain and then dropped. They belong before item 2: a commit mode that
+  scripts adopt under `unsafe program.` is not checked.
+- **The unrechecked list in 3.2** (quotes and braces in interpolation, guards
+  on local functions, `fn _ ->`, alias re-export, top-level values recomputed
+  on every reference). Recheck each at the current revision first, then put
+  the ones that still hold under item 1.
+- **`read`.** "Not reproduced here" leaves a silent misbehaviour open. The
+  Spectre port's script at the commit where it happened is the reproducer to
+  find; until it is found the item stays open rather than fixed.
+
+### 5.3 Corrections of emphasis
+
+- **Linux is a packaging gap, not a port.** CI builds the compiler and runs
+  the Sol checks in `debian:trixie` on every push (`.github/workflows/ci.yml`,
+  jobs `sol-native` and `sol-checks`). Item 4 is a release archive and an
+  index entry.
+- **The science vertical is cited as a goal and not assessed.** The only
+  evidence here is `csvplot.sol`. That plan needs its own review against its
+  milestones; this page should not be read as one.
+- **`result-sizes` passes.** Section 3.3 says the check currently fails. In a
+  push-tier run of `tests/run.sol` on macOS arm64 at `f607eb59` plus the
+  nullary literal fold, it passed and no known-failure entry was hit.
+- **QOS has no pointer to this page**, although qos `checks/sweep.sol` and
+  the Spectre port are half of its evidence.
+
+### 5.4 Order after this amendment
+
+1. Recheck the unrechecked list; then item 1 with its Sol check.
+2. Safety opt-outs: stop `unsafe` spreading to callers of a function whose
+   recursion has a stated measure.
+3. Step-by-step commit mode.
+4. Maths, bytes and serial libraries.
+5. Linux release archive; refresh the `sol` skill.
+6. One library with `std`, and the shared MVU types (see
+   [MVU alignment](2026-11-26-MVU-ALIGNMENT-INTENT.md), non-goals).

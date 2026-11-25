@@ -35,7 +35,7 @@ Pin = use "pin".
 Host = use "host".
 Trust = use "trust".
 
-metaVersion = "0.2.0".
+metaVersion = "0.2.1".
 
 # ---- what each name manages -------------------------------------------------------
 

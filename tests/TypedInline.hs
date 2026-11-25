@@ -46,8 +46,9 @@ checkInlining compile=do
          "ping : unsafe Int -> Int.","ping n = if n == 0 then 0 else pong (n - 1).",
          "pong : unsafe Int -> Int.","pong n = if n == 0 then 0 else ping (n - 1).",
          "joined : unsafe (Int,Int) -> Int.","joined (0,0) = 0.","joined (n,x) = joined (n - 1,x).",
-         "Token 1 = Type Int.","linear n = identity (Token n)."]
-      names=S.fromList ["identity","first","twice","apply","staged","unused","shadow","factory","closure","poly","recursive","ping","pong","joined","linear"]
+         "Token 1 = Type Int.","linear n = identity (Token n).",
+         "limit = 19.","derived = limit + 1.","capped n = if n == limit then 1 else derived."]
+      names=S.fromList ["identity","first","twice","apply","staged","unused","shadow","factory","closure","poly","recursive","ping","pong","joined","linear","limit","derived","capped"]
       (_,raw)=compile "typed-inline" source names
       a=right (Linked.artifact Linked.RootArtifact (names<>Native.nativeConstructors raw) S.empty raw)
       linked=right (Linked.linkArtifacts [a])
@@ -70,6 +71,10 @@ checkInlining compile=do
     (D.InlineDecision "twice" "identity" D.Inlined `elem` decisions)
   check ("inlining retains recursive-callee refusals: "++show (take 12 decisions))
     (D.InlineDecision "recursive" "recursive" D.RecursiveCallee `elem` decisions)
+  check ("a nullary integer literal is folded at its reference: "++show (take 12 decisions))
+    (not (global "limit" (body "capped")) && D.InlineDecision "capped" "limit" D.Inlined `elem` decisions)
+  check "a nullary definition that computes stays a reference, and keeps its own symbol"
+    (global "derived" (body "capped") && M.member "limit" (Native.nativeProgram after))
   check "closed program is checked after each round" (verifyClosedProgram (Native.nativeClosed after)==Right ())
   check "lexical clones do not manufacture new code entries" (M.keysSet (Native.nativeProgram before)==M.keysSet (Native.nativeProgram after))
   check "all binder identities remain unique" (length ids==S.size (S.fromList ids))

@@ -29,7 +29,11 @@ import qualified Data.Set as S
 -- recursive caller) may take a larger one than a call site elsewhere, since
 -- that is where the call is paid per iteration
 -- (docs/2026-10-27-FOLLOWUPS.md). Two budgets, weighed once.
-data Inlining=Inlining Catalog Int Int (M.Map Target (Either D.InlineReason (Template,S.Set String,Int)))
+-- The last field holds the nullary entries whose whole body is an integer
+-- literal (`keyR = 19.`). Naming one evaluates nothing, so a reference is
+-- replaced by the literal wherever a template of the same catalog may be
+-- inlined (docs/2026-11-26-MVU-ALIGNMENT-INTENT.md, step 2).
+data Inlining=Inlining Catalog Int Int (M.Map Target (Either D.InlineReason (Template,S.Set String,Int))) (M.Map String Integer)
 
 -- Expose small helper bodies before callback specialization hides their List
 -- calls. Names here are only a profitability hint: ordinary checked inlining
@@ -56,7 +60,7 @@ listCombinator n=takeWhile (/='@') n `elem` ["map","filter","fold","sum","produc
 -- operations/helper references in the same body, rather than growing every
 -- standalone call in a large dependency graph. This is profitability only.
 hasListHelperPipeline :: Inlining -> ClosedFunction -> Bool
-hasListHelperPipeline (Inlining _ _ _ candidates) input=any (pipeline . functionBody)
+hasListHelperPipeline (Inlining _ _ _ candidates _) input=any (pipeline . functionBody)
   (closedRoot input:map codeAsFunction (M.elems (closedCode input)))
   where
     pipeline e=let (helper,ops)=walk e in helper && ops>=2
@@ -74,8 +78,15 @@ planInlining=planInliningSelected (\_ _->True)
 
 planInliningSelected select limit loopLimit snapshot=do
   unless (limit>=0 && loopLimit>=0) (Left "typed inline: negative node budget")
-  pure (Inlining snapshot limit loopLimit (M.mapWithKey admit (M.filterWithKey select (catalogTemplates snapshot))))
+  let selected=M.filterWithKey select (catalogTemplates snapshot)
+  pure (Inlining snapshot limit loopLimit (M.mapWithKey admit selected)
+    (M.fromList [(n,v) | (RootTarget n,Template [] [] body _ _)<-M.toList selected,Just v<-[literal body]]))
   where
+    -- A nullary definition is one clause with no patterns and no guards.
+    literal e=case exprNode (unNote e) of
+      IntValue v->Just v
+      MatchTail (FunctionMatch _) [] [Alternative [] [] body] _->literal body
+      _->Nothing
     cap=max limit loopLimit
     admit target template@(Template caps ps body _ _)
       | target `S.member` recursiveCallbacks (catalogAnalysis snapshot)=Left D.RecursiveCallee
@@ -97,7 +108,7 @@ planInliningSelected select limit loopLimit snapshot=do
 -- verification and erasure; the merge is consistent by construction and the
 -- rewrite below verifies any changed product before publication.
 inlineClosedWithDecisions :: Bool -> S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String (ClosedFunction,[D.Decision],Bool)
-inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates) input=do
+inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates constants) input=do
   let prepared=mergeClosedLibrary (catalogLibrary snapshot) input
   ((root',codes',changed),(_,_,notes))<-runStateT (do
     let root=closedRoot prepared;codes=closedCode prepared
@@ -162,6 +173,10 @@ inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext 
                     modify (\(_,_,notes)->(afterSerial,instanceNext instance',notes))
                     record target D.Inlined
                     pure answer {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
+            _ | Var (Global name _)<-exprNode e,Just value<-M.lookup name constants,exprType e==TC "Int"->do
+                modify (\(serial,next,notes)->(serial+1,next,notes))
+                record (RootTarget name) D.Inlined
+                pure e {exprNode=IntValue value}
             _->mapChildrenM walk e
       before<-gets (\(serial,_,_)->serial)
       body<-walk (functionBody fn)

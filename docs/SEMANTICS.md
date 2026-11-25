@@ -1,5 +1,7 @@
 # SEMANTICS -- what FP-RISC and QOS promise
 
+> **26 November 2026:** this page is the alpha 2 contract. "2.0" was never released and is superseded by 1.0-rel; "v1.1.0" is alpha 1. See [Version names](2026-11-26-VERSION-NAMES.md). The text below is kept as written.
+
 The contract for 2.0.  Skeleton for now: dot points, plain words, a
 `[test: ...]` slot on every clause.  A clause with a test is a rule.  A
 clause without one is a proposal.  Where today's behaviour is known it
