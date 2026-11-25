@@ -107,6 +107,27 @@ programs; `tests/check_trust.py`; the suites and the apps' own checks
 - `std/mutmap.fpr`: no unsafe helpers; linear wrapper over `mutmap*` primitives, and its one recursion (`insertAll`) carries `measure kvs`.
 - `std/vector.fpr`: no unsafe helpers; non-recursive linear wrapper over `Vec.*` primitives.
 
+
+## Added 25 November 2026
+
+Deprecated compatibility copies, restored to std until v0.17.0 so
+pre-0.15.0 imports of modules that moved to `examples/` keep compiling.
+Each file is a verbatim copy of its canonical examples source plus a
+`deprecated "…" .` pragma. Unsafe helpers are whatever the examples
+file already had (they were on this list when they lived in std). New
+code should not add a dependency on these paths.
+
+- `std/appearance.fpr` (canonical: `examples/lib/appearance.fpr`)
+- `std/pagination.fpr` (canonical: `examples/lib/pagination.fpr`)
+- `std/gitrevision.fpr` (canonical: `examples/lib/gitrevision.fpr`)
+- `std/mjpeg.fpr` (canonical: `examples/lib/mjpeg.fpr`)
+- `std/money.fpr` (canonical: `examples/lib/money.fpr`)
+- `std/printeralertcodes.fpr` (canonical: `examples/printer-dashboard/printeralertcodes.fpr`)
+- `std/printeralerts.fpr` (canonical: `examples/printer-dashboard/printeralerts.fpr`)
+- `std/printertelemetry.fpr` (canonical: `examples/printer-dashboard/printertelemetry.fpr`)
+- `std/sessionauth.fpr` (canonical: `examples/printer-dashboard/sessionauth.fpr`)
+- `std/checkdemo.fpr` (canonical: `examples/checkdemo.fpr`)
+
 ## Open
 
 - Measures for the first-kind helpers in the library (above).

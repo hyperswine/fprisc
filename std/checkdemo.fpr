@@ -1,0 +1,85 @@
+# Compatibility copy kept until v0.17.0. Canonical source: examples/checkdemo.fpr
+# New programs should copy this file into the app or import it from examples/checkdemo.
+deprecated "examples/checkdemo".
+
+# checkdemo.fpr — the std proof pass exercised on real .fpr source.
+#
+#     ./fprc --stdcheck std/checkdemo.fpr
+#
+# The conventions (see compiler/StdBridge.hs):
+#   * a sig whose params + return are all Int DECLARES the function safe
+#   * `(n : Int | n > 0)` param contracts become intervals
+#   * `post_f : (r : Int | r >= 1) -> Int.` declares f's postcondition
+#   * foldRange lo hi f acc is the builtin bounded recursion scheme
+#   * a name containing "unsafe" is unsafe; calls to undefined names
+#     (builtins, core.*) are opaque unsafe externs with cost w(name)
+#
+# This file also COMPILES normally (foldRange has a real definition) —
+# the checker just sees the once-proven Fold bound instead.
+
+# the builtin scheme's honest definition for ordinary compilation;
+# --stdcheck intercepts the NAME and uses the generic Fold bound.
+foldRange lo hi f acc = case lo > hi of
+  True -> acc
+  | False -> foldRange (lo + 1) hi f (f lo acc).
+
+# ---- fully static: accumulator factorial ----------------------------
+# termination: measure x decreases by 1, lower bound 0 from the
+# contract => call count <= x + 1.  post r >= 1 proven by induction.
+
+fact_acc : (x : Int | x >= 0 and measure x) -> (acc : Int | acc >= 1) -> Int.
+post_fact_acc : (r : Int | r >= 1) -> Int.
+fact_acc x acc = case x == 0 of
+  True -> acc
+  | False -> fact_acc (x - 1) (acc * x).
+
+# ---- the recursion-scheme version: no per-use termination proof -----
+
+mul_step : (i : Int | i >= 1) -> (acc : Int | acc >= 1) -> Int.
+mul_step i acc = i * acc.
+
+fact_fold : (x : Int | x >= 0) -> Int.
+post_fact_fold : (r : Int | r >= 1) -> Int.
+fact_fold x = foldRange 1 x mul_step 1.
+
+# ---- a caller with an UNCONSTRAINED argument ------------------------
+# x's interval (top) cannot discharge fact_acc's x >= 0 precondition:
+# a DYNAMIC check is inserted at exactly that call site.
+
+use_fact : Int -> Int.
+use_fact x = fact_acc x 1.
+
+# ---- the same call, guarded: the branch refines x to >= 0 -----------
+# both preconditions discharge STATICALLY — no runtime check.
+
+use_fact_guarded : Int -> Int.
+use_fact_guarded x = case x >= 0 of
+  True -> fact_acc x 1
+  | False -> 1.
+
+# ---- where unsafe cost enters: an opaque extern ---------------------
+# core_read has no definition here, so it is an opaque unsafe extern.
+# read_twice is NOT signed, so it is quietly demoted (inferred unsafe)
+# and its WCET carries 2*w(core_read) — the uncertainty term is
+# explicit and composes algebraically instead of collapsing to unknown.
+
+read_twice x =
+  a = core_read x;
+  b = core_read x;
+  a + b.
+
+# ---- bounded retry: the std.net shape -------------------------------
+# each attempt costs w(core_read); the fold multiplies it by the
+# attempt bound n — "std bounds network time" as an equation.
+
+try_step : (i : Int | i >= 1) -> (acc : Int | acc >= 0) -> Int.
+try_step i acc = acc + 1.
+
+bounded_retry : (n : Int | n >= 1) -> Int.
+bounded_retry n = foldRange 1 n try_step 0.
+main : unsafe Unit .
+main = fact_acc 5 1.
+
+# the raw tier: DEFINED so the file compiles, but core_* is always an
+# opaque unsafe extern to --stdcheck (the core/std boundary itself).
+core_read x = x + 42.
