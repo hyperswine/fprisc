@@ -28,3 +28,4 @@ std-deprecations	300	tests/sol-checks/std-deprecations.sol	push
 stdcheck	300	tests/sol-checks/stdcheck.sol	push
 reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push
+viewcss	300	tests/sol-checks/viewcss.sol	push
