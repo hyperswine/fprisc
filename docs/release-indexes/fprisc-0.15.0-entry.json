@@ -1,0 +1,13 @@
+{
+  "component": "fprisc",
+  "version": "0.15.0",
+  "platform": "macos-arm64",
+  "url": "https://github.com/hyperswine/fprisc/releases/download/v0.15.0/fprisc-0.15.0-macos-arm64.tar.gz",
+  "sha256": "d966379d2ef66265fbcdbcb44053e98b6c5052ba25a34a3fe696761fee6b375d",
+  "size": 22957441,
+  "minimumOS": "27.2",
+  "requires": [
+    "xcode-clt"
+  ],
+  "yanked": false
+}
