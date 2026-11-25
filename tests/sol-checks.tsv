@@ -30,3 +30,4 @@ reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push
 viewcss	300	tests/sol-checks/viewcss.sol	push
 eq-cheap	300	tests/sol-checks/eq-cheap.sol	push
+publish-release-index	120	tests/sol-checks/publish-release-index.sol	push

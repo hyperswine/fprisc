@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "release": "0.2.0",
+  "minimumMacOS": "27.2",
+  "os": "darwin",
+  "architecture": "aarch64",
+  "nativeLibraries": {
+    "compiler/fpr": [
+      "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)",
+      "\t/opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)",
+      "\t/opt/homebrew/opt/libarchive/lib/libarchive.13.dylib (compatibility version 22.0.0, current version 22.11.0)"
+    ],
+    "runtime/qosp-gl": [
+      "\t/opt/homebrew/opt/glfw/lib/libglfw.3.dylib (compatibility version 3.0.0, current version 3.5.0)"
+    ]
+  }
+}
