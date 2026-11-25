@@ -23,6 +23,7 @@ i64-raw-locals	300	tests/sol-checks/i64-raw-locals.sol	push
 list-fold-raw-int	600	tests/sol-checks/list-fold-raw-int.sol	push
 str-interp-pieces	600	tests/sol-checks/str-interp-pieces.sol	push
 raw-int-hotspots	600	tests/sol-checks/raw-int-hotspots.sol	push
+std-deprecations	300	tests/sol-checks/std-deprecations.sol	push
 stdcheck	300	tests/sol-checks/stdcheck.sol	push
 reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push

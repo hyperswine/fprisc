@@ -224,6 +224,7 @@ library
       ReceiveTurns
       Mono
       Modules
+      StdDeprecations
       Precond
       Safety
       Cost
