@@ -802,16 +802,47 @@ scaledLength n suffix =
 # what a utility needs beyond its own rule (the page around it, a state)
 cssExtra c = "".
 
+# Collect the class names a stylesheet needs. atomClass hex-encodes a
+# declaration; the same (scope, css) pair appears on many elements, so the
+# hex lives in a map for the rest of this walk and is not computed again.
 allClasses : (node : Node | measure node) -> List String -> List String .
-allClasses node acc = case node of
-    El _ attrs kids -> allKids kids (append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc)))
-  | Fragment _ _ classes -> append classes acc
-  | Inp attrs -> append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc))
-  | _ -> acc.
-allKids : (kids : List Node | measure kids) -> List String -> List String .
-allKids kids acc = case kids of
-    Nil -> acc
-  | k :: r -> allKids r (allClasses k acc).
+allClasses node acc = case classWalk node acc (M.empty S.compare) of (names, _) -> names.
+classWalk : (node : Node | measure node) -> List String -> M.Map String String -> (List String, M.Map String String) .
+classWalk node acc seen = case node of
+    El _ attrs kids ->
+      # Same order as the old walk: class-attribute names, then localAtoms,
+      # then localStyleAtoms, then children. namedAtoms prepends names in
+      # atom-list order so the stylesheet bytes stay identical.
+      (acc1, s1) = namedAtoms (localAtoms attrs) (attrCls attrs acc) seen;
+      (acc2, s2) = namedAtoms (localStyleAtoms attrs) acc1 s1;
+      kidsWalk kids acc2 s2
+  | Fragment _ _ classes -> (append classes acc, seen)
+  | Inp attrs ->
+      (acc1, s1) = namedAtoms (localAtoms attrs) (attrCls attrs acc) seen;
+      namedAtoms (localStyleAtoms attrs) acc1 s1
+  | _ -> (acc, seen).
+kidsWalk : (kids : List Node | measure kids) -> List String -> M.Map String String -> (List String, M.Map String String) .
+kidsWalk kids acc seen = case kids of
+    Nil -> (acc, seen)
+  | k :: r -> (case classWalk k acc seen of (acc2, s2) -> kidsWalk r acc2 s2).
+# One interned class name per atom, reusing Encoding.hex when the same
+# declaration was already named on this walk.
+namedAtoms : (atoms : List Atom | measure atoms) -> List String -> M.Map String String -> (List String, M.Map String String) .
+namedAtoms atoms acc seen = case atoms of
+    Nil -> (acc, seen)
+  | a :: rest ->
+      (name, s2) = internAtom a seen;
+      (restAcc, s3) = namedAtoms rest acc s2;
+      (name :: restAcc, s3).
+internAtom : Atom -> M.Map String String -> (String, M.Map String String) .
+internAtom a seen = case a of
+    Atom scope _ css ->
+      key = "{scope}:{css}";
+      case M.get key seen of
+        O.Some name -> (name, seen)
+      | O.None ->
+          name = atomClass a;
+          (name, M.insert key name seen).
 attrCls : (attrs : List Attr | measure attrs) -> List String -> List String .
 attrCls attrs acc = case attrs of
     Nil -> acc
@@ -988,10 +1019,18 @@ spGo s st i n acc = spGo s st (i + 1) n acc.
 spAdd s st i acc | i > st = substr s st (i - st) :: acc.
 spAdd s st i acc = acc.
 
+# Each name once, at the place of its LAST occurrence — the same order as
+# the historical "if it is in the rest of the list, skip it" walk, and as
+# nubEntries. A page names a few hundred distinct classes thousands of
+# times, so membership in a set replaces a scan of the tail at every step.
 nub : (xs : List String | measure xs) -> List String .
-nub xs = case xs of
-    Nil -> Nil
-  | x :: r -> if memS x r then nub r else x :: nub r.
+nub xs = keepUnseenNames (rev xs) M.strings Nil.
+keepUnseenNames : (xs : List String | measure xs) -> M.Map String Unit -> List String -> List String .
+keepUnseenNames xs seen acc = case xs of
+    Nil -> acc
+  | x :: rest ->
+      if M.member x seen then keepUnseenNames rest seen acc
+      else keepUnseenNames rest (M.insert x Unit seen) (x :: acc).
 memS : String -> List String -> Bool .
 memS x xs = L.member x xs.
 

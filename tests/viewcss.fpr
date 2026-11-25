@@ -34,5 +34,53 @@ main =
   # cssFor now emits only typed per-element styles; utilities come from cssWith
   plain = G.cssWith Nil (G.El "div" [G.Cls "row"] Nil);
   _ = check "cssWith Nil: utilities, no media" (has plain ".row\{display:flex;flex-direction:row}" and not (has plain "@media"));
-  _ = print "view css: utilities, typed app styles, breakpoints, empty slots PASS";
+
+  # Locked bytes from origin/main (73e8fd31 / fprisc 0.15.0 view.fpr): the
+  # set-based nub and atomClass intern must emit exactly this stylesheet.
+  wantCss = ".truncate\{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.min-h-0\{min-height:0px}
+.flex-auto\{flex-grow:1;flex-shrink:1;flex-basis:auto}
+.pre\{white-space:pre-wrap}
+.card-x\{width:180px;max-width:calc(50% - 4px);flex-basis:46vh}
+.col\{display:grid}
+.screen\{height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden}
+@media (max-width:760px)\{
+.narrow\\:row\{display:flex;flex-direction:row}
+}
+@media (min-width:761px)\{
+.wide\\:card-x\{width:180px;max-width:calc(50% - 4px);flex-basis:46vh}
+}
+";
+  _ = check "cssWith bytes identical to main" (css == wantCss);
+  pad = G.utilities [G.Padding (G.Px 4), G.Width (G.Px 99)];
+  hover = G.hover [G.Foreground (G.Rgb 12 34 56)];
+  localTree = G.El "main" [G.Cls "card"]
+    [G.El "div" [pad, hover] [G.Txt "a"],
+     G.El "div" [pad, hover] [G.Txt "b"],
+     G.El "span" [G.utilities [G.Padding (G.Px 4), G.Width (G.Px 99)]] [G.Txt "c"]];
+  localCss = G.cssWith Nil localTree;
+  wantLocal = ".card\{background-color:var(--card);border-width:1px;border-style:solid;border-color:var(--line)}
+.fpr-u-0-70616464696e672d746f703a347078\{padding-top:4px}
+.fpr-u-0-70616464696e672d72696768743a347078\{padding-right:4px}
+.fpr-u-0-70616464696e672d626f74746f6d3a347078\{padding-bottom:4px}
+.fpr-u-0-70616464696e672d6c6566743a347078\{padding-left:4px}
+.fpr-u-0-77696474683a39397078\{width:99px}
+.fpr-u-3-636f6c6f723a7267622831322c33342c353629:hover\{color:rgb(12,34,56)}
+";
+  _ = check "cssWith local atoms bytes identical to main" (localCss == wantLocal);
+  _ = check "cssWith is stable" (localCss == G.cssWith Nil localTree);
+  wantFor = ".fpr-u-0-70616464696e672d746f703a347078\{padding-top:4px}
+.fpr-u-0-70616464696e672d72696768743a347078\{padding-right:4px}
+.fpr-u-0-70616464696e672d626f74746f6d3a347078\{padding-bottom:4px}
+.fpr-u-0-70616464696e672d6c6566743a347078\{padding-left:4px}
+.fpr-u-0-77696474683a39397078\{width:99px}
+.fpr-u-3-636f6c6f723a7267622831322c33342c353629:hover\{color:rgb(12,34,56)}
+";
+  _ = check "cssFor local atoms bytes identical to main" (G.cssFor localTree == wantFor);
+  # last-occurrence order: nub [a,b,a,c,b,d] = [a,c,b,d]
+  _ = check "nub last-occurrence" (strJoin "," (G.nub ("a" :: "b" :: "a" :: "c" :: "b" :: "d" :: Nil)) == "a,c,b,d");
+  _ = check "nub all same" (strJoin "," (G.nub ("x" :: "x" :: "x" :: Nil)) == "x");
+  _ = check "nub empty" (G.nub Nil == Nil);
+  _ = check "nub singleton" (strJoin "," (G.nub ("only" :: Nil)) == "only");
+  _ = print "view css: utilities, typed app styles, breakpoints, empty slots, byte-identical CSS, nub order PASS";
   0.
