@@ -3,7 +3,7 @@
 B = use "../sol/lib/build".
 selected path =
   name = List.last (Str.split 47 path);
-  Str.startsWith ".fpr/" path or List.any (fn ext -> name != ext and Str.endsWith ext name) [".fpr",".sol",".c",".h",".S"].
+  Str.startsWith ".fpr/" path or List.any (fn ext -> name != ext and Str.endsWith ext name) [".fpr",".sol",".c",".h",".S",".inc"].
 stage root prefix =
   sdk = "{prefix}/libexec/fprisc";
   dirs = List.filter (fn dir -> B.exists "-d" "{root}/{dir}") ["core","std","sol/lib",".fpr","runtime","machine/posix","machine/unix"];
