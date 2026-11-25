@@ -1,5 +1,6 @@
-# Main qualifies the surviving Sol/native workflows (sol-native) and the regression
-# checks ported from the retired Python suite to Sol (sol-checks, tests/run.sol).
+# Main qualifies the surviving Sol/native workflows (sol-native), the regression
+# checks ported from the retired Python suite to Sol (sol-checks, tests/run.sol),
+# and a staged release-archive smoke (archive-smoke).
 name: ci
 on:
   push:
@@ -83,3 +84,37 @@ jobs:
       - name: Sol regression checks (nightly, full size)
         if: github.event_name == 'schedule'
         run: sol tests/run.sol --jobs 2 --nightly
+
+  # Stage with tools/stage-toolchain.sol, pack with the same tar invocation as
+  # tools/toolchain-release.sol, extract to a path containing a space, and run
+  # the installed-toolchain qualification with HOME empty and a minimal PATH.
+  # Official package-toolchain.sol remains macOS ARM64 only; this job is the
+  # Linux stand-in that would have caught the missing runtime/bigint.inc in the
+  # first 0.15.0 candidate. A separate job, so a red smoke does not hide
+  # sol-native or sol-checks, and those do not skip the archive path.
+  archive-smoke:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - name: Install git for checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Native build dependencies
+        run: |
+          apt-get install -y --no-install-recommends make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+      - name: Build compiler
+        run: |
+          rm -f cabal.project.freeze
+          cabal update
+          make fpr
+      - name: Staged release archive smoke
+        run: |
+          ./fpr sol tools/archive-smoke.sol --root "$GITHUB_WORKSPACE" --binary "$GITHUB_WORKSPACE/fpr" --work "$RUNNER_TEMP/archive-smoke"
