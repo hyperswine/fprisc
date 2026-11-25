@@ -1,0 +1,94 @@
+# Cheap == for String, I32/Int and small tuples: same answers as field-wise
+# equality. IEEE NaN remains unequal to itself on F64 leaves.
+#   ./fpr run tests/eq-cheap.fpr
+unsafe program.
+check what b = case b of True -> Unit | False -> error "eq-cheap: {what}".
+same what a b = check what (a == b).
+diff what a b = check what (a != b).
+
+# (a, b) == (c, d)  iff  a == c and b == d
+pairAgrees a b c d =
+  ((a, b) == (c, d)) == ((a == c) and (b == d)).
+
+memberInt : (Int, Int) -> (xs : List (Int, Int) | measure xs) -> Bool .
+memberInt p xs = case xs of
+    Nil -> False
+  | y :: rest -> if y == p then True else memberInt p rest.
+memberI32 : (I32, I32) -> (xs : List (I32, I32) | measure xs) -> Bool .
+memberI32 p xs = case xs of
+    Nil -> False
+  | y :: rest -> if y == p then True else memberI32 p rest.
+
+main =
+  # ---- Int (tagged immediate) ----
+  _ = same "Int 1" 1 1;
+  _ = diff "Int 1 != 2" 1 2;
+  _ = same "Int zero" 0 0;
+  _ = same "Int negative" (0 - 7) (0 - 7);
+  _ = diff "Int sign" (0 - 1) 1;
+  _ = same "Int built twice" (2 + 3) (1 + 4);
+
+  # ---- I32 (boxed T_BITS var 7) ----
+  z = I32.trunc 0;
+  one = I32.trunc 1;
+  two = I32.trunc 2;
+  neg = I32.trunc (0 - 1);
+  hi = I32.trunc 2147483647;
+  lo = I32.trunc (0 - 2147483648);
+  _ = same "I32 0" z (I32.trunc 0);
+  _ = same "I32 1" one (I32.trunc 1);
+  _ = diff "I32 1 != 2" one two;
+  _ = same "I32 -1" neg (I32.trunc (0 - 1));
+  _ = diff "I32 -1 != 1" neg one;
+  _ = same "I32 max" hi (I32.trunc 2147483647);
+  _ = same "I32 min" lo (I32.trunc (0 - 2147483648));
+  _ = diff "I32 min != max" lo hi;
+
+  # ---- String (content, including empty and a longer body) ----
+  _ = same "empty String" "" "";
+  _ = same "short String" "ab" "ab";
+  _ = diff "short String differs" "ab" "ac";
+  _ = diff "String prefix" "ab" "abc";
+  _ = same "longer String" "the quick brown fox" "the quick brown fox";
+  _ = diff "longer String differs at end" "the quick brown fox" "the quick brown foy";
+
+  # ---- pairs: Int, I32, String, mixed ----
+  _ = same "Int pair" (1, 2) (1, 2);
+  _ = diff "Int pair first" (1, 2) (9, 2);
+  _ = diff "Int pair second" (1, 2) (1, 9);
+  _ = same "I32 pair" (one, two) (I32.trunc 1, I32.trunc 2);
+  _ = diff "I32 pair first" (one, two) (z, two);
+  _ = diff "I32 pair second" (one, two) (one, z);
+  _ = same "String pair" ("ab", "cd") ("ab", "cd");
+  _ = diff "String pair" ("ab", "cd") ("ab", "ce");
+  _ = same "mixed pair" ("n", one) ("n", I32.trunc 1);
+  _ = diff "mixed pair" ("n", one) ("n", two);
+
+  # field-wise agreement
+  _ = check "pair Int agrees" (pairAgrees 1 2 1 2);
+  _ = check "pair Int differs agrees" (pairAgrees 1 2 1 9);
+  _ = check "pair I32 agrees" (pairAgrees one two (I32.trunc 1) (I32.trunc 2));
+  _ = check "pair String agrees" (pairAgrees "a" "b" "a" "b");
+
+  # IEEE NaN on an F64 leaf (not packed as a raw float inside a tuple)
+  nan = 0.0 / 0.0;
+  _ = check "NaN != NaN" (nan != nan);
+
+  # ---- 3-tuples and 8-tuples ----
+  _ = same "3-tuple" (1, 2, 3) (1, 2, 3);
+  _ = diff "3-tuple last" (1, 2, 3) (1, 2, 4);
+  _ = same "8-tuple" (1, 2, 3, 4, 5, 6, 7, 8) (1, 2, 3, 4, 5, 6, 7, 8);
+  _ = diff "8-tuple mid" (1, 2, 3, 4, 5, 6, 7, 8) (1, 2, 3, 0, 5, 6, 7, 8);
+
+  # ---- nested pairs ----
+  _ = same "nested pair" ((1, 2), (3, 4)) ((1, 2), (3, 4));
+  _ = diff "nested pair inner" ((1, 2), (3, 4)) ((1, 2), (3, 5));
+  _ = same "nested I32 pair" ((one, two), (z, hi)) ((I32.trunc 1, I32.trunc 2), (I32.trunc 0, I32.trunc 2147483647));
+
+  # membership uses the same ==
+  _ = check "member Int pair" (memberInt (1, 2) ((0, 0) :: (1, 2) :: (3, 3) :: Nil));
+  _ = check "member misses" (not (memberInt (1, 9) ((0, 0) :: (1, 2) :: (3, 3) :: Nil)));
+  _ = check "member I32 pair" (memberI32 (one, two) ((z, z) :: (one, two) :: Nil));
+
+  _ = print "eq-cheap: String, I32, Int, small tuples PASS";
+  0.

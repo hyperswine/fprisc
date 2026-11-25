@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
-module Compile (compileMain, checkedInterface, parseFile) where
+module Compile (compileMain, checkedInterface, recordedInterface, parseFile) where
 
 import Data.Maybe (fromMaybe, isJust)
 import System.IO (hPutStrLn, stderr)
@@ -62,6 +62,22 @@ checkedInterface :: FilePath -> IO [(Name, String)]
 checkedInterface file = do
   ref <- newIORef []
   let opts = parseCompileArguments ["--check-only", "--lib", file, "/dev/null"]
+  compileWithArguments opts (writeIORef ref)
+  readIORef ref
+
+-- The interface of an ALREADY COMMITTED version, for `fpr commit`'s
+-- signature diff only.  A committed blob is immutable and was admitted by
+-- the checker of its day; the safe/unsafe line is a policy lint that
+-- tightens between compiler releases (an `unsafe` marker the analysis now
+-- proves unnecessary, a recursion that must now be declared), and no
+-- edit can bring an immutable blob up to date.  Types, arity and written
+-- contracts are still derived by the same normal checker; only the
+-- safety lint is skipped.  Nothing here admits the blob into a build:
+-- every build still runs the full checker over whatever it links.
+recordedInterface :: FilePath -> IO [(Name, String)]
+recordedInterface file = do
+  ref <- newIORef []
+  let opts = parseCompileArguments ["--check-only", "--no-safety", "--lib", file, "/dev/null"]
   compileWithArguments opts (writeIORef ref)
   readIORef ref
 

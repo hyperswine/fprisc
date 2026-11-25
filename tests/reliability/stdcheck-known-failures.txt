@@ -8,6 +8,7 @@ encoding	declared-safe function outside the checkable fragment: std: b64Val: NOT
 gpio	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `GpioHost.info` -- unsafety is infectious upward; mark in
 live	partial application (fewer args than the definition): error: call at site N to connection: expected 6 args, got 4
 math	declared-safe function outside the checkable fragment: std: mod: NOT in the checkable fragment (condition outside the comparison fragment: SBin "and" (SBin "!=" (SVa
+money	declared-safe function outside the checkable fragment: std: format: NOT in the checkable fragment (outside the checkable fragment: SStrI [SegStr "cents"])
 mvu	declared-safe function outside the checkable fragment: std: napTick: NOT in the checkable fragment (block statement outside fragment: SBindPat PWild (SMark 19450 (SA
 supervisor	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `spawn` -- unsafety is infectious upward; mark monitor un
 ui	declared-safe function outside the checkable fragment: std: spacing: NOT in the checkable fragment (outside the checkable fragment: SCase (SVar "n") [(PInt 0,SMark 2

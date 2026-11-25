@@ -68,6 +68,7 @@ usage =
       "  fpr sol <script.sol> [args]            HostedBytecode profile (the sol VM)",
       "  fpr stdcheck <file.fpr>                the std proof pass (intervals, measures, WCET); not `fpr check`",
       "  fpr commit <file.fpr> [--major]        mint an immutable version into .fpr/",
+      "  fpr pin <file.fpr> [--deps] [--update[=spec,..]]  pin (or re-pin) its uses for commit",
       "  fpr versions [name]                    list committed versions (use \"name#hash\")",
       "  fpr publish <module.fpr>              publish an immutable host module; --stored NAME uses a commit",
       "  fpr watch <module.fpr> [--once]        publish on saves; --module NAME launches an app",
@@ -105,6 +106,7 @@ main = do
     ("run" : rest) -> Build.runMain rest
     ("stdcheck" : rest) -> withArgs ("--stdcheck" : rest) Compile.compileMain
     ("commit" : rest) -> Commit.commitMain rest
+    ("pin" : rest) -> Commit.pinMain rest
     ("versions" : rest) -> Commit.versionsMain rest
     ("push" : rest) -> Commit.pushMain rest
     ("pull" : rest) -> Commit.pullMain rest
