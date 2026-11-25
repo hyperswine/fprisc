@@ -4934,6 +4934,19 @@ extern uw fpr_builtin_field_count(V);
 extern char fpr_builtin_field_kind(V,uw);
 #endif
 /* one pair, without descending: 0 differ, 1 equal, 2 compare the fields */
+/* Arity of a product from its typetag, or 0 if this is not a tuple.
+ * T_TUP2..T_TUP8 and T_TUPN+n are fixed shapes: == does not need the
+ * constructor layout table (PREHEADER / layout_total / fpr_layout_fields)
+ * to know how many fields to walk. The fields visited, and the IEEE /
+ * tagged-Int rules applied to them, are unchanged. */
+static inline uw tuple_arity(uw tid) {
+  if (tid == T_TUP2) return 2;
+  if (tid == T_TUP3) return 3;
+  if (tid >= T_TUP4 && tid <= T_TUP8) return (tid - T_TUP4) + 4;
+  if (tid >= T_TUPN && tid < T_TUPN_END) return tid - T_TUPN;
+  return 0;
+}
+
 static int veq_shallow(V a, V b) {
   if (ISINT(a) || ISINT(b) || ISIMM(a) || ISIMM(b)) return a == b;
   /* IEEE equality also applies when both references name the same NaN. */
@@ -5015,6 +5028,8 @@ static int veq(V a0, V b0) {
        * lists different capacities when a free block is too small to split;
        * capacity and zero padding are not part of a list's value. */
       nf = ((hdr_t *)a)->var == 1 ? 2 : 0;
+    } else if ((nf = tuple_arity(TID(a))) != 0) {
+      /* typetag already agrees (veq_shallow); skip the layout table. */
     } else {
       uw ta = PREHEADER(a), tb = PREHEADER(b);
       if (ta != tb) { eq = 0; break; }
