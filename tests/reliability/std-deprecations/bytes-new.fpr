@@ -1,0 +1,9 @@
+# Compile fixture: the current std/binary spelling of the same program.
+profile base.
+Bytes = use "std/binary".
+main =
+  b0 = Bytes.new 3;
+  b1 = Bytes.put 0 65 (Bytes.put 1 66 (Bytes.put 2 67 b0));
+  (s, b2) = Bytes.pack 0 3 b1;
+  _ = print s;
+  Bytes.free b2.
