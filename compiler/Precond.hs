@@ -154,7 +154,9 @@ cmpOps = ["==", "!=", "<", "<=", ">", ">="]
 -- notes (the compile-time obligation report)
 --------------------------------------------------------------------------------
 
-data PreStatus = Discharged | RuntimeCheck | BuiltinTrap deriving (Eq)
+-- Refuted: the facts prove the predicate FALSE at this site, so reaching it
+-- always fails; v1.0 semantics §7 rule 2 refuses it in every layer.
+data PreStatus = Discharged | RuntimeCheck | BuiltinTrap | Refuted deriving (Eq)
 
 data PreNote = PreNote
   { pnCaller :: Name,
@@ -171,6 +173,7 @@ renderNote (PreNote caller callee p st) =
       Discharged -> "discharged statically"
       RuntimeCheck -> "runtime check inserted"
       BuiltinTrap -> "runtime trap (builtin)"
+      Refuted -> "always false here (refused)"
 
 renderP :: SExpr -> String
 renderP = \case
@@ -266,6 +269,19 @@ bounds env facts x = foldl' step (Bounds Nothing Nothing S.empty) facts
 
 -- does the fact set entail the predicate?  (conservative: False just
 -- means "insert the runtime check")
+-- the facts prove p false: p's negation is entailed
+refutes :: [Atom] -> SExpr -> Bool
+refutes facts p = maybe False (entails facts) (negP p)
+  where
+    negP = \case
+      SApp (SApp (SVar "and2") a) b -> SBin "or" <$> negP a <*> negP b
+      SApp (SApp (SVar "or2") a) b -> SBin "and" <$> negP a <*> negP b
+      SBin "and" a b -> SBin "or" <$> negP a <*> negP b
+      SBin "or" a b -> SBin "and" <$> negP a <*> negP b
+      SBin op a b | Just op' <- lookup op opposite -> Just (SBin op' a b)
+      _ -> Nothing
+    opposite = [("==", "!="), ("!=", "=="), ("<", ">="), (">=", "<"), (">", "<="), ("<=", ">")]
+
 entails :: [Atom] -> SExpr -> Bool
 entails facts p = case p of
   SApp (SApp (SVar "and2") a) b -> entails facts a && entails facts b
@@ -479,14 +495,17 @@ goE tab caller = go
       -- builtin axiom: the divisor of / must be nonzero.  Analyzed and
       -- reported; the dynamic tier is the runtime's existing trap (no
       -- wrapper: / is TYPE-dispatched after this pass).
-      SBin "/" a b -> do
+      SBin op a b | op `elem` ["/", "%"] -> do
         a' <- go sh facts a
         b' <- go sh facts b
         let p = SBin "!=" b' (SInt 0)
+            callee = "(" ++ op ++ ")"
         if fragA b' && entails facts p
-          then note (PreNote caller "(/)" (renderP p) Discharged)
-          else note (PreNote caller "(/)" "divisor != 0" BuiltinTrap)
-        pure (SBin "/" a' b')
+          then note (PreNote caller callee (renderP p) Discharged)
+          else if fragA b' && refutes facts p
+            then note (PreNote caller callee "divisor != 0" Refuted)
+            else note (PreNote caller callee "divisor != 0" BuiltinTrap)
+        pure (SBin op a' b')
       SBin "|>" _ _ -> goSpine sh facts e
       SApp _ _ -> goSpine sh facts e
       SMark o e -> SMark o <$> go sh facts e
@@ -577,6 +596,10 @@ goE tab caller = go
                     if fragA arg && entails facts p
                       then do
                         note (PreNote caller f (renderP p) Discharged)
+                        pure (i, arg, Nothing)
+                      else if fragA arg && refutes facts p
+                      then do
+                        note (PreNote caller f (renderP (substV pn (SVar pn) p0) ++ ", given " ++ renderP arg) Refuted)
                         pure (i, arg, Nothing)
                       else do
                         note (PreNote caller f (renderP (substV pn (SVar pn) p0)) RuntimeCheck)

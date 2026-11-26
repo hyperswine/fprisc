@@ -23,6 +23,9 @@ mutated root module old new = source = readPath "{root}/examples/ideal/{module}.
   _ = must "examples/ideal/{module}.fpr no longer contains {old}" (Str.contains old source) "";
   Str.replace old new source.
 harness root ideal module expr = "profile base.\nM = use \"{ideal}/{module}.fpr\".\nmain = {expr}.\n".
+# z is 0, but not a literal: the precondition stays unproved (v1.0 semantics §7
+# rule 4: a run-time check that panics). The literal form is refused (rule 2).
+opaque root ideal module expr = "profile base.\nM = use \"{ideal}/{module}.fpr\".\nmain = z = List.len []; {expr}.\n".
 expectRefused specs r = (name, code, out, err) = r;
   needle = lookupNeedle specs name;
   must "{name}: want a failed build mentioning '{needle}', got exit {code}" (code != 0 and List.all (fn n -> Str.contains n (out + err)) (Str.split 124 needle)) (out + err).
@@ -45,17 +48,19 @@ main u = root = H.root Unit; work = tempDir "fpr-ideal"; ideal = "{root}/example
   _ = print "eight ideal programs build; their declared bounds are proven";
   ProcessResult tc to te = H.call ["{work}/ideal-transitions"] env 60000;
   _ = must "transitions output" (tc == 0 and to == "transitions: amount=75,7 hist=5 avg=30,0\n") (to + te);
-  panics = [("negative-count", harness root ideal "buffer" "M.build (0 - 1)"),
-    ("large-count", harness root ideal "buffer" "M.build 4097"),
-    ("negative-index", harness root ideal "buffer" "M.peek (0 - 1) (M.build 2)"),
-    ("bad-transition", harness root ideal "transitions" "print (M.bump 0 \{amount = 10, hist = 0\})"),
-    ("bad-column", harness root ideal "wc" "print (M.column 0 1)"),
-    ("bad-kib", harness root ideal "report" "print (M.kib (0 - 1))"),
-    ("bad-selection", harness root ideal "todo" "print (M.selection (0 - 1) 0)"),
-    ("bad-fact", harness root ideal "measure" "print (M.fact (0 - 1) 1)"),
-    ("bad-digests", harness root ideal "service" "print (M.digests 0 \"alpha\")")];
+  panics = [("negative-count", opaque root ideal "buffer" "M.build (z - 1)"),
+    ("large-count", opaque root ideal "buffer" "M.build (z + 4097)"),
+    ("negative-index", opaque root ideal "buffer" "M.peek (z - 1) (M.build 2)"),
+    ("bad-transition", opaque root ideal "transitions" "print (M.bump z \{amount = 10, hist = 0\})"),
+    ("bad-column", opaque root ideal "wc" "print (M.column z 1)"),
+    ("bad-kib", opaque root ideal "report" "print (M.kib (z - 1))"),
+    ("bad-selection", opaque root ideal "todo" "print (M.selection (z - 1) 0)"),
+    ("bad-fact", opaque root ideal "measure" "print (M.fact (z - 1) 1)"),
+    ("bad-digests", opaque root ideal "service" "print (M.digests z \"alpha\")")];
   panicJobs = List.map (fn p -> (n, t) = p; (n, ["{root}/fpr","build",writeSrc work n t,"-o","{work}/{n}"], root, env, 600000)) panics;
   refusals = [
+    ("literal-negative-count", harness root ideal "buffer" "M.build (0 - 1)", "which is false here"),
+    ("literal-bad-column", harness root ideal "wc" "print (M.column 0 1)", "which is false here"),
     ("owner-reuse", "profile base.\nM = use \"{ideal}/buffer.fpr\".\nmain = s = M.build 10; _ = M.finish s; M.finish s.\n", "linear variable|used 2 time(s)"),
     ("owner-alias", "profile base.\nM = use \"{ideal}/buffer.fpr\".\nmain = s = M.build 10; (x, next) = M.peek 0 s; _ = M.finish s; M.finish next.\n", "linear variable|used 2 time(s)"),
     ("bad-buffer-descent", mutated root "buffer" "buildGo (n - 1)" "buildGo n", "measure does not decrease"),
@@ -67,6 +72,6 @@ main u = root = H.root Unit; work = tempDir "fpr-ideal"; ideal = "{root}/example
   refusedResults = H.parallel slots (List.map (refusedBuild root work env) refusals);
   _ = List.map (expectPanic root work env) panicResults;
   _ = List.map (expectRefused refusals) refusedResults;
-  _ = print "linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused";
+  _ = print "literal contract violations, linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused";
   print "ideal examples: nine violated preconditions panic; insufficient work and nondecreasing recursion are refused".
 > main Unit.

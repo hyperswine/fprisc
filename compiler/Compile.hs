@@ -348,6 +348,16 @@ compileWithReport opts0 accepted report = do
           nDis = length [() | n <- pnAll, pnStatus n == Discharged]
           nRt = length [() | n <- pnAll, pnStatus n == RuntimeCheck]
           nTrap = length [() | n <- pnAll, pnStatus n == BuiltinTrap]
+          refuted = [n | n <- pnAll, pnStatus n == Refuted]
+      -- v1.0 semantics §7 rule 2: a precondition the compiler proves false
+      -- is refused in every layer (`1 / 0` does not compile)
+      unless (null refuted) $ do
+        let msgs = [pnCaller n ++ ": " ++ pnCallee n ++ " requires (" ++ pnPred n ++ "), which is false here"
+                   | n <- refuted]
+        putStrLn "=== PRECONDITION: ERRORS ==="
+        mapM_ (putStrLn . ("  * " ++)) msgs
+        Editor.legacy report "precondition" msgs
+        exitFailure
       -- per-obligation notes are telemetry, not signal: 100+ lines per
       -- compile buried the errors.  FPR_PRECOND_NOTES=1 restores them;
       -- the one-line summary below always prints.

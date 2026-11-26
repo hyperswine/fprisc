@@ -1,0 +1,7 @@
+# clause: v1.0 semantics §1 (names). A name may begin with a keyword:
+# `case`, `of` and `Type` are matched as whole words only.
+casesArg = 3.
+ofTen = 10.
+Typed = Type (Typed Int).
+unTyped t = case t of Typed n -> n.
+main = print (casesArg + ofTen + unTyped (Typed 4)).

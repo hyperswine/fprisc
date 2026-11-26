@@ -10,6 +10,8 @@ literal n = if n >= 0 then "{n}" else if n == minInt then "(0 - {maxInt} - 1)" e
 sequence ns = "[{Str.join "," (List.map literal ns)}]".
 maxi a b = if a > b then a else b.
 mini a b = if a < b then a else b.
+# (The refusal program passes opaque arguments to P.pages: a literal 0 is refused
+# at compile time, v1.0 semantics §7 rule 2.)
 # size > 0 and count >= 0 here, so truncating / equals floor. The remainder is
 # count - whole * size: Sol's % is wrong for large Ints (2305843009213693951 % 2 gives -1).
 reference size count requested = whole = count / size; tail = count - whole * size;
@@ -34,7 +36,7 @@ runLines exe env harts = ProcessResult code out err = H.call [exe] (("FPR_HARTS"
   _ = must "{exe} on {harts} harts: exit {code}" (code == 0) err; Str.lines out.
 hasLine report parts = List.any (fn l -> List.all (fn p -> Str.contains p l) parts) (Str.lines report).
 boundaries = "L = use \"std/list\".\nemit size count request =\n  p = P.plan size count request;\n  print \"\{size\},\{count\},\{request\}:\{p.index\},\{p.pages\},\{p.first\}\".\ngroup sizes counts requests = L.fold (fn acc size ->\n  L.fold (fn acc count -> L.fold (fn acc request -> emit size count request) Unit requests) Unit counts) Unit sizes.\nmain =\n".
-refuse = "Program = use \"std/program\".\ncall size count = p = P.plan size count 0; p.first.\nmain = case Program.args Unit of\n    [\"size-zero\"] -> print (call 0 1)\n  | [\"size-negative\"] -> print (call (0 - 1) 1)\n  | [\"count-negative\"] -> print (call 1 (0 - 1))\n  | [\"pages-zero\"] -> print (P.pages 0 1)\n  | [\"pages-negative\"] -> print (P.pages 1 (0 - 1))\n  | _ -> Unit.\n".
+refuse = "Program = use \"std/program\".\ncall size count = p = P.plan size count 0; p.first.\nmain = case Program.args Unit of\n    [\"size-zero\"] -> print (call 0 1)\n  | [\"size-negative\"] -> print (call (0 - 1) 1)\n  | [\"count-negative\"] -> print (call 1 (0 - 1))\n  | [\"pages-zero\"] -> print (P.pages (List.len []) 1)\n  | [\"pages-negative\"] -> print (P.pages 1 (List.len [] - 1))\n  | _ -> Unit.\n".
 tooSmall = "small : Unit -> Int | work small <= 1 | alloc small <= 31.\nsmall _ = p = P.plan 20 100 0; p.first.\nmain = print (small Unit).\n".
 inventory app = "I = use \"{app}\".\nL = use \"std/list\".\nitem n = \{id = n, name = \"item \{n\}\", loc = \"room\", sub = \"\", desc = \"\", tags = Nil,\n          created = n, at = n, by = \"sam\", moves = Nil\}.\nemit count request =\n  session = \{I.noSess | sid = 7, user = \"sam\", page = request\};\n  model = \{I.initModel | sess = [session], items = L.map item (L.range 1 count)\};\n  v = I.project 20 200 7 model;\n  ids = L.map (fn it -> it.id) v.items;\n  print \"\{count\},\{request\}:\{v.page\},\{v.pages\},\{v.first\}:\{ids\}\".\nmain =\n  _ = emit 0 100;\n  _ = emit 21 100;\n  _ = emit 41 1;\n  _ = emit 41 (0 - 1);\n  _ = emit 1 2;\n  _ = print (Int.max 1 0, Int.max 1 (0 - 1), Int.max 1 20);\n  Unit.\n".
 invLine cr = (count, request) = cr; (index, pages, first) = reference 20 count request;

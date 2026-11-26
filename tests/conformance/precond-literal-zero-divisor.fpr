@@ -1,0 +1,3 @@
+# clause: v1.0 semantics §7 (preconditions by layer, rule 2, decided 26 Nov
+# 2026). A precondition that is decidably false is refused in every layer.
+main = print (1 / 0).

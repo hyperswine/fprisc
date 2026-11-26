@@ -1,0 +1,6 @@
+# clause: v1.0 semantics §7 (preconditions by layer, rule 4). In Base an
+# unproved divisor compiles to one run-time check that traps on zero.
+half n = 10 / n.
+main =
+  _ = print (half 2);
+  print (half (List.len [])).

@@ -1,0 +1,5 @@
+# clause: v1.0 semantics §6 (recursion must be accounted for). A recursive
+# function defined inside a block needs a marker, like a top-level one.
+main =
+  go n = (if n == 0 then 0 else go (n - 1));
+  print (go 5).

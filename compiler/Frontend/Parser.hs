@@ -297,9 +297,9 @@ ifE = do
 
 caseE :: P SExpr
 caseE = do
-  _ <- symbol "case"
+  _ <- keyword "case"
   scrut <- expr
-  _ <- symbol "of"
+  _ <- keyword "of"
   arms <- arm `sepBy1` pipeSep
   pure (SCase scrut arms)
   where
@@ -671,7 +671,7 @@ typeDecl = do
   mult <- optional integer
   params <- many lowerName
   eqSign
-  _ <- symbol "Type"
+  _ <- keyword "Type"
   cons <-
     parens (conDecl `sepBy1` pipeSep)
       <|> newtypeCon n

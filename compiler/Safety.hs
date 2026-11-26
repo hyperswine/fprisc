@@ -253,7 +253,11 @@ checkSafety preludeNames tops notes = SafetyResult errs suggests
     -- shared with the std proof pass (StdBridge) so both see ONE language
     (measTable, mErrs) = measureCheckCG cg tops
     proven = M.keysSet measTable
-    recursive = recursive0 `S.difference` proven
+    -- a recursive local function cannot carry a signature or a measure, so
+    -- its enclosing top-level function owes the marker whatever its own
+    -- measure proves
+    localRecs = cgLocalRec cg
+    recursive = (recursive0 `S.difference` proven) `S.union` S.fromList [n | n <- bindNames, not (null (localRecs n))]
     -- rule 2: taint from marked, non-library callees
     importedTaint n = any (\g -> S.member g marked && not (blessed g) && ('.' `elem` g || '@' `elem` g)) (callsOf n)
     taints n = any (\g -> S.member g marked && not (blessed g)) (callsOf n)
@@ -265,6 +269,7 @@ checkSafety preludeNames tops notes = SafetyResult errs suggests
         (S.fromList [n | n <- bindNames, (n /= "main" || importedTaint n), not (blessed n), taints n])
     violated = [n | n <- bindNames, S.member n required, not (S.member n marked)]
     why n
+      | l : _ <- localRecs n, not (S.member n recursive0) || S.member n proven = "its local function `" ++ l ++ "` is recursive"
       | S.member n recursive = "recursive"
       | otherwise = "calls an unsafe-marked function"
     errs =
@@ -310,11 +315,15 @@ data CallGraph = CallGraph
   { cgBinds :: [Name],
     cgClauses :: Name -> [([SPat], [SGuard], SExpr)],
     cgCalls :: Name -> [Name],
-    cgSccs :: [SCC Name]
+    cgSccs :: [SCC Name],
+    -- local functions (defined in a block) that call themselves: no local
+    -- signature can mark or measure them, so their enclosing top-level
+    -- function counts as recursive
+    cgLocalRec :: Name -> [Name]
   }
 
 callGraphOf :: [STop] -> CallGraph
-callGraphOf tops = CallGraph bindNames clausesOf callsOf sccs
+callGraphOf tops = CallGraph bindNames clausesOf callsOf sccs localRecOf
   where
     bindNames = nub [n | TBind n _ _ _ <- tops]
     topSet = S.fromList bindNames
@@ -329,25 +338,46 @@ callGraphOf tops = CallGraph bindNames clausesOf callsOf sccs
     callsOf n = nub (concatMap refs (clausesOf n))
     -- free applied top-level names (same recipe as Infer's SCC pass)
     topRefs2 bound e = [n | n <- coll bound e, S.member n topSet]
-      where
-        coll bs = \case
-          SMark _ x -> coll bs x
-          SVar v | not (S.member v bs) -> [v]
-          SApp a b -> coll bs a ++ coll bs b
-          SLam ps x -> coll (bs <> S.fromList ps) x
-          SBlock stmts fin -> gos bs stmts fin
-          SCase s as -> coll bs s ++ concat [coll (bs <> S.fromList (patVars p)) x | (p, x) <- as]
-          SBin _ a b -> coll bs a ++ coll bs b
-          SProj x _ -> coll bs x
-          SRec fs -> concatMap (coll bs . snd) fs
-          SUpd m as -> coll bs m ++ concatMap (coll bs . snd) as
-          STup es -> concatMap (coll bs) es
-          SList es -> concatMap (coll bs) es
-          SStrI segs -> concat [coll bs x | SegExpr x <- segs]
-          _ -> []
-        gos bs [] fin = coll bs fin
-        gos bs (SBind n ps x : rest) fin = coll (bs <> S.fromList (n : ps)) x ++ gos (S.insert n bs) rest fin
-        gos bs (SBindPat p x : rest) fin = coll bs x ++ gos (bs <> S.fromList (patVars p)) rest fin
+    localRecOf n = nub (concat [localRec (ps, g, b) | (ps, g, b) <- clausesOf n])
+    localRec (_, g, b) = recIn b ++ concat [recIn e | gd <- g, e <- case gd of GBool e' -> [e']; GPat _ e' -> [e']]
+    -- every `name params = body;` in a block whose body names `name` itself
+    recIn = \case
+      SMark _ x -> recIn x
+      SApp a b -> recIn a ++ recIn b
+      SLam _ x -> recIn x
+      SBlock stmts fin -> concatMap stmtRec stmts ++ recIn fin
+      SCase s as -> recIn s ++ concatMap (recIn . snd) as
+      SBin _ a b -> recIn a ++ recIn b
+      SProj x _ -> recIn x
+      SRec fs -> concatMap (recIn . snd) fs
+      SUpd m as -> recIn m ++ concatMap (recIn . snd) as
+      STup es -> concatMap recIn es
+      SList es -> concatMap recIn es
+      SStrI segs -> concat [recIn x | SegExpr x <- segs]
+      _ -> []
+    stmtRec (SBind n ps x)
+      | not (null ps), n `elem` coll (S.fromList ps) x = n : recIn x
+      | otherwise = recIn x
+    stmtRec (SBindPat _ x) = recIn x
+    coll :: S.Set Name -> SExpr -> [Name]
+    coll bs = \case
+      SMark _ x -> coll bs x
+      SVar v | not (S.member v bs) -> [v]
+      SApp a b -> coll bs a ++ coll bs b
+      SLam ps x -> coll (bs <> S.fromList ps) x
+      SBlock stmts fin -> gos bs stmts fin
+      SCase s as -> coll bs s ++ concat [coll (bs <> S.fromList (patVars p)) x | (p, x) <- as]
+      SBin _ a b -> coll bs a ++ coll bs b
+      SProj x _ -> coll bs x
+      SRec fs -> concatMap (coll bs . snd) fs
+      SUpd m as -> coll bs m ++ concatMap (coll bs . snd) as
+      STup es -> concatMap (coll bs) es
+      SList es -> concatMap (coll bs) es
+      SStrI segs -> concat [coll bs x | SegExpr x <- segs]
+      _ -> []
+    gos bs [] fin = coll bs fin
+    gos bs (SBind n ps x : rest) fin = coll (bs <> S.fromList (n : ps)) x ++ gos (S.insert n bs) rest fin
+    gos bs (SBindPat p x : rest) fin = coll bs x ++ gos (bs <> S.fromList (patVars p)) rest fin
     sccs = stronglyConnComp [(n, n, callsOf n) | n <- bindNames]
 
 --------------------------------------------------------------------------------
