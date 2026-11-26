@@ -28,7 +28,8 @@ resolvedClosure image = List.concat (List.map (fn line -> case Str.words (Str.tr
     name :: "=>" :: path :: _ -> if Str.startsWith "/" path then [(name, path)] else []
   | _ -> []) (Str.lines (B.query ["ldd",image]))).
 # the Debian package that owns a library, or "" for one built from source
-packageOf path = out = B.query ["sh","-c","dpkg -S \"$(readlink -f \"$1\")\" 2>/dev/null || dpkg -S \"$1\" 2>/dev/null || true","sh",path];
+# (by file name: with merged /usr, dpkg records /lib/... for what resolves to /usr/lib/...)
+packageOf path = out = B.query ["sh","-c","b=$(basename \"$(readlink -f \"$1\")\"); dpkg -S \"$b\" 2>/dev/null | grep -m1 \"/$b\\$\" || true","sh",path];
   if out == "" then "" else (Str.split 58 out) ! 0.
 # a library built from source into PREFIX/lib carries its notices in
 # PREFIX/share/licenses, and PREFIX is NAME-VERSION (as a Homebrew keg)
