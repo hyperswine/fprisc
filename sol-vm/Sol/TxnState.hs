@@ -138,7 +138,8 @@ data TxState = TxState
     txReplayableThreads :: M.Map ThreadId Int,
     txSaga :: Maybe GitUndo,
     txPivot :: !Bool,
-    txLogs :: [String] -- REVERSED `log` lines: emitted only after a clean commit
+    txLogs :: [String], -- REVERSED `log` lines: emitted only after a clean commit
+    txBytesView :: M.Map FilePath BS.ByteString -- this txn's own writeBytes, exact
   }
 
 newTx :: IO (IORef TxState)
@@ -155,7 +156,7 @@ emptyTx = TxState
   , txHandles=IM.empty, txNextH=1, txNonText=S.empty, txSealed=False
   , txIdentity=Nothing, txNextStep=0, txTerminal=False, txPathLogs=[]
   , txSagaJournal=Nothing, txTemps=[], txIO=Nothing, txProcesses=Nothing, txRetryPolicy=GuardedRetry
-  , txExternal=S.empty, txReplayableThreads=M.empty, txSaga=Nothing, txPivot=False, txLogs=[]
+  , txExternal=S.empty, txReplayableThreads=M.empty, txSaga=Nothing, txPivot=False, txLogs=[], txBytesView=M.empty
   }
 
 txRuntime :: IORef TxState -> IO ScriptIO.Runtime
@@ -267,6 +268,7 @@ captureStep (PlannedTag path name ref limit) = do
 
 captureEffect :: Effect -> IO Effect
 captureEffect (EWrite path value) = (\p -> EWrite p value) <$> stableWorldPath path
+captureEffect (EWriteBytes path value) = (\p -> EWriteBytes p value) <$> stableWorldPath path
 captureEffect (ERemove path) = ERemove <$> stableWorldPath path
 captureEffect (EMkdir path) = EMkdir <$> stableWorldPath path
 captureEffect (ERmdir path) = ERmdir <$> stableWorldPath path
@@ -296,6 +298,7 @@ txTakeLogs ref = reverse . txLogs <$> readIORef ref
 -- to name what is still pending
 effectBrief :: Effect -> String
 effectBrief (EWrite p _) = "write " ++ p
+effectBrief (EWriteBytes p _) = "write bytes " ++ p
 effectBrief (ERemove p) = "rm " ++ p
 effectBrief (EMkdir p) = "mkdirp " ++ p
 effectBrief (ERmdir p) = "rmdir " ++ p
@@ -427,7 +430,13 @@ txTryRead :: IORef TxState -> FilePath -> IO TxRead
 txTryRead ref raw = do
   p <- stableWorldPath raw
   s <- readIORef ref
-  case M.lookup p (txView s) of
+  case (M.lookup p (txBytesView s), M.lookup p (txView s)) of
+    (Just b, _) -> pure (either (const TxNonText) TxText (ScriptIO.decodeUtf8 b)) -- this txn's writeBytes
+    (Nothing, view) -> txTryReadView ref p view
+
+txTryReadView :: IORef TxState -> FilePath -> Maybe (Maybe String) -> IO TxRead
+txTryReadView ref p view =
+  case view of
     Just (Just w) -> pure (TxText w) -- this txn's own write: always text
     Just Nothing -> pure TxMissing -- removed earlier in this txn
     Nothing -> do
@@ -467,7 +476,37 @@ txHWrite ref h v = do
     if isDoesNotExistError e then pure False else throwIO (e :: IOException)
   when link $ ioError (userError ("writeAtomic: refusing symbolic link: " ++ p))
   pushEffect ref (EWrite p v)
-  atomicModifyIORef' ref (\s -> (s {txView = M.insert p (Just v) (txView s), txDirView = M.delete p (txDirView s)}, ()))
+  atomicModifyIORef' ref (\s -> (s {txView = M.insert p (Just v) (txView s), txDirView = M.delete p (txDirView s), txBytesView = M.delete p (txBytesView s)}, ()))
+
+-- writeBytes: a whole-file write of exact bytes, queued like any write
+txWriteBytes :: IORef TxState -> FilePath -> BS.ByteString -> IO ()
+txWriteBytes ref raw b = do
+  p <- stableWorldPath raw
+  link <- (PF.isSymbolicLink <$> PF.getSymbolicLinkStatus p) `catch` \e ->
+    if isDoesNotExistError e then pure False else throwIO (e :: IOException)
+  when link $ ioError (userError ("writeAtomic: refusing symbolic link: " ++ p))
+  pushEffect ref (EWriteBytes p b)
+  atomicModifyIORef' ref (\s -> (s {txBytesView = M.insert p b (txBytesView s), txView = M.delete p (txView s), txDirView = M.delete p (txDirView s)}, ()))
+
+-- readBytes: the exact bytes, binary or not: this txn's own write, else the
+-- snapshot (taken now, validated at commit like any read)
+txReadBytesE :: IORef TxState -> FilePath -> IO (Either String BS.ByteString)
+txReadBytesE ref raw = do
+  p <- stableWorldPath raw
+  s <- readIORef ref
+  case (M.lookup p (txBytesView s), M.lookup p (txView s)) of
+    (Just b, _) -> pure (Right b)
+    (_, Just (Just w)) -> pure (either Left Right (ScriptIO.encodeUtf8 w))
+    (_, Just Nothing) -> pure (Left ("no such file: " ++ p))
+    _ -> do
+      r <- try (snapshot ref p) :: IO (Either IOException (Maybe String))
+      case r of
+        Left e -> pure (Left (show e))
+        Right _ -> do
+          s2 <- readIORef ref
+          pure $ case M.lookup p (txReadBytes s2) of
+            Just (Just b) -> Right b
+            _ -> Left ("no such file: " ++ p)
 
 -- ---- path-level transactional ops ----------------------------------------
 
@@ -478,7 +517,7 @@ txRm ref raw = do
   p <- stableWorldPath raw
   _ <- snapshot ref p
   pushEffect ref (ERemove p)
-  atomicModifyIORef' ref (\s -> (s {txView = M.insert p Nothing (txView s)}, ()))
+  atomicModifyIORef' ref (\s -> (s {txView = M.insert p Nothing (txView s), txBytesView = M.delete p (txBytesView s)}, ()))
 
 txMkdirp :: IORef TxState -> FilePath -> IO ()
 txMkdirp ref raw = do

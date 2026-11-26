@@ -296,6 +296,7 @@ library sol-vm
       Sol.WebAssets
       Sol.Width
       Sol.FMath
+      Sol.Serial
   c-sources:
       compiler/cbits/fsx.c
       compiler/cbits/vecgpu.c
@@ -305,6 +306,7 @@ library sol-vm
       compiler/cbits/native_host.c
       compiler/cbits/sol_digest.c
       compiler/cbits/sol_http.c
+      compiler/cbits/sol_serial.c
   pkgconfig-depends: libgit2 >= 1.9, libarchive >= 3.6, libcurl >= 8.4
   if !os(darwin)
     extra-libraries:  EGL GL
@@ -614,6 +616,12 @@ test-suite SolReplIncremental
   type:               exitcode-stdio-1.0
   main-is:            SolReplIncremental.hs
   build-depends: sol-vm
+
+test-suite SolSerial
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            SolSerial.hs
+  build-depends: sol-vm, unix
 
 test-suite CallableAnalysis
   import:             unit-test

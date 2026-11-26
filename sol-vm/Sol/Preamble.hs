@@ -161,6 +161,16 @@ prelude =
       "BStr.at : BStr -> Int -> (Int, BStr).",
       "BStr.sub : BStr -> Int -> Int -> (BStr, BStr).",
       "BStr.free : BStr -> Unit.",
+      -- Serial ports (Sol.Serial): a LINEAR handle, threaded like BStr. Every
+      -- operation acts now, so they belong in `>!` statements. Timeouts are
+      -- milliseconds; expect answers everything up to and including the text
+      -- and keeps the bytes after it for the next read or expect.
+      "Serial 1 = Type (SerialPort Int).",
+      "Serial.open : String -> Int -> Result Serial String.",
+      "Serial.write : Bytes -> Serial -> (Result Unit String, Serial).",
+      "Serial.read : Int -> Int -> Serial -> (Result Bytes String, Serial).",
+      "Serial.expect : String -> Int -> Serial -> (Result Bytes String, Serial).",
+      "Serial.close : Serial -> Unit.",
       -- Typed native capabilities; byte/admission budgets come from callers.
       "GitOperation = Type (GitInit String | GitAdd String (List String) | GitUnadd String (List String) | GitCommit String | GitUncommit String | GitBranch String | GitDeleteBranch String | GitSwitch String | GitTag String | GitUntag String | GitStatus | GitDiff | GitDiffStaged | GitLog Int | GitHead).",
       "NativeGit.afterCommit : Int -> String -> String -> String -> GitOperation -> Unit.",
@@ -432,6 +442,7 @@ halArities =
       ("BStr.new", 1), ("BStr.fromStr", 1), ("BStr.toStr", 1),
       ("BStr.append", 2), ("BStr.cat", 2), ("BStr.len", 1),
       ("BStr.at", 2), ("BStr.sub", 3), ("BStr.free", 1),
+      ("Serial.open", 2), ("Serial.write", 2), ("Serial.read", 3), ("Serial.expect", 3), ("Serial.close", 1),
       ("NativeGit.afterCommit", 5), ("NativeGit.query", 3), ("NativeGit.push", 4), ("NativeArchive.afterCommit", 4),
       ("Host.snapshot", 1),
       ("Proc.later", 1), ("Deferred.out", 1), ("Deferred.trim", 1), ("Deferred.line", 2), ("Deferred.field", 3),

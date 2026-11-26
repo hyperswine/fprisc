@@ -11,7 +11,8 @@ module Sol.Hal
 
 import Control.Monad (unless, when)
 import Data.Array ((!))
-import Data.Bits (shiftL, (.&.), (.|.))
+import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
+import Data.Word (Word32)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as BSU
 import Data.Int (Int64)
@@ -26,6 +27,7 @@ import GHC.Float (castDoubleToWord64, castWord32ToFloat, castWord64ToDouble)
 import Control.Concurrent (threadDelay)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.IO.Error (ioeGetFileName)
+import qualified Sol.Serial as Serial
 import qualified Sol.FMath as FMath
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -101,6 +103,24 @@ veqIO bst a b = do
 -- surface generated code can reach the outside world through. Path/Handle
 -- tids are passed in because the front-end assigns user-type ids in
 -- declaration order (prelude declares them first).
+-- Bytes readers and writers: (width in bytes, big-endian)
+byteWidths, byteWriters :: [(String, (Int, Bool))]
+byteWidths = [("Bytes." ++ n, wb) | (n, wb) <- byteForms]
+byteWriters = [("Bytes.put" ++ toUpperFirst n, wb) | (n, wb) <- byteForms]
+  where toUpperFirst (c : cs) = toEnum (fromEnum c - 32) : cs
+        toUpperFirst [] = []
+byteForms :: [(String, (Int, Bool))]
+byteForms = [("u8", (1, False)), ("u16le", (2, False)), ("u16be", (2, True)), ("u32le", (4, False)),
+             ("u32be", (4, True)), ("u64le", (8, False)), ("u64be", (8, True))]
+
+-- CRC-32 (IEEE 802.3, zlib's): reflected polynomial 0xEDB88320, init and
+-- final xor 0xFFFFFFFF
+crc32 :: BS.ByteString -> Word32
+crc32 = complement . BS.foldl' step 0xFFFFFFFF
+  where
+    step c x = let c0 = c `xor` fromIntegral x in iterate bit c0 !! 8
+    bit c = if c .&. 1 /= 0 then (c `shiftR` 1) `xor` 0xEDB88320 else c `shiftR` 1
+
 -- The committed result of each statement, by statement index: `x = > e.`
 -- reads its slot through Stmt.result (docs/2026-11-27-SOL-STATEMENT-RESULTS.md).
 -- One script runs per process; the run loop writes a slot only after its
@@ -194,6 +214,24 @@ mkHal cons scriptArgs tx preempts rt =
                     sl <- mkBStr r2
                     pure (VData 4 0 [sl, v])))),
       ("BStr.free", (1, \[v] -> consumeBStr v >> pure vUnit)),
+      ("Serial.open", (2, \[VStr path, VInt baud] -> do
+          markEscape "Serial.open" ("opens " ++ path ++ " now")
+          r <- Serial.openPort path (fromIntegral baud)
+          pure (resultV serialV r))),
+      ("Serial.write", (2, \[VBytes b, s] -> do
+          k <- serialKey s
+          r <- Serial.writePort k b 10000
+          pure (tupleV (resultV (const vUnit) r) s))),
+      ("Serial.read", (3, \[VInt cap, VInt ms, s] -> do
+          k <- serialKey s
+          r <- Serial.readPort k (fromIntegral cap) (fromIntegral ms)
+          pure (tupleV (resultV VBytes r) s))),
+      ("Serial.expect", (3, \[VStr text, VInt ms, s] -> do
+          k <- serialKey s
+          needle <- either vmPanic pure (ScriptIO.encodeUtf8 text)
+          r <- Serial.expectPort k needle (fromIntegral ms)
+          pure (tupleV (resultV VBytes r) s))),
+      ("Serial.close", (1, \[s] -> serialKey s >>= Serial.closePort >> pure vUnit)),
       ("error", (1, \[v] -> vmPanic (render v))),
       -- ---- the Ok/Err tier: fallible work returns Result, chained with |>? --
       ("Try.parseInt", (1, tryParseIntH)),
@@ -379,6 +417,28 @@ mkHal cons scriptArgs tx preempts rt =
       chunks <- mapM (\v -> case v of VBytes b -> pure b; _ -> vmPanic "Bytes.concat expects Bytes") values
       pure (VBytes (BS.concat chunks))
     scriptHal "Bytes.contains" [VBytes needle, VBytes haystack] = pure (vBool (BS.isInfixOf needle haystack))
+    -- fixed-width unsigned integers (std/binary's names; a read past the end is None)
+    scriptHal name [VInt at, VBytes b] | Just (w, big) <- lookup name byteWidths = pure $
+      if at < 0 || at + fromIntegral w > fromIntegral (BS.length b) then VData 7 0 []
+      else let bs = [fromIntegral (BS.index b (fromInteger at + k)) | k <- [0 .. w - 1]] :: [Integer]
+               ordered = if big then bs else reverse bs
+            in VData 7 1 [VInt (foldl (\acc x -> acc * 256 + x) 0 ordered)]
+    -- the low bits of the Int, negatives as two's complement (std/binary's writers)
+    scriptHal name [VInt v] | Just (w, big) <- lookup name byteWriters = pure $
+      let m = v `mod` (256 ^ w)
+          le = [fromIntegral ((m `div` (256 ^ k)) `mod` 256) | k <- [0 .. w - 1]]
+       in VBytes (BS.pack (if big then reverse le else le))
+    scriptHal "Bytes.set" [VInt i, VInt v, VBytes b] = pure $
+      if i < 0 || i >= fromIntegral (BS.length b) then vErr "byte index out of range"
+      else if v < 0 || v > 255 then vErr ("not a byte: " ++ show v)
+      else vOk (VBytes (BS.concat [BS.take (fromInteger i) b, BS.singleton (fromInteger v), BS.drop (fromInteger i + 1) b]))
+    scriptHal "Bytes.patch" [VInt at, VBytes new, VBytes b] = pure $
+      if at < 0 || at + fromIntegral (BS.length new) > fromIntegral (BS.length b) then vErr "byte patch out of range"
+      else vOk (VBytes (BS.concat [BS.take (fromInteger at) b, new, BS.drop (fromInteger at + BS.length new) b]))
+    scriptHal "Bytes.crc32" [VBytes b] = pure (VInt (fromIntegral (crc32 b)))
+    -- transactional binary files: a snapshot read and a queued whole-file write
+    scriptHal "readBytes" [VStr p] = resultV VBytes <$> txReadBytesE tx p
+    scriptHal "writeBytes" [VStr p, VBytes b] = txWriteBytes tx p b >> pure vUnit
     scriptHal "Utf8.encode" [VStr s] = pure (resultV VBytes (ScriptIO.encodeUtf8 s))
     scriptHal "Utf8.decode" [VBytes b] = pure (resultV VStr (ScriptIO.decodeUtf8 b))
     scriptHal "Utf8.decodeReplace" [VBytes b] = pure (VStr (ScriptIO.decodeReplace b))
@@ -476,6 +536,9 @@ mkHal cons scriptArgs tx preempts rt =
     consumeBStr (VData t 0 [VInt k]) | t == bstrT = bstDelete bst (fromIntegral k)
     consumeBStr v = vmPanic ("BStr.free: not a BStr: " ++ render v)
     tidOf n = maybe (-1) (\(t, _, _) -> t) (M.lookup n cons)
+    serialV k = let (t, v) = conTV "SerialPort" in VData t v [VInt (fromIntegral k)]
+    serialKey (VData t _ [VInt k]) | t == tidOf "Serial" = pure (fromIntegral k)
+    serialKey v = vmPanic ("Serial: not a port: " ++ render v)
     conTV n = maybe (-1, -1) (\(t, v, _) -> (t, v)) (M.lookup n cons)
     isCon n t g = conTV n == (t, g)
 

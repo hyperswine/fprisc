@@ -133,7 +133,11 @@ parentOf p = case reverse (dropWhile (/= '/') (reverse p)) of
 
 -- entirely-old or entirely-new, never torn; durable once we return
 writeAtomic :: FilePath -> String -> IO ()
-writeAtomic p v = do
+writeAtomic p v = writeAtomicWith (\tmp -> writeFile tmp v) p
+
+-- the atomic whole-file write, for text and for exact bytes alike
+writeAtomicWith :: (FilePath -> IO ()) -> FilePath -> IO ()
+writeAtomicWith put p = do
   -- Refuse symlinks explicitly: writing through them needs referent locks
   -- and snapshots, not a rename under the link's transaction key.
   status <- (Just <$> PF.getSymbolicLinkStatus p) `catch` \e ->
@@ -143,7 +147,7 @@ writeAtomic p v = do
   let tmp = p ++ ".sol-tmp"
       clean = removeFile tmp `catch` (\(_ :: IOException) -> pure ())
   (do
-    writeFile tmp v
+    put tmp
     forM_ status (PF.setFileMode tmp . PF.fileMode)
     fsyncPath tmp
     renamePath tmp p
@@ -584,6 +588,7 @@ data CommitResult = Committed Int Int Bool Bool | Conflict [FilePath]
 
 effectPath :: Effect -> Maybe FilePath
 effectPath (EWrite p _) = Just p
+effectPath (EWriteBytes p _) = Just p
 effectPath (ERemove p) = Just p
 effectPath (EMkdir p) = Just p
 effectPath (ERmdir p) = Just p
@@ -840,6 +845,7 @@ replayEffs j recovery done crashAt effs = do
                 next (completionFailed r) 0
       case e of
         EWrite p v -> writeAtomic p v >> next sf 1
+        EWriteBytes p b -> writeAtomicWith (\tmp -> BS.writeFile tmp b) p >> next sf 1
         ELogWrite p v -> do
           ef <- readIORef bad
           if sf || ef then diagnostic ("[sol] transactional log withheld: " ++ p) >> next sf 0
@@ -882,6 +888,7 @@ materializeLogs effects logs = do
   let paths = nub (map fst logs)
       final p = foldl (\v e -> case e of
         EWrite q text | p==q -> Just (Just text)
+        EWriteBytes q b | p==q -> Just (Just (either (const "") id (ScriptIO.decodeUtf8 b)))
         ERemove q | p==q -> Just Nothing
         _ -> v) Nothing effects
   appended <- mapM (\p -> do

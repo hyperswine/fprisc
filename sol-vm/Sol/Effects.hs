@@ -1,6 +1,7 @@
 -- Closed, serializable effect plans. No VM closures enter the redo journal.
 module Sol.Effects where
 
+import qualified Data.ByteString as BS
 import Sol.Native (GitRequest(..))
 import qualified Data.IntMap.Strict as IM
 import Data.Char (isSpace)
@@ -20,7 +21,7 @@ data Capture = ProcessCapture Int String String | TextCapture String deriving (E
 type Completion = Either String Capture
 type Done = IM.IntMap Completion
 
-data Effect = EWrite FilePath String | ERemove FilePath | EMkdir FilePath | ERmdir FilePath
+data Effect = EWrite FilePath String | EWriteBytes FilePath BS.ByteString | ERemove FilePath | EMkdir FilePath | ERmdir FilePath
   | EShell String | EShellAt FilePath String | EProcess ProcessSpec | EGit GitRequest
   | EArchive FilePath FilePath Integer Integer | ELater DeferredStep
   | ELogWrite FilePath String deriving (Show, Read)

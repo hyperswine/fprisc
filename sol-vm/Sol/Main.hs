@@ -1142,7 +1142,8 @@ immediateOperations = S.fromList (realtimeNames ++
   , "Stream.stdin", "Stream.openRead", "Stream.openWrite", "Stream.readChunk", "Stream.readLine"
   , "Stream.readCsv", "Stream.writeChunk", "Sha256.stream", "Http.request", "Http.download"
   , "Proc.runNow", "Proc.streamNow", "Proc.inheritNow", "Proc.pipeline", "Proc.start"
-  , "NativeGit.push", "NativeGit.commitNow" ])
+  , "NativeGit.push", "NativeGit.commitNow"
+  , "Serial.open", "Serial.write", "Serial.read", "Serial.expect", "Serial.close" ])
 
 -- For each transactional statement (and a zero-arg `main` run as one), the
 -- immediate operations it can reach through top-level references. A
