@@ -33,7 +33,8 @@ releaseFiles sdk =
 # the release's platform, from the host that staged it
 platform meta = host = field meta "host"; system = textField host "system"; machine = textField host "machine";
   if system == "Darwin" and machine == "arm64" then "macos-arm64"
-  else if system == "Linux" and (machine == "x86_64" or machine == "aarch64") then "linux-{machine}"
+  else if system == "Linux" and machine == "x86_64" then "linux-x86_64"
+  else if system == "Linux" and machine == "aarch64" then "linux-arm64"
   else error "release packaging is qualified for macOS ARM64 and Linux x86_64/aarch64, not {system} {machine}".
 verify : unsafe String -> String -> String -> String -> J.Json -> String .
 verify root prefix core notices meta =
