@@ -15,4 +15,4 @@ main Unit =
   candidates = List.filter (fn p -> p != "") (Str.lines (query ["git","grep","--untracked","-I","-l","-E","^#!.*(bash|/sh|python)","--"]));
   bad = List.append (List.filter legacy tracked) (List.filter script candidates);
   if bad == [] then print "Sol-only script policy: passed" else error "retired script files: {bad}".
-> main Unit.
+>! main Unit.

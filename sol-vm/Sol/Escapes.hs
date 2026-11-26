@@ -254,11 +254,22 @@ type RtCounts = IORef (M.Map String Int)
 newRtCounts :: IO RtCounts
 newRtCounts = newIORef M.empty
 
+-- the counts of an immediate (`>!`) statement: escapes are what it is for,
+-- so they are counted but never announced
+newQuietRtCounts :: IO RtCounts
+newQuietRtCounts = newIORef (M.singleton quietKey 0)
+
+quietKey :: String
+quietKey = "$quiet"
+
+rtQuiet :: RtCounts -> IO Bool
+rtQuiet ref = M.member quietKey <$> readIORef ref
+
 -- bump, and on FIRST use of a kind explain what was given up
 noteEscape :: RtCounts -> String -> String -> IO ()
 noteEscape ref kind why = do
   m <- readIORef ref
-  when (not (M.member kind m)) $
+  when (not (M.member kind m) && not (M.member quietKey m)) $
     hPutStrLn stderr ("[sol] REALTIME: " ++ kind ++ " — " ++ why)
   atomicModifyIORef' ref (\mm -> (M.insertWith (+) kind 1 mm, ()))
 
@@ -268,7 +279,7 @@ rtTotal ref = sum . M.elems <$> readIORef ref
 rtReport :: RtCounts -> IO [String]
 rtReport ref = do
   m <- readIORef ref
-  pure [k ++ " x" ++ show n | (k, n) <- M.toList m]
+  pure [k ++ " x" ++ show n | (k, n) <- M.toList m, k /= quietKey]
 
 -- A realtime write steps outside the transaction for that path, so the
 -- transaction must stop making claims about it: drop any snapshot we took.

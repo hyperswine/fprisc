@@ -31,4 +31,4 @@ plan path binary =
                 ("sha256",J.JStr (digest path)),("packages",List.fold add (J.JObj []) included)]
         | _ -> mismatch.
 main : unsafe Unit -> Unit .
-> case args Unit of [path,binary] -> print (J.render (plan path binary)) | _ -> error "expected CABAL_PLAN COMPILER".
+>! case args Unit of [path,binary] -> print (J.render (plan path binary)) | _ -> error "expected CABAL_PLAN COMPILER".

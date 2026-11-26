@@ -225,4 +225,4 @@ build _ =
   _ = need (Fs.copyPublishNow "{out}/receipt.json" "{imagePath}.admission.json" 65536 True);
   _ = need (Fs.copyPublishNow "{out}/image.elf" imagePath 65536 True);
   print "static arena admitted: {imagePath}".
-> build Unit.
+>! build Unit.

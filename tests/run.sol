@@ -51,4 +51,4 @@ opts count nightly only argv = case argv of
 | "--nightly" :: rest -> opts count True only rest
 | "--only" :: name :: rest -> opts count nightly name rest
 | _ -> error "usage: sol tests/run.sol [--jobs N] [--nightly] [--only NAME]".
-> opts 1 False "" (args Unit).
+>! opts 1 False "" (args Unit).

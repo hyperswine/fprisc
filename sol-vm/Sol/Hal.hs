@@ -328,7 +328,7 @@ mkHal cons scriptArgs tx preempts rt =
     guardImmediate name = do
       pending <- txPendingBrief tx
       if null pending then markEscape name "immediate I/O is not a snapshot; guarded retry stops on a later conflict" >> pure Nothing
-      else pure (Just (pendingOrderMsg name "split script runs" pending))
+      else pure (Just (pendingOrderMsg name "" pending))
     direct name action = do
       blocked <- guardImmediate name
       case blocked of Just why -> pure (vErr why); Nothing -> action

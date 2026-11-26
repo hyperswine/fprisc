@@ -354,4 +354,4 @@ main u =
     _ = save out2 (J.set "suite_complete" (J.JBool complete) (J.set "passed" (J.JBool True) rep4));
     print "PASS: {List.len chosen} cases; {out2}/results.json".
 
-> main Unit.
+>! main Unit.

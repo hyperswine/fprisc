@@ -11,3 +11,4 @@ fetch key url target =
 main = case args Unit of
   [key,url,target] -> fetch key url target
 | _ -> error "usage: http-json-field.sol FIELD URL OUTPUT".
+>! main.

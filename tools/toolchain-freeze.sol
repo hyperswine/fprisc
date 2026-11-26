@@ -48,4 +48,4 @@ verify manifest path =
   drift = List.append (List.concat (List.map (compareRow frozen) (unwrap (J.fields plan)))) extra;
   if drift == [] then Unit else error "the compiler was not built from cabal.project.freeze: {Str.join "; " drift}".
 main : unsafe Unit -> Unit .
-> case args Unit of [manifest,path] -> verify manifest path | _ -> error "expected TOOLCHAIN_JSON FREEZE".
+>! case args Unit of [manifest,path] -> verify manifest path | _ -> error "expected TOOLCHAIN_JSON FREEZE".

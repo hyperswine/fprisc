@@ -26,7 +26,7 @@ link root out sequence =
     version = Str.lines (runTool root info) ! 0;
     J.JObj [("flags",J.JArr (List.map J.JStr opts)),("inputs",before),("toolchain",J.JStr version),
             ("commands",J.JArr (List.map (fn argv -> J.JArr (List.map J.JStr argv)) [command,info]))].
-> case args Unit of
+>! case args Unit of
     root :: out :: "compile" :: source :: limit :: exports ->
       argv = List.concat [["{root}/fpr","compile","--profile=bare-metal-builtin","--arc","--lib"],
         List.map (fn symbol -> "--export={symbol}") exports,["--heap-budget={limit}",source,"{out}/callback.s"]];

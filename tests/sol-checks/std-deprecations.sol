@@ -41,7 +41,7 @@ expectOk root work env name old new =
   if code != 0 then _ = print "FAIL {name}: compile exit {code}\n{text}"; ["{name}:compile"]
   else if not (hasWarning text old new) then _ = print "FAIL {name}: missing deprecation warning\n{text}"; ["{name}:warning"]
   else _ = print "PASS {name}"; [].
-> root = H.root Unit; work = tempDir "fpr-std-deprecations"; e = env root work;
+>! root = H.root Unit; work = tempDir "fpr-std-deprecations"; e = env root work;
   failed = [];
   # --- old imports compile and warn ---
   failed = List.append failed (expectOk root work e "bytes-old" "std/bytes" "std/binary");

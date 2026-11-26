@@ -8,3 +8,4 @@ main = case args Unit of
   [url,target] -> fetch url target False
 | [url,target,"--replace"] -> fetch url target True
 | _ -> error "usage: http-fetch.sol URL DESTINATION [--replace]".
+>! main.

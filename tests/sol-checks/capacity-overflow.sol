@@ -23,7 +23,7 @@ small root work env = src = "{work}/small.fpr"; exe = "{work}/small";
   _ = (if bc == 0 then Unit else error "build small: {bo}{be}");
   ProcessResult c0 o0 e0 = H.call [exe] env 60000;
   if c0 == 0 and o0 == "reserved\nSome 2\n" then print "PASS small capacity" else error "small capacity: exit {c0}, stdout={o0}, stderr={e0}".
-> root = H.root Unit; work = tempDir "fpr-capacity-overflow";
+>! root = H.root Unit; work = tempDir "fpr-capacity-overflow";
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache"),("FPR_DIAG_STDOUT","")];
   _ = small root work env;
   failed = List.concat (List.map (probe root work env) impossible);

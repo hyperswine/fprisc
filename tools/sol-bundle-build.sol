@@ -33,5 +33,5 @@ build root binary work prefix output launcher =
   case Str.split 10 result of
     [id,digest] -> _ = B.command ["mv",bundle,"{work}/{id}"]; _ = publish tool work id prefix output; print result
   | _ -> error "invalid bundle identity result".
-> case args Unit of root :: binary :: work :: prefix :: output :: launcher -> build root binary work prefix output launcher
+>! case args Unit of root :: binary :: work :: prefix :: output :: launcher -> build root binary work prefix output launcher
   | _ -> error "expected ROOT BINARY WORK_DIRECTORY PREFIX OUTPUT SOL_COMMAND".

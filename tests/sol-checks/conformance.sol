@@ -45,4 +45,4 @@ main u = root = H.root Unit; dir = "{root}/tests/conformance"; work = tempDir "f
   failed = List.concat (List.map (runCase root dir work builds) names);
   _ = print "conformance: {List.len names} cases, {List.len failed} failed";
   H.settle "conformance" root failed.
-> main Unit.
+>! main Unit.

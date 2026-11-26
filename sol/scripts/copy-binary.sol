@@ -7,4 +7,4 @@ execute argv = case argv of
   [source, target] -> copy source target False
 | ["--replace", source, target] -> copy source target True
 | _ -> error "usage: copy-binary.sol [--replace] SOURCE TARGET".
-> execute (args Unit).
+>! execute (args Unit).

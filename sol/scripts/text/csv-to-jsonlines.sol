@@ -20,3 +20,4 @@ main = case args Unit of
   [source,target] -> convert source target False
 | [source,target,"--replace"] -> convert source target True
 | _ -> error "usage: csv-to-jsonlines.sol SOURCE DESTINATION [--replace]".
+>! main.

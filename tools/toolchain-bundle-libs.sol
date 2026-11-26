@@ -64,4 +64,4 @@ bundle sdk exe =
   _ = List.map (rewrite exe aliases) (exe :: List.map (fn lib -> "{sdk}/lib/" + libName lib) libraries);
   J.JArr (List.map metadata libraries).
 main : unsafe Unit -> Unit .
-> case args Unit of [sdk,exe] -> print (J.render (bundle sdk exe)) | _ -> error "expected SDK_DIRECTORY EXECUTABLE".
+>! case args Unit of [sdk,exe] -> print (J.render (bundle sdk exe)) | _ -> error "expected SDK_DIRECTORY EXECUTABLE".

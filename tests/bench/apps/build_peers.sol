@@ -18,7 +18,7 @@ build bin opt (name,class) =
   _ = B.inDirectory "{bin}/ocaml-build" [] (List.concat [["ocamlfind","ocamlopt"],opt,["-package","unix","-o","{bin}/{name}.ocaml","{name}.ml"]]);
   _ = B.command ["javac","-d","{bin}/java-classes","java/{class}.java"];
   javaLauncher "{bin}/{name}.java" class.
-> bin = "{B.query ["pwd","-P"]}/bin";
+>! bin = "{B.query ["pwd","-P"]}/bin";
   _ = B.command ["mkdir","-p","{bin}/ocaml-build","{bin}/java-classes"];
   config = B.query ["ocamlopt","-config"];
   opt = (if List.any (fn line -> line == "flambda: true") (Str.lines config) then ["-O3"] else []);

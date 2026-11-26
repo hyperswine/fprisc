@@ -8,7 +8,7 @@ H = use "helpers".
 moduleChar c = (c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95.
 quotedModule s = Str.startsWith "std/" s and Str.endsWith ".fpr" s and Str.len s > 8
   and List.all moduleChar (Str.codes (Str.slice s 4 (Str.len s - 4))).
-> root = H.root Unit;
+>! root = H.root Unit;
   listed = List.filter quotedModule (Str.split 34 (readPath "{root}/compiler/Safety.hs"));
   modules = List.map (fn n -> "std/{n}") (List.filter (fn n -> Str.endsWith ".fpr" n) (ls "{root}/std"));
   missing = List.filter (fn m -> not (List.has m listed)) modules;

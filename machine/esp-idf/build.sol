@@ -24,4 +24,4 @@ build prog out =
     ["idf.py","-C","{root}/machine/esp-idf/project","-B","{out}/idf","-DSDKCONFIG={out}/sdkconfig",
      "-DFPR_ESP_DEBUG={B.setting "FPR_ESP_DEBUG" "0"}","-DFPR_ESP_IO_SMOKE={B.setting "FPR_ESP_IO_SMOKE" "0"}",
      "-DFPR_ESP_STACK_GUARD={B.setting "FPR_ESP_STACK_GUARD" "0"}","build"].
-> case args Unit of [prog,out] -> build prog out | _ -> error "expected absolute program and build directory".
+>! case args Unit of [prog,out] -> build prog out | _ -> error "expected absolute program and build directory".

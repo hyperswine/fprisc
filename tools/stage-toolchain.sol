@@ -52,7 +52,7 @@ stage root binary output plan =
   print (J.render (J.JObj [("prefix",J.JStr output),("compilerSha256",J.JStr digest),
                            ("files",J.JNum (List.len (unwrap (J.fields inventory))))])).
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse [CLI.Option "root" "" CLI.One,CLI.Option "output" "" CLI.One,
+>! parsed = unwrap (CLI.parse [CLI.Option "root" "" CLI.One,CLI.Option "output" "" CLI.One,
                               CLI.Option "binary" "" CLI.One,CLI.Option "plan" "" CLI.One] (args Unit));
   output = CLI.valueOr "" "output" parsed;
   explicit = CLI.valueOr "" "root" parsed;

@@ -15,7 +15,7 @@ checkout root destination =
     files = List.filter (fn path -> if path == "" then False else B.exists "-f" "{root}/{path}") paths;
     writePath destination (Str.join "" (List.map (fn path -> path + Str.fromCode 0) files)).
 main : unsafe Unit -> Unit .
-> case args Unit of [root,destination] ->
+>! case args Unit of [root,destination] ->
     manifest = "{root}/bundle-source.json";
     if B.exists "-f" manifest then
       value = unwrap (J.parse (readPath manifest) |>? J.get "files");

@@ -9,3 +9,4 @@ main = case args Unit of
     [ProcessSpec ["/bin/cat"] "" [] "" 0]
     (PipeFile source) (PipePublish target False) (PipeCapture 4096) 30000 PipeFail))
 | _ -> error "usage: copy-pipeline.sol SOURCE DESTINATION".
+>! main.

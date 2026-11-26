@@ -22,6 +22,6 @@ link image binary directory board cross manifest target entries assembly flags =
   _ = B.command ["rm","-rf",scratch];
   case result of Ok u -> u | Err why -> error why.
 main : unsafe Unit -> Unit .
-> case args Unit of image :: binary :: directory :: board :: cross :: manifest :: target :: entries :: assembly :: flags ->
+>! case args Unit of image :: binary :: directory :: board :: cross :: manifest :: target :: entries :: assembly :: flags ->
     link image binary directory board cross manifest target entries assembly flags
   | _ -> error "missing builtin image link arguments".

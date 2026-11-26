@@ -53,4 +53,4 @@ main u = root = H.root Unit; work = tempDir "fpr-configs";
   np = List.len progs; nc = List.len configs; nb = List.len bad;
   _ = print "config differential: {np} programs x {nc} configurations, {nb} mismatches";
   if bad == [] then Unit else error "config differential failed".
-> main Unit.
+>! main Unit.

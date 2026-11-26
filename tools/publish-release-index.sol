@@ -6,4 +6,4 @@
 C = use "publish-release-index-core".
 main : unsafe Unit -> Unit .
 main u = C.cli (args Unit).
-> main Unit.
+>! main Unit.

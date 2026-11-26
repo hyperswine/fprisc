@@ -75,5 +75,5 @@ buildBundle input output =
   numBins = List.len (pairs binaries); numCases = List.len rows;
   print "Built {numBins} binaries and {numCases} physical cases".
 main : unsafe Unit -> Unit .
-> case args Unit of [input,output] -> buildBundle input output
+>! case args Unit of [input,output] -> buildBundle input output
   | _ -> error "usage: pi-qualification-build PLAN OUTPUT".

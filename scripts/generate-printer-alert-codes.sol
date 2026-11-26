@@ -64,7 +64,7 @@ generate root dir =
       total = List.fold (fn n pair -> (_,items) = pair; n + List.len items) 0 selected;
       print "Generated {total} exact code categories".
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse [CLI.Option "root" "" CLI.One,CLI.Option "catalog-dir" "" CLI.One] (args Unit));
+>! parsed = unwrap (CLI.parse [CLI.Option "root" "" CLI.One,CLI.Option "catalog-dir" "" CLI.One] (args Unit));
   root = CLI.valueOr "" "root" parsed;
   dir = CLI.valueOr "/Applications/BambuStudio.app/Contents/Resources/hms" "catalog-dir" parsed;
   if CLI.operands parsed != [] then error "expected [--catalog-dir DIRECTORY] [--root FP_RISC_CHECKOUT]" else

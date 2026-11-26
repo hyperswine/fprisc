@@ -74,4 +74,4 @@ main u = root = H.root Unit; work = tempDir "fpr-ideal"; ideal = "{root}/example
   _ = List.map (expectRefused refusals) refusedResults;
   _ = print "literal contract violations, linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused";
   print "ideal examples: nine violated preconditions panic; insufficient work and nondecreasing recursion are refused".
-> main Unit.
+>! main Unit.

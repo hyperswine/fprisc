@@ -66,4 +66,4 @@ main u = root = H.root Unit; work = tempDir "fpr-result-sizes";
       must "minimum-trap on {h} harts: want exit 0 and stdout 'before' then the exact length 1, got exit {rc}" (rc == 0 and ro == "before\n1\n") (ro + re)) ["1","4"];
   _ = print "Size lemmas at the Int endpoint keep the exact answer and its effect prefix PASS";
   H.settle "result-sizes" root (List.fold (fn acc i -> if List.has i acc then acc else List.append acc [i]) [] failed).
-> main Unit.
+>! main Unit.

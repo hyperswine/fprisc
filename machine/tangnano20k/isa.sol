@@ -26,7 +26,7 @@ verify report xlen compressed =
   if items != [] and Str.join "_" items == text and extension "rv{xlen}i" (items ! 0) and List.any (extension "m") items then Unit
   else error "board image must declare RV{xlen}IM".
 check image xlen compressed = verify (B.query ["riscv64-unknown-elf-readelf","-Ah",image]) xlen compressed.
-> parsed = unwrap (CLI.parse [CLI.Option "xlen" "" CLI.One,CLI.Option "compressed" "" CLI.Switch,CLI.Option "report" "" CLI.Switch] (args Unit));
+>! parsed = unwrap (CLI.parse [CLI.Option "xlen" "" CLI.One,CLI.Option "compressed" "" CLI.Switch,CLI.Option "report" "" CLI.Switch] (args Unit));
   xlen = CLI.valueOr "64" "xlen" parsed;
   compressed = CLI.flag "compressed" parsed;
   case CLI.operands parsed of [path] ->

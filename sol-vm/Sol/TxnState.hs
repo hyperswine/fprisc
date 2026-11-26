@@ -345,9 +345,9 @@ pendingOrderMsg what deferredSpelling pending =
     ++ unlines ["      " ++ b | b <- take 5 pending]
     ++ (if length pending > 5 then "      ... and " ++ show (length pending - 5) ++ " more\n" else "")
     ++ "    Running now would act on the world BEFORE those land."
-    ++ " Queue it too ("
-    ++ deferredSpelling
-    ++ "), or move it to a separate script run."
+    ++ (if null deferredSpelling then "" else " Queue it too (" ++ deferredSpelling ++ "), or")
+    ++ " move the queued effects into an earlier statement:"
+    ++ " each statement commits before the next one starts."
 
 -- Keep exact bytes for validation; decode once for the text-facing API.
 -- Comparing bytes is faster and distinguishes invalid UTF-8 sequences which

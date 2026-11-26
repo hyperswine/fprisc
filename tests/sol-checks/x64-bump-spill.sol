@@ -36,4 +36,4 @@ main u = root = H.root Unit; work = tempDir "fpr-bump-spill";
   n = borrowed lines;
   if n >= 1 then print "x64 inline bump: {n} spilled cell destination(s) built in a borrowed register PASS"
   else error "the fixture no longer spills a bump destination on x64; pick one that does".
-> main Unit.
+>! main Unit.

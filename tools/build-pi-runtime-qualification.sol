@@ -51,4 +51,4 @@ main _ =
     unset = List.concat (List.map (fn name -> ["-u",name]) (List.filter (Str.startsWith "FPR_") names));
     runner = B.setting "SOL" "sol";
     B.command (["env"] + unset + ["FPR_HOME={root}","FPR_PATH={root}","XDG_CACHE_HOME={out}/cache",runner,"{root}/tools/pi-qualification-build.sol",input,"{out}/manifest.json"]).
-> main Unit.
+>! main Unit.

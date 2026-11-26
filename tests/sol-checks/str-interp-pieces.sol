@@ -105,4 +105,4 @@ main u = root = H.root Unit; work = tempDir "fpr-str-interp-pieces";
   ProcessResult rcode rout rerr = H.call [exe] [] 60000;
   if rcode == 0 and rout == want then print "string pieces: {n} call shapes ($strcat3, $strcat4, $strcatT), every piece kind renders as str PASS"
   else error "run exit {rcode}, want:\n{want}got:\n{rout}{rerr}".
-> main Unit.
+>! main Unit.

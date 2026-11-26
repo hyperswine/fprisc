@@ -12,7 +12,7 @@ entry spec = case List.rev (Str.split 58 spec) of
       (name,Str.parse size)
   | _ -> error "entry must be symbol:positive-bytes".
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report","stack-entries"]) (args Unit));
+>! parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report","stack-entries"]) (args Unit));
   opt k = CLI.valueOr "" k parsed;
   bytes = F.readBytes (opt "image");
   physical = T.admit bytes (F.readBytes (opt "manifest")) (opt "target");

@@ -26,12 +26,13 @@ import Control.Monad.State.Strict (runState)
 import Data.IORef
 import Data.Maybe (isJust, isNothing)
 import Data.Char (isSpace)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Foldable (toList)
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Sol.Lang
+import Frontend.Parser (immediateMarker)
 import Sol.Mod (resolveModuleParsedWith, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
@@ -205,8 +206,19 @@ solHelp = unlines
   , "Recovery may complete previously committed external effects; see the Sol installation guide."
   ]
 
+-- Statements are checked as clauses of `main`. A statement that only runs
+-- `main` (`> main.`, `>! main.`, after the `>!` marker) adds nothing, and as
+-- a clause it would read as `main = main`, so it is left out.
 evalForSafety :: STop -> STop
-evalForSafety (TEval e) = TBind "main" [] [] e
+evalForSafety (TEval e)
+  | runsMain e = TEval (SVar "Unit")
+  | otherwise = TBind "main" [] [] e
+  where
+    runsMain x = case x of
+      SMark _ y -> runsMain y
+      SVar "main" -> True
+      SBlock [SBind m [] _] y | m == immediateMarker -> runsMain y
+      _ -> False
 evalForSafety t = t
 
 -- The parsed prelude. Parsing the ~450-line text costs ~30 ms; the result
@@ -558,20 +570,22 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
     mapM_ (diagnostic . ("  * " ++)) structErrs2
     exitFailure
 
-  -- realtime escapes are opt-in and loud: report every use site's NAME and
-  -- count before the script runs, with the transactional alternative. The
-  -- prelude's own five wrapper definitions are skipped (they are the
-  -- plumbing, not a use).
-  let rtUses = scanRealtime allX
-  unless (M.null rtUses) $ do
-    note ("=== REALTIME ESCAPES: " ++ show (sum (M.elems rtUses)) ++ " use(s) ===")
-    forM_ (M.toList rtUses) $ \(n, c) ->
-      note ("  " ++ n ++ " x" ++ show c ++ "  — " ++ rtWhy n)
-    note "  this script is NOT atomic with respect to those paths/commands"
-
   -- `> expr.` becomes an anonymous zero-arg binding, run in file order
   -- (prelude has no evals, so numbering over the combined list is identical)
   let (tops, evalNames) = numberEvals allX
+  -- each `>` statement is its own transaction, so it may not act on the
+  -- world outside it; `>!` statements may (docs/2026-11-26-SOL-PROGRESSIVE-COMMITS.md)
+  -- a script with no statements runs a zero-arg `main` as its one statement (runList below)
+  let mainRoot = [n | n <- ["main"], null evalNames, any (\t -> case t of TBind m [] _ _ -> m == n; _ -> False) tops]
+      escapes = transactionalEscapes tops (evalNames ++ mainRoot)
+  unless (null escapes) $ do
+    let msgs = [statementLabel r ++ " is a transaction but reaches immediate operation(s) "
+                 ++ intercalate ", " ns ++ ": write it `>!` (immediate, never retried), or use the transactional twins"
+               | (r, ns) <- escapes]
+    Editor.legacy report "statements" msgs
+    diagnostic "=== STATEMENTS: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) msgs
+    exitFailure
 
   -- Use the shared checker's explicit, inferred and primitive ownership
   -- signatures in the same priority order as the native frontend.
@@ -596,12 +610,14 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
   let specialized = if noSpec then prog else specializeFunctions "sol" halArities M.empty prog
   bprog <- phase "bytecode" $ pure (compileProg halArities specialized)
 
-  -- `>` statements run in file order; a zero-arity `main`, if defined,
-  -- runs after them (so plain FPRISC-style files still do something)
-  let runList =
-        evalNames ++ case M.lookup "main" bprog of
-          Just fn | fnArity fn == 0 -> ["main"]
-          _ -> []
+  -- `>` statements run in file order. A script with no statements runs a
+  -- zero-arity `main` instead (plain FPRISC-style files); one that has
+  -- statements names main in a statement if it wants it run.
+  let runList
+        | null evalNames = case M.lookup "main" bprog of
+            Just fn | fnArity fn == 0 -> ["main"]
+            _ -> []
+        | otherwise = evalNames -- a script with statements runs exactly those
   notes <- readIORef noteRef
   -- Ship only what the run can reach. The whole prelude is compiled into
   -- every program, but a one-liner touches a handful of it; the compile
@@ -671,13 +687,13 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
   tabFlag <- lookupEnv "SOL_TABLE"
   tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
   actors <- VM.newActorRuntime
-  requestedExit <- newIORef 0
+  requestedExit <- newIORef (Nothing :: Maybe Int)
   let env = VMEnv (txCfgBase cfg) (txCfgDataFile cfg) (txCfgConsTV cfg) (txCfgShapeNames cfg) (txCfgBProg cfg) (txCfgCore cfg) (txCfgJit cfg) gpu tab (mkHal (txCfgCons cfg) (txCfgScriptArgs cfg) tx preempts (txCfgRt cfg)) fuel preempts tx actors
       cleanup = VM.shutdownActorRuntime actors
   res <- (do
     (forM_ (txCfgTopNames cfg) $ \n -> do
       _ <- execFn env n []
-      pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit code
+      pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit (Just code)
     when (txCfgDumpTabStats cfg) $ do
       statsFlag <- lookupEnv "SOL_TABLE_STATS"
       when (statsFlag == Just "1") $ VM.dumpTabStats env
@@ -691,7 +707,7 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
                   ++ "(join first: have each send a done message and receive it before the script ends)")
     cleanup
     txCleanupProcesses tx
-    code <- readIORef requestedExit
+    code <- maybe 0 id <$> readIORef requestedExit
     if not (txCfgCommitOnExit cfg) && code /= 0
       then throwIO (ScriptIO.ScriptExit code)
       else do
@@ -713,7 +729,8 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
       -- if the run left the transaction at any point, say so plainly: the
       -- file commit does not make immediate external effects atomic
       total <- rtTotal (txCfgRt cfg)
-      when (total > 0) $ do
+      quiet <- rtQuiet (txCfgRt cfg)
+      when (total > 0 && not quiet) $ do
         kinds <- rtReport (txCfgRt cfg)
         diagnostic ("[sol] NOT atomic overall: " ++ show total
                     ++ " realtime escape(s) — " ++ intercalate ", " kinds)
@@ -726,9 +743,13 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
           when (txCfgExitOnFailure cfg) exitFailure
         else do
           mapM_ putStrLn logs >> hFlush stdout
+          -- Script.exit ends the run here: later statements do not start
           when (txCfgCommitOnExit cfg) $ do
             code <- readIORef requestedExit
-            when (code /= 0) (exitWith (ExitFailure code))
+            case code of
+              Just 0 -> exitSuccess
+              Just c -> exitWith (ExitFailure c)
+              Nothing -> pure ()
     Conflict stale -> do
       unsafe <- txRetryRefusal tx
       rollbackSaga tx `finally` txCleanup tx
@@ -751,32 +772,40 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
           diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying" ++ label ++ " (attempt " ++ show (attempt + 2) ++ ")")
           runTxAttempts cfg (attempt + 1)
 
--- run every `>` statement in order inside one transaction, then commit;
--- on read-set conflict, reset and re-run the whole script
+-- Each `>` statement is its own transaction, run in file order: snapshot,
+-- journal, commit, and on a read-set conflict re-run THAT statement only.
+-- A later statement sees what earlier ones committed. A `>!` statement is
+-- immediate: its realtime operations run at once and are not announced, its
+-- ordinary effects still commit when it ends, and it is never retried.
+-- A panic stops the run; statements already committed stay committed.
+-- (docs/2026-11-26-SOL-PROGRESSIVE-COMMITS.md)
 runTxLoop :: RetryPolicy -> FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
-runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt =
-  runTxAttempts TxAttemptConfig
-    { txCfgRetryPolicy = retryPolicy,
-      txCfgMaxAttempts = maxRetries,
-      txCfgBase = base,
-      txCfgScriptArgs = scriptArgs,
-      txCfgDataFile = dataFile,
-      txCfgJournalFile = journalFile,
-      txCfgConsTV = consTV,
-      txCfgShapeNames = shapeNames,
-      txCfgBProg = bprog,
-      txCfgCore = core,
-      txCfgJit = jc,
-      txCfgInitGpu = phaseIO "gpu-init" Gpu.initGPU,
-      txCfgCons = cons,
-      txCfgTopNames = topNames,
-      txCfgRt = rt,
-      txCfgDumpTabStats = True,
-      txCfgAllowForceRetry = True,
-      txCfgCommitOnExit = True,
-      txCfgExitOnFailure = True,
-      txCfgRetryNoun = ""
-    } attempt
+runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames _ attempt =
+  forM_ topNames $ \n -> do
+    let immediate = isImmediateStatement n
+    rt <- if immediate then newQuietRtCounts else newRtCounts
+    runTxAttempts TxAttemptConfig
+      { txCfgRetryPolicy = retryPolicy,
+        txCfgMaxAttempts = if immediate then 1 else maxRetries,
+        txCfgBase = base,
+        txCfgScriptArgs = scriptArgs,
+        txCfgDataFile = dataFile,
+        txCfgJournalFile = journalFile,
+        txCfgConsTV = consTV,
+        txCfgShapeNames = shapeNames,
+        txCfgBProg = bprog,
+        txCfgCore = core,
+        txCfgJit = jc,
+        txCfgInitGpu = phaseIO "gpu-init" Gpu.initGPU,
+        txCfgCons = cons,
+        txCfgTopNames = [n],
+        txCfgRt = rt,
+        txCfgDumpTabStats = True,
+        txCfgAllowForceRetry = not immediate,
+        txCfgCommitOnExit = True,
+        txCfgExitOnFailure = True,
+        txCfgRetryNoun = if length topNames > 1 then "statement" else ""
+      } attempt
 
 -- ---- the REPL: one command, one transaction -------------------------------
 -- docs/2026-10-29-SOL-REPL-DESIGN.md. The session is a growing source text:
@@ -1013,10 +1042,58 @@ numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
   where
     numbered = go (0 :: Int) tops
     go _ [] = []
+    -- `>! e.` (see Frontend.Parser.evalDecl): an immediate statement. The
+    -- flag travels in the name, so the cached Prepared needs no new field.
+    go i (TEval (SBlock (SBind m [] _ : rest) fin) : more)
+      | m == immediateMarker =
+          let n = "topnow__" ++ show i
+              body = if null rest then fin else SBlock rest fin
+           in (TBind n [] [] body, Just n) : go (i + 1) more
     go i (TEval e : rest) =
       let n = "top__" ++ show i
        in (TBind n [] [] e, Just n) : go (i + 1) rest
     go i (t : rest) = (t, Nothing) : go i rest
+
+-- a `>!` statement's entry name (numberEvals)
+isImmediateStatement :: Name -> Bool
+isImmediateStatement = isPrefixOf "topnow__"
+
+-- Every operation that acts on the world outside the statement's
+-- transaction: the prelude's five Now wrappers and the HAL primitives that
+-- go through markEscape / guardImmediate / direct / fileImmediate (Sol.Hal).
+-- A transactional `>` statement may not reach any of them; a `>!` may.
+immediateOperations :: S.Set Name
+immediateOperations = S.fromList (realtimeNames ++
+  [ "Env.set", "Env.unset", "Fs.copyNow", "Fs.copyPublishNow", "Fs.renameNow", "IO.readLine"
+  , "Stream.stdin", "Stream.openRead", "Stream.openWrite", "Stream.readChunk", "Stream.readLine"
+  , "Stream.readCsv", "Stream.writeChunk", "Sha256.stream", "Http.request", "Http.download"
+  , "Proc.runNow", "Proc.streamNow", "Proc.inheritNow", "Proc.pipeline", "Proc.start"
+  , "NativeGit.push", "NativeGit.commitNow" ])
+
+-- For each transactional statement (and a zero-arg `main` run as one), the
+-- immediate operations it can reach through top-level references. A
+-- statement that reaches one must be written `>!`; the check runs before
+-- anything executes, so no statement of a refused script has run.
+transactionalEscapes :: [STop] -> [Name] -> [(Name, [Name])]
+transactionalEscapes tops roots =
+  [ (r, found) | r <- roots, not (isImmediateStatement r)
+  , let found = S.toList (S.intersection immediateOperations (reach r)), not (null found) ]
+  where
+    refs = M.fromListWith (++) ([(n, topVars t) | t@(TBind n _ _ _) <- tops] ++ [(n, topVars t) | t@(TStruct n _ _) <- tops])
+    -- the Now wrappers are leaves: reaching one is the use
+    reach r = grow (S.singleton r) [r]
+    grow seen [] = seen
+    grow seen (n : rest)
+      | n `S.member` immediateOperations = grow seen rest
+      | otherwise =
+          let next = [m | m <- M.findWithDefault [] n refs, not (m `S.member` seen)]
+           in grow (foldr S.insert seen next) (next ++ rest)
+
+-- "statement 3 (`>`)" for a diagnostic
+statementLabel :: Name -> String
+statementLabel n
+  | Just k <- stripPrefix "top__" n = "statement " ++ show ((read k :: Int) + 1) ++ " (`>`)"
+  | otherwise = "`" ++ n ++ "` (run as a transactional statement)"
 
 -- ---- compile-time module import ---------------------------------------------
 -- Recognize `m = use "name#hash".` at top level: resolve + hash-verify the

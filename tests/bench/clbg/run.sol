@@ -100,7 +100,7 @@ report rows langs chosen stamp runs =
     (List.append ["", "Geometric mean of FP-RISC time over:"]
     (List.append (if hasAll then List.append (List.map (fn l -> geoLine rows chosen l l) peers) [] else [])
     ["", if wrong == [] then "Every output matched expected/." else "WRONG OUTPUT: {Str.join ", " (List.map (fn r -> "{rName r}/{rLang r}") wrong)}", ""])))))).
-> runs = Str.parse (B.setting "RUNS" "3");
+>! runs = Str.parse (B.setting "RUNS" "3");
   langs = (case unwrap (Env.get "LANGS") of EnvText s -> (if s == "" then allLangs else Str.split 44 s) | EnvMissing -> allLangs);
   chosen = (case args Unit of [] -> programs | names -> List.filter (fn p -> List.has (pName p) names) programs);
   rows = List.concat (List.map (fn p -> List.map (measure runs p) langs) chosen);

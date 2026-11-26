@@ -27,5 +27,5 @@ release root parent version output =
   _ = print archive;
   print "SHA256 {digest}".
 main : unsafe Unit -> Unit .
-> case args Unit of [root,parent,version,output] -> release root parent version output
+>! case args Unit of [root,parent,version,output] -> release root parent version output
   | _ -> error "expected SOURCE_ROOT BUNDLE_PARENT VERSION OUTPUT".

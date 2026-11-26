@@ -37,7 +37,7 @@ package root binary output =
   _ = writePath "{output}/release.json" (text + "\n");
   print text.
 main : Unit -> Unit .
-> argsParsed = unwrap (CLI.parse [CLI.Option "binary" "" CLI.One,CLI.Option "output" "" CLI.One] (args Unit));
+>! argsParsed = unwrap (CLI.parse [CLI.Option "binary" "" CLI.One,CLI.Option "output" "" CLI.One] (args Unit));
   root = B.query ["git","rev-parse","--show-toplevel"];
   binary = CLI.valueOr "{root}/build/fprmeta/fprmeta" "binary" argsParsed;
   output = CLI.valueOr "" "output" argsParsed;

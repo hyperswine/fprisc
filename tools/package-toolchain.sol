@@ -81,7 +81,7 @@ package root prefix version notices output =
     Ok (PipelineResult 0 _ _ _) -> Unit | failed -> error "writing release manifest failed: {failed}");
   Release.release root work version output.
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse (List.map (fn n -> CLI.Option n "" CLI.One) ["root","sdk","version","notices","output"]) (args Unit));
+>! parsed = unwrap (CLI.parse (List.map (fn n -> CLI.Option n "" CLI.One) ["root","sdk","version","notices","output"]) (args Unit));
   required n = CLI.valueOr "" n parsed;
   if CLI.operands parsed != [] or List.any (fn n -> required n == "") ["sdk","version","notices","output"]
   then error "expected --sdk PREFIX --version VERSION --notices DIRECTORY --output DIRECTORY [--root CHECKOUT]" else

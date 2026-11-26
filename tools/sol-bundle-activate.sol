@@ -12,5 +12,5 @@ activate bin id =
   _ = B.command ["rm","-f",link];
   _ = B.command ["rmdir",temp];
   case result of Ok 0 -> Unit | failed -> error "launcher activation failed: {failed}".
-> case args Unit of [bin,id] -> activate bin id
+>! case args Unit of [bin,id] -> activate bin id
   | _ -> error "usage: sol-bundle-activate.sol BIN_DIRECTORY BUNDLE_ID".

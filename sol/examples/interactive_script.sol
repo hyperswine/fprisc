@@ -162,4 +162,4 @@ repl turns =
   | False -> shown = print (resultText (evaluate line));
                      repl (turns - 1).
 
-> repl 1000000.
+>! repl 1000000.

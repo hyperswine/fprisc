@@ -3,7 +3,7 @@ F = use "toolchain-files".
 J = use "../sol/lib/json".
 CLI = use "../sol/lib/cli".
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report"]) (args Unit));
+>! parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report"]) (args Unit));
   get k = CLI.valueOr "" k parsed;
   if get "image" == "" or get "manifest" == "" or CLI.operands parsed != [] then error "expected --image ELF --manifest JSON [--target ID] [--report PATH]" else
     receipt = Core.admit (F.readBytes (F.canonical (get "image"))) (F.readBytes (F.canonical (get "manifest"))) (get "target");

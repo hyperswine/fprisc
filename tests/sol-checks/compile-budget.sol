@@ -56,4 +56,4 @@ main u = root = H.root Unit; work = tempDir "fpr-compile-budget";
   _ = noBaseline key missing;
   if failures == [] then print "compile budget: {key} within budget"
   else _ = List.map print failures; error "compile budget FAILED".
-> main Unit.
+>! main Unit.

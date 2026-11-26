@@ -16,7 +16,7 @@ verify paths expected =
     _ = List.map (fn pair -> (path,want) = pair;
       if digest path == want then Unit else error "bundle digest mismatch: {path}") (List.zip paths expected);
     Unit.
-> case args Unit of [bundle,inventory] -> _ = List.map (fn path -> print (digest path)) (files bundle inventory); Unit
+>! case args Unit of [bundle,inventory] -> _ = List.map (fn path -> print (digest path)) (files bundle inventory); Unit
   | ["verify",bundle,inventory,reference] ->
       verify (files bundle inventory) (Str.split 10 (Str.trim (readPath reference)))
   | _ -> error "expected BUNDLE INVENTORY or verify BUNDLE INVENTORY REFERENCE".

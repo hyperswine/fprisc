@@ -12,4 +12,4 @@ select preset =
   setting "FPR_CPU_MHZ" mhz preset.
 apply u = case unwrap (Env.get "FPR_PRESET") of EnvMissing -> Unit | EnvText p -> if p == "" then Unit else select p.
 value key = case unwrap (Env.get key) of EnvText v -> v | EnvMissing -> "".
-> _ = apply Unit; print (Str.join " " (List.map value ["FPR_CPU_MHZ","FPR_XLEN","FPR_RVC"])).
+>! _ = apply Unit; print (Str.join " " (List.map value ["FPR_CPU_MHZ","FPR_XLEN","FPR_RVC"])).

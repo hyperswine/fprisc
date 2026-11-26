@@ -503,10 +503,20 @@ deprecatedDecl = do
 -- the profile a file declares, from either form
 evalDecl :: P STop
 evalDecl = do
-  _ <- try (lexeme (char '>' <* notFollowedBy (oneOf ">=")))
+  _ <- try (char '>' <* notFollowedBy (oneOf ">="))
+  -- `>! e.` is an IMMEDIATE statement (Sol): realtime effects allowed, no
+  -- retry. It is an ordinary TEval whose block starts with the binding
+  -- `$immediate` ('$' cannot occur in a source name); Sol's statement
+  -- numbering strips it, and every other consumer sees a harmless local.
+  now <- option False (True <$ char '!')
+  sc
   e <- block
   dotTerm
-  pure (TEval e)
+  pure (TEval (if now then SBlock [SBind immediateMarker [] (SInt 0)] e else e))
+
+-- the binding that marks a `>!` statement (see evalDecl)
+immediateMarker :: String
+immediateMarker = "$immediate"
 
 layoutDecl :: P [STop]
 layoutDecl = do

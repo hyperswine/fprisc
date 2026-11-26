@@ -25,7 +25,7 @@ proof lines heap symbol =
     | _ -> error invalid)
   | _ -> error invalid.
 main : unsafe Unit -> Unit .
-> case args Unit of _ :: path :: size :: symbols ->
+>! case args Unit of _ :: path :: size :: symbols ->
     lines = Str.lines (F.readText path);
     print (J.render (J.JObj (List.map (proof lines (parseInt size)) symbols)))
   | _ -> error "expected ROOT ASSEMBLY HEAP_BYTES EXPORT...".

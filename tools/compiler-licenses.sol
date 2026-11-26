@@ -79,7 +79,7 @@ collectNotices planPath output =
     _ = writePath "{output}/manifest.json" (J.pretty (J.JObj [("compiler",J.JStr compiler),("notices",J.JObj entries)]) + "\n");
     print "Collected notices for {List.len packages} packages in {output}".
 main : unsafe Unit -> Unit .
-> parsed = unwrap (CLI.parse [CLI.Option "plan" "" CLI.One,CLI.Option "output" "" CLI.One] (args Unit));
+>! parsed = unwrap (CLI.parse [CLI.Option "plan" "" CLI.One,CLI.Option "output" "" CLI.One] (args Unit));
   plan = CLI.valueOr "" "plan" parsed;
   output = CLI.valueOr "" "output" parsed;
   if plan == "" or output == "" or CLI.operands parsed != [] then error "expected --plan CABAL_PLAN --output DIRECTORY" else

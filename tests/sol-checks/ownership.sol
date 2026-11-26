@@ -41,7 +41,7 @@ probe root work env (name, body) =
   sol = verdict ["{root}/fpr","sol",path] env;
   _ = print "{name}: native={native}, Sol={sol}";
   if name == "keep_escape" or (native == "refused" and sol == "refused") then [] else [name].
-> work = tempDir "fpr-ownership-audit"; root = H.root Unit;
+>! work = tempDir "fpr-ownership-audit"; root = H.root Unit;
   env = [("FPR_HOME",root),("SOL_GPU","0"),("SOL_JIT","0"),("SOL_CACHE_DIR","{work}/sol-cache")];
   findings = List.concat (List.map (probe root work env) probes);
   n = List.len findings;

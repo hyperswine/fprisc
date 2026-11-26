@@ -12,4 +12,4 @@ execute argv = case argv of
   [needle, path] -> scan needle path 1048576
 | [needle, path, limit] -> scan needle path (parseInt limit)
 | _ -> error "usage: filter-stream.sol NEEDLE PATH [MAX_LINE_BYTES]".
-> execute (args Unit).
+>! execute (args Unit).

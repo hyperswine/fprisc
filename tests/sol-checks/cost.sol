@@ -101,4 +101,4 @@ main u = root = H.root Unit; work = tempDir "fpr-cost"; dir = "{root}/tests/case
   _ = expect "dropLastChar work" (workOf r9 "dropLastChar") "(max(0, ω(?)) + 1)·(len s + 15) + 2";
   _ = must "todo report keeps ω(?len) and ω(str)" (Str.contains "ω(?len)" r9 and Str.contains "ω(str)" r9) r9;
   print "Cost: measured, mutual and higher-order recursion compose; declared bounds and manifest judgements (2.93 µs within 5 µs, over 1 µs), scoped live/loop costs and the Todo report ({ms / 1000} s) PASS".
-> main Unit.
+>! main Unit.

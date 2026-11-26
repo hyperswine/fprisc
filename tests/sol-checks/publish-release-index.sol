@@ -82,4 +82,4 @@ main u =
     T.equal "qos index order" True (C.indexText "qos-portable" qosNext == cat "{fixtures}/expected/qos-portable.json"),
     T.equal "qos requires" ["xcode-clt", "homebrew:libgit2", "homebrew:libarchive", "homebrew:glfw"] (must (C.inferRequires qosMeta "macos-arm64")),
     T.that "refuses a different hash for the same version" conflicted] (signChecks work fixtures)).
-> main Unit.
+>! main Unit.

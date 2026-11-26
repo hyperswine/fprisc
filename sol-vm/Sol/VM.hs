@@ -424,7 +424,7 @@ streamFoldCall env name args = case args of
                    txMarkPivot (vmTx env)
                    txMarkExternal (vmTx env) name
                    next
-                 else pure (Left (pendingOrderMsg name "split script runs" pending))
+                 else pure (Left (pendingOrderMsg name "" pending))
             case r of
               Left why -> pure (result (VData 3 1 [VStr why]))
               Right Nothing -> pure (result (VData 3 0 [state]))

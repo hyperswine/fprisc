@@ -78,4 +78,4 @@ main u = root = H.root Unit; work = tempDir "fpr-raw-int-hotspots";
   a = check root work "boolpred" boolProg boolWant [("arith! / ", 1), ("= bit band ", 2)];
   b = check root work "floats" floatProg floatWant [("f64.ofint ", 1)];
   print "raw-Int hot spots: {a + b} copy shapes (raw literal division, raw band of the quotient, inline F64.ofInt), exact across the small range PASS".
-> main Unit.
+>! main Unit.

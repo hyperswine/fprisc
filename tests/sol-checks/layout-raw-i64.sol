@@ -80,4 +80,4 @@ main u = root = H.root Unit; work = tempDir "fpr-layout-raw-i64";
   ProcessResult rcode rout rerr = H.call [exe] [] 60000;
   if rcode == 0 and rout == want then print "layout raw I64 fields: rows {rows}, cross-hart copy, share, copy-out, reuse, print and == PASS"
   else error "run exit {rcode}, want:\n{want}got:\n{rout}{rerr}".
-> main Unit.
+>! main Unit.

@@ -17,7 +17,7 @@ check work compiler (name, body, expected) =
   ok = if expected == "" then and (code == 1) (and (out == "") (Str.contains "LINEARITY" err))
        else and (code == 0) (and (out == expected) (err == ""));
   if ok then Unit else error "{name}: exit {code}, stdout={out}, stderr={err}".
-> work = tempDir "sol-linearity"; root = H.root Unit;
+>! work = tempDir "sol-linearity"; root = H.root Unit;
   compiler = H.envOr "FPR_TEST_BINARY" "{root}/fpr";
   _ = List.map (check work compiler) (programs root);
   print "Sol inferred linearity: 8 checks passed".

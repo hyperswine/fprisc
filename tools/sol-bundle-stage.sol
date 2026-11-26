@@ -18,6 +18,6 @@ stage root binary bundle inventory =
     Ok (PipelineResult 0 _ _ _) -> Unit
   | Ok (PipelineResult code statuses _ _) -> error "source staging exited {code}: {statuses}"
   | Err why -> error "{why}".
-> case args Unit of [root,binary,bundle,inventory] -> stage root binary bundle inventory
+>! case args Unit of [root,binary,bundle,inventory] -> stage root binary bundle inventory
   | ["verify",bundle,staged] -> _ = B.command ["cmp","-s","{bundle}/manifest.json","{staged}/manifest.json"]; _ = List.map (verifyLink bundle) links; Unit
   | _ -> error "usage: sol-bundle-stage.sol ROOT BINARY BUNDLE INVENTORY".

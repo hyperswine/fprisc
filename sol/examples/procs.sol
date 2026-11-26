@@ -53,7 +53,7 @@ query argv = P.output (Proc.query (P.spec argv)).
   u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "printf queued > /tmp/sol-procs-order.txt"]);
   expect "query sees pre-commit state"
     (readPathOr "absent" @/tmp/sol-procs-order.txt) "absent".
-> u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "true"]);
+>! u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "true"]);
   expect "runNow refused while queued"
     (mapErr (fn e -> Str.contains "queued" e) (Proc.runNow (P.spec ["/bin/sh", "-c", "true"]))) (Err True).
 
@@ -68,7 +68,7 @@ query argv = P.output (Proc.query (P.spec argv)).
 # ---- Git wrapper: queries are Results, push discipline is enforced ----
 > expect "Git.status on a non-repo is Err"
     (isOk (Git.status (Git.repo "/tmp/sol-procs-not-a-repo"))) False.
-> r = Git.repo "/tmp/sol-procs-repo" |> Git.init;
+>! r = Git.repo "/tmp/sol-procs-repo" |> Git.init;
   expect "push after a queued mutation is refused"
     (mapErr (fn e -> Str.contains "queued" e) (Git.pushNow "origin" "main" r)) (Err True).
 > print "procs: OK".

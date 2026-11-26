@@ -71,4 +71,4 @@ main u = root = H.root Unit; work = tempDir "fpr-layout-raw";
   ProcessResult ncode nout nerr = H.call [nexe] [] 60000;
   if ncode == 0 and nout == "[R (P 1.5 2) 3]\n" then print "layout raw masks: rows {rows}, runtime mask 1, walkers PASS, print guard PASS"
   else error "nested-ok: exit {ncode}, want [R (P 1.5 2) 3], got:\n{nout}{nerr}".
-> main Unit.
+>! main Unit.

@@ -26,4 +26,4 @@ main u = root = H.root Unit; work = tempDir "fpr-stdcheck";
   ok = List.len (List.filter passed results);
   _ = print "stdcheck: {ok}/{List.len results} modules (std + regressions) OK, {List.len kn} known failures";
   if bad == 0 then Unit else error "stdcheck: {bad} unexpected outcomes".
-> main Unit.
+>! main Unit.

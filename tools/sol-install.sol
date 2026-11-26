@@ -37,7 +37,7 @@ install root binary prefix output =
   | Ok (ProcessResult code _ err) -> error "bundle build exited {code}: {err}"
   | Err why -> error "{why}".
 main : unsafe Unit -> Unit .
-> case args Unit of root :: argv ->
+>! case args Unit of root :: argv ->
     (binary,prefix,output) = options argv "{root}/fpr" "" "";
     install (absolute root) binary (absolute prefix) output
   | _ -> error usage.

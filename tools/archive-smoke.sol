@@ -163,4 +163,4 @@ main Unit =
     _ = B.command ["mkdir","-p",work];
     version = compilerVersion (B.query [binary,"--version"]);
     smoke root (absolute binary) work version.
-> main Unit.
+>! main Unit.

@@ -15,7 +15,7 @@ sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/ta
   "machine/tangnano20k/unsupported.c","machine/builtin/heap.c","runtime/runtime.c","machine/builtin/unsafe.c",
   "machine/builtin/tangnano20k/machine.c","runtime/i32.c","runtime/bits.c","runtime/vec.c",
   "runtime/mod.c","machine/virt/memshim.c"].
-> _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
+>! _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
   (prog,out) = inputs width (args Unit); clock = B.setting "FPR_CPU_MHZ" "27";
   compressed = switch "FPR_RVC" ["--compressed"]; rvc = if compressed == [] then "0" else "1";
   isa = if rvc == "0" then "im" else "imc";

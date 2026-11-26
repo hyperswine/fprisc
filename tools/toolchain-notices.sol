@@ -20,4 +20,4 @@ verify directory compiler =
   if actual != compiler then error "compiler notices are for {actual}, the plan for {compiler}" else
     verifyFiles root (unwrap (J.get "notices" manifest |>? J.fields)).
 main : unsafe Unit -> Unit .
-> case args Unit of [directory,compiler] -> verify directory compiler | _ -> error "expected NOTICES COMPILER_ID".
+>! case args Unit of [directory,compiler] -> verify directory compiler | _ -> error "expected NOTICES COMPILER_ID".

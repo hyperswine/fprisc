@@ -24,3 +24,4 @@ main = case args Unit of
   [key,wanted,source,target] -> select key wanted source target False
 | [key,wanted,source,target,"--replace"] -> select key wanted source target True
 | _ -> error "usage: jsonlines-select.sol FIELD VALUE SOURCE DESTINATION [--replace]".
+>! main.

@@ -21,4 +21,4 @@ stage root prefix =
   _ = B.command ["mkdir","{prefix}/bin"];
   _ = List.map (fn name -> B.command ["ln","-s","../libexec/fprisc/fpr","{prefix}/bin/{name}"]) ["fpr","sol"];
   Unit.
-> case args Unit of [root,prefix] -> stage root prefix | _ -> error "expected SOURCE_ROOT STAGED_PREFIX".
+>! case args Unit of [root,prefix] -> stage root prefix | _ -> error "expected SOURCE_ROOT STAGED_PREFIX".

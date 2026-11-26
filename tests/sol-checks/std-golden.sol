@@ -73,4 +73,4 @@ main u = root = H.root Unit; work = tempDir "fpr-std-golden"; _ = mkdir "{work}/
   nc = List.len cs; nf = List.len failed;
   _ = print "std golden: {nc} cases, {nf} failed ({List.len unexpected} unexpected), {List.len fixed} known failures now passing";
   if unexpected == [] and fixed == [] then Unit else error "std golden failed".
-> main Unit.
+>! main Unit.

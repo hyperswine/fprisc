@@ -10,5 +10,5 @@ pack parent name destination =
       Ok 0 -> Proc.streamNow (ProcessSpec ["mv","-f",temporary,destination] "" [] "" 0)
     | other -> other);
   case result of Ok 0 -> Unit | failed -> _ = B.command ["rm","-f",temporary]; error "archive publication failed: {failed}".
-> case args Unit of [parent,name,destination] -> pack parent name destination
+>! case args Unit of [parent,name,destination] -> pack parent name destination
   | _ -> error "usage: sol-bundle-archive.sol STAGING_DIRECTORY BUNDLE_NAME OUTPUT".

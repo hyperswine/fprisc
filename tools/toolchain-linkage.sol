@@ -55,4 +55,4 @@ verify prefix binary =
     List.concat (List.map (problems root exe mainPaths name) (M.architectures "{root}/{name}"))) images);
   if issues == [] then Unit else error (Str.join "; " issues).
 main : unsafe Unit -> Unit .
-> case args Unit of [root,exe] -> verify root exe | _ -> error "expected TOOLCHAIN_PREFIX EXECUTABLE".
+>! case args Unit of [root,exe] -> verify root exe | _ -> error "expected TOOLCHAIN_PREFIX EXECUTABLE".

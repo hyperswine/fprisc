@@ -15,7 +15,7 @@ pairs argv = case argv of
     a :: b :: rest -> (a, b) :: pairs rest
   | [] -> []
   | _ -> error "usage: sol run.sol [SESSIONS SALES ...]".
-> chosen = (case args Unit of [] -> [("1","25"),("1","50"),("1","200"),("8","25")] | argv -> pairs argv);
+>! chosen = (case args Unit of [] -> [("1","25"),("1","50"),("1","200"),("8","25")] | argv -> pairs argv);
   compiler = B.setting "FPR" "fpr";
   port = B.setting "PORT" "6791";
   here = B.query ["pwd","-P"];

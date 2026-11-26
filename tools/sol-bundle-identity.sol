@@ -52,5 +52,5 @@ build bundle version system machine paths reference =
           _ = print id;
           print runner
   | _ -> error "missing runner hash".
-> case args Unit of [bundle,version,system,machine,paths,reference] -> build bundle version system machine paths reference
+>! case args Unit of [bundle,version,system,machine,paths,reference] -> build bundle version system machine paths reference
   | _ -> error "expected BUNDLE VERSION SYSTEM MACHINE PATHS DIGESTS".

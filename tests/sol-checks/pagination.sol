@@ -81,4 +81,4 @@ main u = root = H.root Unit; work = tempDir "fpr-pagination";
   iwant = List.append (List.map invLine [(0, 100), (21, 100), (41, 1), (41, 0 - 1), (1, 2)]) ["(1, 1, 20)"];
   _ = List.map (fn h -> got = runLines iexe env h; must "inventory on {h} harts: {firstDiff got iwant}" (got == iwant) "") ["1","4"];
   print "Inventory: actual projection keeps sorted page contents, empty/shrunk/late/negative requests, and historical config normalization on 1/4 harts".
-> main Unit.
+>! main Unit.

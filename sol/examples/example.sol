@@ -66,3 +66,5 @@ main =
   print (case chained 4 of Ok v -> "ok {v}" | Err e -> "err {e}") >>
   print (pipeline 10 2) >>
   print check.
+
+> main.

@@ -20,4 +20,4 @@ main u = root = H.root Unit; work = tempDir "fpr-compile-tracked";
   _ = (if H.full Unit then Unit else print "tracked clientstate: skipped (nightly only)");
   _ = List.map (measure root work) (tracked root);
   print "compile tracked: report only, not gated".
-> main Unit.
+>! main Unit.

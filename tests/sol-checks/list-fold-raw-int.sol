@@ -104,4 +104,4 @@ main u = root = H.root Unit; work = tempDir "fpr-list-fold-raw-int";
   a = check root work "std" stdProg stdWant ["$typed.mono.rep.","$typed.mono.scaled.","$typed.mono.total.","$typed.mono.prod."];
   b = check root work "prelude" preludeProg preludeWant ["$typed.mono.rep."];
   print "List.fold raw Ints: {a + b} monomorphised fold workers raw-copied, exact bignum promotion PASS".
-> main Unit.
+>! main Unit.

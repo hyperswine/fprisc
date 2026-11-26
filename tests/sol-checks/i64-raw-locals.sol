@@ -57,4 +57,4 @@ main u = root = H.root Unit; work = tempDir "fpr-i64-raw-locals";
   ProcessResult rcode rout rerr = H.call [exe] [] 60000;
   if rcode == 0 and rout == want then print "I64 raw locals: inline operators, wrapping, comparisons, raw loop values PASS"
   else error "run exit {rcode}, want:\n{want}got:\n{rout}{rerr}".
-> main Unit.
+>! main Unit.

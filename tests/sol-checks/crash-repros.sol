@@ -8,7 +8,7 @@ probe root work name = ProcessResult code out err = H.call ["{root}/fpr","check"
   text = out + err;
   ok = code == 1 and not (List.any (fn b -> Str.contains b text) bad) and (Str.contains "TYPE ERRORS" text or Str.contains "unexpected" text);
   if ok then _ = print "PASS {name}"; [] else _ = print "FAIL {name}\n{text}"; [name].
-> root = H.root Unit; work = tempDir "fpr-crash";
+>! root = H.root Unit; work = tempDir "fpr-crash";
   names = List.filter (fn n -> Str.endsWith ".fpr" n) (ls "{root}/tests/reliability/crash");
   failed = List.concat (List.map (probe root work) names);
   if names == [] then error "no crash repros found" else if failed == [] then Unit else error "crash repros failed: {failed}".

@@ -6,7 +6,7 @@ compile compiler source target flags =
   parent = (if dir == "" then (if Str.startsWith "/" target then "/" else ".") else dir);
   _ = B.command ["mkdir","-p",parent];
   B.command ([compiler,"--system=bare-metal","--profile=builtin"] + flags + [source,target]).
-> case args Unit of
+>! case args Unit of
     "image" :: compiler :: source :: target :: flags -> compile compiler source target flags
   | "library" :: compiler :: source :: target :: exports :: flags ->
       compile compiler source target (["--arc"] + flags + ["--lib","--export={exports}"])

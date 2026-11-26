@@ -7,7 +7,7 @@ prepare32 source target =
   _ = B.command ["cp","{source}/Makefile","{source}/platform.h","{target}/"];
   _ = B.command ["sed","-i.bak","/^#define SOFTFLOAT_INTRINSIC_INT128 /d","{target}/platform.h"];
   B.command ["rm","-f","{target}/platform.h.bak"].
-> _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
+>! _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
   out = B.setting "FPR_SOFTFLOAT_ROOT" "{B.query ["pwd","-P"]}/build/tangnano20k-softfloat";
   _ = (if B.exists "-d" "{out}/.git" then Unit else B.command ["git","clone","https://github.com/ucb-bar/berkeley-softfloat-3.git",out]);
   _ = (if B.query ["git","-C",out,"rev-parse","HEAD"] == revision then Unit else B.command ["git","-C",out,"checkout","--detach",revision]);

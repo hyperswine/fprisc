@@ -16,7 +16,7 @@ has needle file work = ProcessResult c _ _ = unwrap (Proc.runNow (ProcessSpec ["
 pinOf out = case List.filter (fn l -> Str.contains "use: Lib resolves to" l) (Str.lines out) of
     l :: _ -> (case Str.split 35 l of _ :: rest :: _ -> Str.slice rest 0 16 | _ -> error "commit-pin: no pin in {l}")
   | [] -> error "commit-pin: no pin line in:\n{out}".
-> root = H.root Unit; work = tempDir "fpr-commit-pin";
+>! root = H.root Unit; work = tempDir "fpr-commit-pin";
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache")];
   _ = H.write "{work}/a.fpr" (text "f : Int -> Int .\nf x = x + 1.\n");
   _ = H.write "{work}/b.fpr" (text "# b uses a\nA = use \"a\".\ng : Int -> Int .\ng x = A.f x.\n");

@@ -14,7 +14,7 @@ refused root work name = ProcessResult code out err = fpr root work "{root}/test
   if ok then _ = print "PASS refused {name}"; [] else _ = print "FAIL {name}: want a privileged-builtin refusal (exit 1), got exit {code}\n{text}"; [name].
 accepted root work rel = ProcessResult code out err = fpr root work "{root}/{rel}";
   if code == 0 then _ = print "PASS accepted {rel}"; [] else _ = print "FAIL {rel}: want exit 0, got exit {code}\n{out}{err}"; [rel].
-> root = H.root Unit; work = tempDir "fpr-privileged";
+>! root = H.root Unit; work = tempDir "fpr-privileged";
   names = List.filter (fn n -> Str.endsWith ".fpr" n) (ls "{root}/tests/reliability/privileged");
   controls = ["std/hashmap.fpr", "tests/bench/apps/treemap_hashmap.fpr", "tests/bench/apps/wordfreq_hashmap.fpr", "tests/bench/apps/csv_hashmap.fpr"];
   failed = List.append (List.concat (List.map (refused root work) names)) (List.concat (List.map (accepted root work) controls));

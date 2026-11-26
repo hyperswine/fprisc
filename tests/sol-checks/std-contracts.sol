@@ -33,7 +33,7 @@ topLevel p = p != "" and not (Str.contains "/" (Str.slice p 4 (Str.len p))).
 drifted (n, k, d, e, s) = s != "PROVEN".
 loose (n, k, d, e, s) = s == "PROVEN" and digits d and digits e and parseInt d > parseInt e.
 describe (n, k, d, e, s) = print "DRIFT {k} {n}: declared <= {d}, derived {e} ({s})".
-> work = tempDir "fpr-contracts"; root = H.root Unit;
+>! work = tempDir "fpr-contracts"; root = H.root Unit;
   ProcessResult gcode listing gerr = H.call ["grep","-l","-E","\\|[[:space:]]*(work|alloc) ","-r","--include=*.fpr","std"] [] 30000;
   mods = List.filter topLevel (Str.lines listing);
   _ = (if mods == [] then error "std contracts: no std module declares a bound ({gerr})" else Unit);
