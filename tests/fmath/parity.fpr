@@ -1,0 +1,10 @@
+# The native half of tests/sol-checks/fmath-parity.sol: the IEEE bits of
+# every float function over a sweep of inputs. tests/fmath/parity.sol prints
+# the same rows from Sol; they must match exactly (core spec Q6).
+L = use "std/list".
+b x = I64.str (I64.ofF64Bits x).
+row i =
+  x = F64.ofInt i * 0.0137;
+  u = F64.ofInt i * 0.00049;
+  print "{b (F64.sin x)} {b (F64.cos x)} {b (F64.tan x)} {b (F64.atan x)} {b (F64.atan2 x 0.7)} {b (F64.asin u)} {b (F64.acos u)} {b (F64.exp (x * 0.05))} {b (F64.log (x + 30.5))} {b (F64.log2 (x + 30.5))} {b (F64.pow (x + 30.5) 1.7)} {b (F64.sin (x * 1000.0))}".
+main = L.fold (fn acc i -> row i) Unit (L.range (0 - 1000) 1000).

@@ -444,6 +444,7 @@ halArities =
       ("heapUsed", 1), ("intMax", 1), ("intMin", 1),
       ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.uptimeMs", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1), ("Sys.loop", 2),
       ("Num.div", 2), ("Num.sqrt", 1), ("Num.floor", 1), ("Num.round", 1),
+      ("Num.sin", 1), ("Num.cos", 1), ("Num.tan", 1), ("Num.asin", 1), ("Num.acos", 1), ("Num.atan", 1), ("Num.exp", 1), ("Num.log", 1), ("Num.log2", 1), ("Num.pow", 2), ("Num.atan2", 2), ("Num.bits", 1),
       ("map", 2), ("filter", 2), ("foldl", 3),
       ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
       ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),

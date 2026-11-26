@@ -274,9 +274,9 @@ primitiveShape n = M.lookup n shapes
                ("F32.ofF64", sh [d] f)
              ]
           ++ concat
-            [ [(p ++ x, sh [k, k] k) | x <- ["+", "-", "*", "/", "pow"]]
+            [ [(p ++ x, sh [k, k] k) | x <- ["+", "-", "*", "/", "pow", "atan2"]]
                 ++ [(p ++ x, sh [k, k] b) | x <- ["<", ">", "<=", ">=", "==", "!="]]
-                ++ [(p ++ x, sh [k] k) | x <- ["sqrt", "log", "log2", "exp", "sin", "cos"]]
+                ++ [(p ++ x, sh [k] k) | x <- ["sqrt", "log", "log2", "exp", "sin", "cos", "tan", "asin", "acos", "atan"]]
                 ++ [(p ++ "ofInt", sh [t] k), (p ++ "toInt", sh [k] t), (p ++ "str", sh [k] s)]
               | (p, k) <- [("F64.", d), ("F32.", f)]
             ]

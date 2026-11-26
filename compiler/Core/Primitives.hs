@@ -38,8 +38,8 @@ primArities = scalarPrimitives ++
   ++ [ ("F" ++ w ++ "." ++ f, 1)
        | w <- ["64", "32"],
          f <- ["str", "sqrt", "ofInt", "toInt",
-               "log", "log2", "exp", "sin", "cos"] ]
-  ++ [ ("F" ++ w ++ ".pow", 2) | w <- ["64", "32"] ]
+               "log", "log2", "exp", "sin", "cos", "tan", "asin", "acos", "atan"] ]
+  ++ [ ("F" ++ w ++ "." ++ f, 2) | w <- ["64", "32"], f <- ["pow", "atan2"] ]
   ++ [("F64.ofF32", 1), ("F32.ofF64", 1)]
   ++ [("$mem." ++ op ++ width ++ "at", if op == "read" then 2 else 3)
        | op <- ["read", "write"], width <- ["8", "16", "32", "Word"]]

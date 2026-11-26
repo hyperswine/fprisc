@@ -15,6 +15,17 @@
 #include "qos_abi.h"
 #endif
 
+/* No fused multiply-add contraction anywhere in the runtime. clang on arm64
+ * fuses a*b+c by default and x86-64 builds do not, so the transcendentals
+ * and float printing below answered differently per target (325 fused
+ * operations in this file, 35 in fsin_ alone), and Sol, whose port of them
+ * runs unfused, could not match. One meaning on every target (core spec Q6). */
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#elif defined(__GNUC__)
+#pragma GCC optimize ("fp-contract=off")
+#endif
+
 /* Unit, Bool, Nil, and None are 010 immediates (V_UNIT/V_TRUE/V_FALSE/V_NIL/V_NONE in fpr.h). */
 
 /* ---- allocator: bump + owning slab + segregated free list ------------
@@ -6125,18 +6136,84 @@ static double fcos_(double x) {
     default: return ksin_(r);
   }
 }
+/* tan from the same reduction as sin/cos: no extra rounding of a quotient
+ * of two separately rounded kernels beyond the one division */
+static double ftan_(double x) {
+  if (x != x || fspec_(x)) return 0.0 / 0.0;
+  double r; int ok; int q = rempio2_(x, &r, &ok);
+  if (!ok) return 0.0 / 0.0;
+  return (q & 1) ? -kcos_(r) / ksin_(r) : ksin_(r) / kcos_(r);
+}
+/* atan: Cephes' reduction (tan 3pi/8, 0.66) and rational approximation,
+ * ~1 ulp; atan2/asin/acos are built on it */
+static double fatan_(double x) {
+  const double P0 = -8.750608600031904122785e-01, P1 = -1.615753718733365076637e+01,
+               P2 = -7.500855792314704667340e+01, P3 = -1.228866684490136173410e+02,
+               P4 = -6.485021904942025371773e+01;
+  const double Q0 = 2.485846490142306297962e+01, Q1 = 1.650270098316988542046e+02,
+               Q2 = 4.328810604912902668951e+02, Q3 = 4.853903996359136964868e+02,
+               Q4 = 1.945506571482613964425e+02;
+  const double MOREBITS = 6.123233995736765886130e-17, T3P8 = 2.41421356237309504880;
+  const double PIO2 = 1.57079632679489661923, PIO4 = 7.85398163397448309616e-01;
+  if (x != x) return x;
+  if (x == 0.0) return x;
+  int neg = x < 0.0;
+  if (neg) x = -x;
+  if (x == 1.0 / 0.0) return neg ? -PIO2 : PIO2;
+  double y; int flag = 0;
+  if (x > T3P8) { y = PIO2; flag = 1; x = -1.0 / x; }
+  else if (x <= 0.66) { y = 0.0; }
+  else { y = PIO4; flag = 2; x = (x - 1.0) / (x + 1.0); }
+  double z = x * x;
+  z = z * ((((P0 * z + P1) * z + P2) * z + P3) * z + P4)
+        / (((((z + Q0) * z + Q1) * z + Q2) * z + Q3) * z + Q4);
+  z = x * z + x;
+  if (flag == 2) z += 0.5 * MOREBITS;
+  else if (flag == 1) z += MOREBITS;
+  y = y + z;
+  return neg ? -y : y;
+}
+static double fatan2_(double y, double x) {
+  const double PI = 3.14159265358979323846, PIO2 = 1.57079632679489661923;
+  if (x != x || y != y) return 0.0 / 0.0;
+  if (x == 0.0) {
+    if (y == 0.0) return (draw_(x) >> 63) ? ((draw_(y) >> 63) ? -PI : PI) : y;
+    return y > 0.0 ? PIO2 : -PIO2;
+  }
+  double a = fatan_(y / x);
+  if (x > 0.0) return a;
+  return ((draw_(y) >> 63) ? a - PI : a + PI);
+}
+static double fasin_(double x) {
+  if (x != x || x > 1.0 || x < -1.0) return 0.0 / 0.0;
+  return fatan2_(x, fsqrt_((1.0 - x) * (1.0 + x)));
+}
+static double facos_(double x) {
+  if (x != x || x > 1.0 || x < -1.0) return 0.0 / 0.0;
+  return fatan2_(fsqrt_((1.0 - x) * (1.0 + x)), x);
+}
 V fpr_prim_fn_F64_x2elog(V a) { return bitsd(flog_(dbits(a))); }
 V fpr_prim_fn_F64_x2elog2(V a) { return bitsd(flog2_(dbits(a))); }
 V fpr_prim_fn_F64_x2eexp(V a) { return bitsd(fexp_(dbits(a))); }
 V fpr_prim_fn_F64_x2epow(V a, V b) { return bitsd(fpow_(dbits(a), dbits(b))); }
 V fpr_prim_fn_F64_x2esin(V a) { return bitsd(fsin_(dbits(a))); }
 V fpr_prim_fn_F64_x2ecos(V a) { return bitsd(fcos_(dbits(a))); }
+V fpr_prim_fn_F64_x2etan(V a) { return bitsd(ftan_(dbits(a))); }
+V fpr_prim_fn_F64_x2easin(V a) { return bitsd(fasin_(dbits(a))); }
+V fpr_prim_fn_F64_x2eacos(V a) { return bitsd(facos_(dbits(a))); }
+V fpr_prim_fn_F64_x2eatan(V a) { return bitsd(fatan_(dbits(a))); }
+V fpr_prim_fn_F64_x2eatan2(V a, V b) { return bitsd(fatan2_(dbits(a), dbits(b))); }
 V fpr_prim_fn_F32_x2elog(V a) { return bitsf((float)flog_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2elog2(V a) { return bitsf((float)flog2_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2eexp(V a) { return bitsf((float)fexp_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2epow(V a, V b) { return bitsf((float)fpow_((double)fbits(a), (double)fbits(b))); }
 V fpr_prim_fn_F32_x2esin(V a) { return bitsf((float)fsin_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2ecos(V a) { return bitsf((float)fcos_((double)fbits(a))); }
+V fpr_prim_fn_F32_x2etan(V a) { return bitsf((float)ftan_((double)fbits(a))); }
+V fpr_prim_fn_F32_x2easin(V a) { return bitsf((float)fasin_((double)fbits(a))); }
+V fpr_prim_fn_F32_x2eacos(V a) { return bitsf((float)facos_((double)fbits(a))); }
+V fpr_prim_fn_F32_x2eatan(V a) { return bitsf((float)fatan_((double)fbits(a))); }
+V fpr_prim_fn_F32_x2eatan2(V a, V b) { return bitsf((float)fatan2_((double)fbits(a), (double)fbits(b))); }
 V fpr_prim_fn_F32_x2etoInt(V a) { return float_toInt((double)fbits(a)); }
 V fpr_prim_fn_F32_x2eofF64(V a) { return bitsf((float)dbits(a)); }
 

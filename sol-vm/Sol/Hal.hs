@@ -22,10 +22,11 @@ import qualified Data.Map.Strict as M
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import GHC.Clock (getMonotonicTime)
-import GHC.Float (castWord32ToFloat, castWord64ToDouble)
+import GHC.Float (castDoubleToWord64, castWord32ToFloat, castWord64ToDouble)
 import Control.Concurrent (threadDelay)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.IO.Error (ioeGetFileName)
+import qualified Sol.FMath as FMath
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Sol.Digest as Digest
@@ -239,6 +240,18 @@ mkHal cons scriptArgs tx preempts rt =
       ("Num.sqrt", (1, \[a] -> numSqrtH a)),
       ("Num.floor", (1, \[a] -> pure (VInt (floor (toD a))))),
       ("Num.round", (1, \[a] -> pure (VInt (round (toD a))))),
+      ("Num.sin", (1, \[a] -> pure (VNum (FMath.fsin (toD a))))),
+      ("Num.cos", (1, \[a] -> pure (VNum (FMath.fcos (toD a))))),
+      ("Num.tan", (1, \[a] -> pure (VNum (FMath.ftan (toD a))))),
+      ("Num.asin", (1, \[a] -> pure (VNum (FMath.fasin (toD a))))),
+      ("Num.acos", (1, \[a] -> pure (VNum (FMath.facos (toD a))))),
+      ("Num.atan", (1, \[a] -> pure (VNum (FMath.fatan (toD a))))),
+      ("Num.exp", (1, \[a] -> pure (VNum (FMath.fexp (toD a))))),
+      ("Num.log", (1, \[a] -> pure (VNum (FMath.flog (toD a))))),
+      ("Num.log2", (1, \[a] -> pure (VNum (FMath.flog2 (toD a))))),
+      ("Num.pow", (2, \[a, b] -> pure (VNum (FMath.fpow (toD a) (toD b))))),
+      ("Num.atan2", (2, \[a, b] -> pure (VNum (FMath.fatan2 (toD a) (toD b))))),
+      ("Num.bits", (1, \[a] -> pure (VInt (fromIntegral (fromIntegral (castDoubleToWord64 (toD a)) :: Int64))))),
       ("!", (2, indexH)),
       ("open", (1, openH)),
       ("readAll", (1, readH)),

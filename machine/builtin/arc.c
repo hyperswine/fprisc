@@ -220,6 +220,16 @@ extern V fpr_prim_fn_F64_x2esin(V a);
 V fpr_fn__x24arc_x2eF64sin(V a) { return fpr_prim_fn_F64_x2esin(a); }
 extern V fpr_prim_fn_F64_x2ecos(V a);
 V fpr_fn__x24arc_x2eF64cos(V a) { return fpr_prim_fn_F64_x2ecos(a); }
+extern V fpr_prim_fn_F64_x2etan(V a);
+V fpr_fn__x24arc_x2eF64tan(V a) { return fpr_prim_fn_F64_x2etan(a); }
+extern V fpr_prim_fn_F64_x2easin(V a);
+V fpr_fn__x24arc_x2eF64asin(V a) { return fpr_prim_fn_F64_x2easin(a); }
+extern V fpr_prim_fn_F64_x2eacos(V a);
+V fpr_fn__x24arc_x2eF64acos(V a) { return fpr_prim_fn_F64_x2eacos(a); }
+extern V fpr_prim_fn_F64_x2eatan(V a);
+V fpr_fn__x24arc_x2eF64atan(V a) { return fpr_prim_fn_F64_x2eatan(a); }
+extern V fpr_prim_fn_F64_x2eatan2(V a, V b);
+V fpr_fn__x24arc_x2eF64atan2(V a, V b) { return fpr_prim_fn_F64_x2eatan2(a, b); }
 extern V fpr_prim_fn_F32_x2e_x2b(V a,V b);
 V fpr_fn__x24arc_x2eF32add(V a,V b) { return fpr_prim_fn_F32_x2e_x2b(a,b); }
 extern V fpr_prim_fn_F32_x2e_x2d(V a,V b);
@@ -260,6 +270,16 @@ extern V fpr_prim_fn_F32_x2esin(V a);
 V fpr_fn__x24arc_x2eF32sin(V a) { return fpr_prim_fn_F32_x2esin(a); }
 extern V fpr_prim_fn_F32_x2ecos(V a);
 V fpr_fn__x24arc_x2eF32cos(V a) { return fpr_prim_fn_F32_x2ecos(a); }
+extern V fpr_prim_fn_F32_x2etan(V a);
+V fpr_fn__x24arc_x2eF32tan(V a) { return fpr_prim_fn_F32_x2etan(a); }
+extern V fpr_prim_fn_F32_x2easin(V a);
+V fpr_fn__x24arc_x2eF32asin(V a) { return fpr_prim_fn_F32_x2easin(a); }
+extern V fpr_prim_fn_F32_x2eacos(V a);
+V fpr_fn__x24arc_x2eF32acos(V a) { return fpr_prim_fn_F32_x2eacos(a); }
+extern V fpr_prim_fn_F32_x2eatan(V a);
+V fpr_fn__x24arc_x2eF32atan(V a) { return fpr_prim_fn_F32_x2eatan(a); }
+extern V fpr_prim_fn_F32_x2eatan2(V a, V b);
+V fpr_fn__x24arc_x2eF32atan2(V a, V b) { return fpr_prim_fn_F32_x2eatan2(a, b); }
 extern V fpr_prim_fn_f64frombits(V a,V b);
 V fpr_fn__x24arc_x2ef64frombits(V a,V b) { return fpr_prim_fn_f64frombits(a,b); }
 extern V fpr_prim_fn_f32frombits(V a);

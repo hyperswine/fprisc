@@ -187,6 +187,20 @@ solBuiltins =
       ("Num.sqrt", mono (TFn tInt tInt)),
       ("Num.floor", mono (TFn tInt tInt)),
       ("Num.round", mono (TFn tInt tInt)),
+      -- the native runtime's transcendentals, bit for bit (Sol.FMath)
+      ("Num.sin", mono (TFn tInt tInt)),
+      ("Num.cos", mono (TFn tInt tInt)),
+      ("Num.tan", mono (TFn tInt tInt)),
+      ("Num.asin", mono (TFn tInt tInt)),
+      ("Num.acos", mono (TFn tInt tInt)),
+      ("Num.atan", mono (TFn tInt tInt)),
+      ("Num.exp", mono (TFn tInt tInt)),
+      ("Num.log", mono (TFn tInt tInt)),
+      ("Num.log2", mono (TFn tInt tInt)),
+      ("Num.pow", mono (TFn tInt (TFn tInt tInt))),
+      ("Num.atan2", mono (TFn tInt (TFn tInt tInt))),
+      -- the IEEE bits of a float as a signed 64-bit Int (native: I64.ofF64Bits)
+      ("Num.bits", mono (TFn tInt tInt)),
       -- the float-literal splices: Int-is-Numeric, no width vocabulary
       ("f64frombits", mono (TFn tInt (TFn tInt tInt))),
       ("f32frombits", mono (TFn tInt tInt)),

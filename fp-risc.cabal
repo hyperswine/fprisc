@@ -295,6 +295,7 @@ library sol-vm
       Sol.Web
       Sol.WebAssets
       Sol.Width
+      Sol.FMath
   c-sources:
       compiler/cbits/fsx.c
       compiler/cbits/vecgpu.c
