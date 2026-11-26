@@ -27,8 +27,19 @@ runpaths image = List.concat (List.map (fn p -> Str.split 58 p) (List.append (dy
 resolvedClosure image = List.concat (List.map (fn line -> case Str.words (Str.trim line) of
     name :: "=>" :: path :: _ -> if Str.startsWith "/" path then [(name, path)] else []
   | _ -> []) (Str.lines (B.query ["ldd",image]))).
-packageOf path = out = B.query ["sh","-c","dpkg -S \"$(readlink -f \"$1\")\" 2>/dev/null || dpkg -S \"$1\"","sh",path];
-  (Str.split 58 out) ! 0.
+# the Debian package that owns a library, or "" for one built from source
+packageOf path = out = B.query ["sh","-c","dpkg -S \"$(readlink -f \"$1\")\" 2>/dev/null || dpkg -S \"$1\" 2>/dev/null || true","sh",path];
+  if out == "" then "" else (Str.split 58 out) ! 0.
+# a library built from source into PREFIX/lib carries its notices in
+# PREFIX/share/licenses, and PREFIX is NAME-VERSION (as a Homebrew keg)
+prefixNotices sdk real =
+  prefix = M.parent (M.parent real);
+  src = "{prefix}/share/licenses";
+  if not (B.exists "-d" src) then error "no licence notice for {real}: not a Debian package and no {src}" else
+    dir = "lib/licenses/{M.base prefix}";
+    _ = B.command ["mkdir","-p","{sdk}/{dir}"];
+    _ = B.command ["cp","-pRL",src + "/.","{sdk}/{dir}"];
+    List.map (fn n -> "{dir}/{n}") (Str.lines (B.query ["ls","{sdk}/{dir}"])).
 noticesFor sdk pkg =
   base = Str.trim ((Str.split 58 pkg) ! 0);
   src = "/usr/share/doc/{base}/copyright";
@@ -44,9 +55,11 @@ bundle1 sdk entry = (name, path) = entry;
   _ = B.command ["chmod","755",copy];
   _ = B.command ["patchelf","--set-rpath","$ORIGIN",copy];
   pkg = packageOf real;
-  version = B.query ["dpkg-query","-W","-f=$\{Version\}",Str.trim ((Str.split 58 pkg) ! 0)];
+  prefix = M.base (M.parent (M.parent real));
+  version = (if pkg == "" then prefix else B.query ["dpkg-query","-W","-f=$\{Version\}",Str.trim ((Str.split 58 pkg) ! 0)]);
+  notes = (if pkg == "" then prefixNotices sdk real else noticesFor sdk pkg);
   J.JObj [("installName",J.JStr name),("file",J.JStr ("lib/" + name)),("source",J.JStr real),
-          ("package",J.JStr pkg),("packageVersion",J.JStr version),("notices",J.JArr (List.map J.JStr (noticesFor sdk pkg)))].
+          ("package",J.JStr (if pkg == "" then prefix else pkg)),("packageVersion",J.JStr version),("notices",J.JArr (List.map J.JStr notes))].
 # copy every non-system library of `exe`'s closure into sdk/lib and point the
 # executable at it
 bundle sdk exe =
