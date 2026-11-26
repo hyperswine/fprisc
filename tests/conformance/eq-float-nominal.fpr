@@ -1,0 +1,4 @@
+# clause: v1.0 semantics §5 (equality). A float field the nominal type declares
+# F64 compares by IEEE value, so `==` on that type is allowed.
+P = Type (P F64 Int).
+main = print "{P 1.5 2 == P 1.5 2} {P 1.5 2 == P 2.5 2}".

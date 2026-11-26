@@ -1,12 +1,8 @@
-# clause: v1.0 semantics §5 (equality). `==` is structural to any depth, and a
-# float inside a tuple, list, record or polymorphic comparison follows IEEE.
-eq : a -> a -> Bool.
-eq x y = x == y.
+# clause: v1.0 semantics §5 (equality; decided 26 Nov 2026). `==` at a known
+# type that holds a float outside a declared float field is refused, as
+# printing it is: the runtime compares structure by tag, and a float there is
+# raw bits.
 main =
   r1 = {a = 1.5, b = 2};
   r2 = {a = 1.5, b = 2};
-  _ = print "{(1, 1.5) == (1, 1.5)}";
-  _ = print "{[1.5, 2.5] == [1.5, 2.5]}";
-  _ = print "{r1 == r2}";
-  _ = print "{(1, 1.5) == (1, 2.5)}";
-  print "{eq 1.5 1.5}".
+  print "{r1 == r2}".

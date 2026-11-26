@@ -1,0 +1,4 @@
+# clause: v1.0 semantics §5 (allowed 26 Nov 2026). `<  <=  >  >=` on strings
+# compare bytes, as std/order's Order.string: a prefix sorts first, and
+# "Z" sorts before "a".
+main = print "{"a" < "b"} {"b" <= "a"} {"ab" > "a"} {"" >= ""} {"Z" < "a"} {"a" < "ab"}".

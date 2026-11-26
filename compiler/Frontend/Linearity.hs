@@ -348,6 +348,10 @@ bindPat li p s = case p of
     Just argShapes | length argShapes == length ps -> concat (zipWith (bindPat li) ps argShapes)
     _ -> concatMap (\q -> bindPat li q LU) ps
 
+-- the message for rendering an owner (interpolation, str, print)
+renderLinear :: String
+renderLinear = "rendering counts as the linear value's one use and releases nothing; give its type a show that hands it back, (String, T)"
+
 linExpr :: LinInfo -> M.Map Name LShape -> SExpr -> LRes
 linExpr li env0 = go env0
   where
@@ -367,7 +371,8 @@ linExpr li env0 = go env0
       SInt _ -> ([], Just zero, LU)
       SStrI segs ->
         let rs = [go env e | SegExpr e <- segs]
-         in (concat [e | (e, _, _) <- rs], foldl' plus (Just zero) [c | (_, c, _) <- rs], LU)
+            rendered = concat [demandOwnership sh renderLinear | (_, _, sh) <- rs]
+         in (concat [e | (e, _, _) <- rs] ++ rendered, foldl' plus (Just zero) [c | (_, c, _) <- rs], LU)
       e@SApp {} -> appSpine env e
       SBin "|>" a f -> go env (SApp f a)
       SBin "::" a b -> go env (SApp (SApp (SVar "Cons") a) b)
@@ -573,7 +578,19 @@ linExpr li env0 = go env0
                   self = selfHeld g
                   sh2 = if (anyLinArg || self) && not full then closureShape ([s | (_, _, s) <- argRes] ++ [LL | self]) else sh
                   (he, hc, _) = go env (SVar g)
-               in (argErrs ++ callErrs ++ he, plus hc argCnt, sh2)
+                  -- v1.0 semantics §10 (decided 26 Nov 2026): rendering,
+                  -- drop and send each counted as a linear value's one use
+                  -- and released nothing. Refused; a type variable that
+                  -- reaches them must be instantiated at an unrestricted type.
+                  shapes = [sh' | (_, _, sh') <- argRes]
+                  leakErrs = case g of
+                    _ | isJust (M.lookup g env) -> []
+                    "str" -> concatMap (`demandOwnership` renderLinear) shapes
+                    "print" -> concatMap (`demandOwnership` renderLinear) shapes
+                    "drop" -> concatMap (`demandOwnership` "drop discards a linear value without releasing it; use the type's own consumer (Vec.free, close, BStr.free, ...)") shapes
+                    "send" -> concatMap (`demandOwnership` "send copies its message, so a linear value would have two owners; move it with sendLinear") (drop 1 shapes)
+                    _ -> []
+               in (argErrs ++ callErrs ++ he ++ leakErrs, plus hc argCnt, sh2)
             _ ->
               -- an expression head (a case choosing a function, an
               -- application returning one, a lambda): when its arity is

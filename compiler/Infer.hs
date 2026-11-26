@@ -1563,18 +1563,30 @@ resolveSites prof sigs env = do
             | otherwise -> siteLayout k "Vec.map" b
           _ -> OpPrim "" <$ report "Vector: cannot determine the element layout"
       else if op `elem` ["==", "!="]
-        then pure $ case t of
+        then case t of
           -- IEEE compare prims (NaN /= NaN, -0.0 == 0.0); every other
           -- type keeps the generic shallow veq EXACTLY as before --
           -- including type variables: polymorphic == must not be
           -- defaulted to Int, and a poly == reached with raw float
           -- bits is the documented shallow-honesty hazard, not a
           -- resolver decision.
-          TC "F64" -> OpPrim ("F64." ++ op)
-          TC "F32" -> OpPrim ("F32." ++ op)
-          TC "I64" -> OpPrim ("I64." ++ op)
-          TC "I32" -> OpPrim ("I32." ++ op)
-          _ -> OpPrim op
+          TC "F64" -> pure (OpPrim ("F64." ++ op))
+          TC "F32" -> pure (OpPrim ("F32." ++ op))
+          TC "I64" -> pure (OpPrim ("I64." ++ op))
+          TC "I32" -> pure (OpPrim ("I32." ++ op))
+          _ -> do
+                -- a float inside a structure is raw bits to the runtime's
+                -- tid-directed comparison (veq), which follows it as a
+                -- pointer: refused at a known type, as str/print are
+                -- (v1.0 semantics §5, decided 26 Nov 2026). A float field the
+                -- nominal type declares F64/F32 is in the raw-field mask and
+                -- compares by IEEE, so it stays allowed.
+                byType <- gets iTypeConstructors
+                if mentionsFloat t || floatOutsideRawField byType t
+                  then do
+                    p <- prettyT t
+                    OpPrim op <$ report ("(" ++ op ++ ") on " ++ p ++ ": structural equality is tid-directed and floats are raw bits -- compare the float fields individually with F64.==/F32.== (v1)")
+                  else pure (OpPrim op)
       else if op == "keyedfold!"
         then pure $ case t of
           TC "Int" -> OpPrim "mutmapInts"
@@ -1623,6 +1635,8 @@ resolveSites prof sigs env = do
                  | otherwise -> pure (OpPrim ("I32." ++ op))
         TC "String"
           | op == "+" -> pure (OpGlobal "Str.+")
+          -- byte order (v1.0 semantics §5, allowed 26 Nov 2026)
+          | op `elem` ["<", "<=", ">", ">="] -> pure (OpGlobal ("Str." ++ op))
           | op == "-" -> pure (OpGlobal "Str.-") -- deconcatenation: suffix removal
           | otherwise -> OpPrim op <$ report ("(" ++ op ++ ") is not defined for String")
         TAp (TC "List") _

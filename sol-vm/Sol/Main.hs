@@ -26,13 +26,14 @@ import Control.Monad.State.Strict (runState)
 import Data.IORef
 import Data.Maybe (isJust, isNothing)
 import Data.Char (isSpace)
-import Data.List (intercalate, isInfixOf, isPrefixOf, stripPrefix)
+import Data.List (intercalate, isInfixOf, isPrefixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Foldable (toList)
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Sol.Lang
-import Frontend.Parser (immediateMarker)
+import Frontend.Parser (immediateMarker, statementResult)
+import qualified Frontend.Traverse as Traverse
 import Sol.Mod (resolveModuleParsedWith, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
@@ -219,6 +220,7 @@ evalForSafety (TEval e)
       SVar "main" -> True
       SBlock [SBind m [] _] y | m == immediateMarker -> runsMain y
       _ -> False
+evalForSafety (TBind _ [] [] r) | Just (_, e) <- resultBody r = evalForSafety (TEval e)
 evalForSafety t = t
 
 -- The parsed prelude. Parsing the ~450-line text costs ~30 ms; the result
@@ -589,6 +591,12 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
   -- a script with no statements runs a zero-arg `main` as its one statement (runList below)
   let mainRoot = [n | n <- ["main"], null evalNames, any (\t -> case t of TBind m [] _ _ -> m == n; _ -> False) tops]
       escapes = transactionalEscapes tops (evalNames ++ mainRoot)
+  let resultErrs = resultOrderErrors tops (statementResults' tops)
+  unless (null resultErrs) $ do
+    Editor.legacy report "statements" resultErrs
+    diagnostic "=== STATEMENTS: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) resultErrs
+    exitFailure
   unless (null escapes) $ do
     let msgs = [statementLabel r ++ " is a transaction but reaches immediate operation(s) "
                  ++ intercalate ", " ns ++ ": write it `>!` (immediate, never retried), or use the transactional twins"
@@ -699,12 +707,13 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
   tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
   actors <- VM.newActorRuntime
   requestedExit <- newIORef (Nothing :: Maybe Int)
+  pendingResults <- newIORef []
   let env = VMEnv (txCfgBase cfg) (txCfgDataFile cfg) (txCfgConsTV cfg) (txCfgShapeNames cfg) (txCfgBProg cfg) (txCfgCore cfg) (txCfgJit cfg) gpu tab (mkHal (txCfgCons cfg) (txCfgScriptArgs cfg) tx preempts (txCfgRt cfg)) fuel preempts tx actors
       cleanup = VM.shutdownActorRuntime actors
   res <- (do
     (forM_ (txCfgTopNames cfg) $ \n -> do
-      _ <- execFn env n []
-      pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit (Just code)
+      v <- execFn env n []
+      forM_ (statementIndex n) $ \i -> modifyIORef' pendingResults ((i, v) :)) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit (Just code)
     when (txCfgDumpTabStats cfg) $ do
       statsFlag <- lookupEnv "SOL_TABLE_STATS"
       when (statsFlag == Just "1") $ VM.dumpTabStats env
@@ -753,6 +762,8 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
           unless (null logs) $ diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
           when (txCfgExitOnFailure cfg) exitFailure
         else do
+          -- a statement's result exists once its statement has committed
+          readIORef pendingResults >>= mapM_ (uncurry recordStatementResult)
           mapM_ putStrLn logs >> hFlush stdout
           -- Script.exit ends the run here: later statements do not start
           when (txCfgCommitOnExit cfg) $ do
@@ -1063,7 +1074,59 @@ numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
     go i (TEval e : rest) =
       let n = "top__" ++ show i
        in (TBind n [] [] e, Just n) : go (i + 1) rest
+    -- `x = > e.` (Frontend.Parser.resultDecl): statement i runs `e`; `x`
+    -- reads statement i's committed result through its slot
+    go i (TBind x [] [] r : more)
+      | Just (p, e) <- resultBody r =
+          let (sname, body) = case e of
+                SBlock (SBind m [] _ : rest) fin | m == immediateMarker ->
+                  ("topnow__" ++ show i, if null rest then fin else SBlock rest fin)
+                _ -> ("top__" ++ show i, e)
+              slot = SApp (SApp (SVar statementResult) (SInt (fromIntegral i))) (SLam [p] e)
+           in (TBind sname [] [] body, Just sname) : (TBind x [] [] slot, Nothing) : go (i + 1) more
     go i (t : rest) = (t, Nothing) : go i rest
+
+-- the body of a `x = > e.` definition: its thunk parameter and statement
+resultBody :: SExpr -> Maybe (Name, SExpr)
+resultBody r = case unmarkS r of
+  SApp f (SLam [p] e) | SApp g _ <- unmarkS f, SVar h <- unmarkS g, h == statementResult -> Just (p, e)
+  _ -> Nothing
+  where
+    unmarkS (SMark _ x) = unmarkS x
+    unmarkS x = x
+
+-- the statement results a program defines: name -> statement index
+statementResults' :: [STop] -> M.Map Name Int
+statementResults' tops = M.fromList
+  [ (x, i) | TBind x [] [] r <- tops, Just _ <- [resultBody r]
+  , SApp f _ <- [r], SApp _ (SInt k) <- [f], let i = fromIntegral k, i >= 0 ]
+
+-- Discipline for statement results: only a statement may read one, and only
+-- a statement after the one that binds it. A definition that read one would
+-- stop being a pure function of its arguments.
+resultOrderErrors :: [STop] -> M.Map Name Int -> [String]
+resultOrderErrors tops results =
+  [ "`" ++ d ++ "` reads statement result `" ++ x ++ "`: only a statement may read one (pass it as an argument)"
+  | t@(TBind d _ _ _) <- tops, statementIndex d == Nothing, not (d `M.member` results)
+  , x <- topFree t, x `M.member` results ]
+  ++
+  [ statementLabel d ++ " reads `" ++ x ++ "`, which statement " ++ show (j + 1) ++ " binds: a statement may read only results bound before it"
+  | t@(TBind d _ _ _) <- tops, Just k <- [statementIndex d]
+  , x <- topFree t, Just j <- [M.lookup x results], j >= k ]
+
+-- the names a definition refers to that it does not bind itself
+topFree :: STop -> [Name]
+topFree (TBind _ ps gs e) =
+  let bound = S.fromList (concatMap Traverse.patVars ps ++ concat [Traverse.patVars p | GPat p _ <- gs])
+   in nub [v | v <- concatMap Traverse.sFree (e : guardExprs gs), not (v `S.member` bound)]
+topFree t = nub (topVars t)
+
+-- the index of a numbered statement
+statementIndex :: Name -> Maybe Int
+statementIndex n = case (stripPrefix "top__" n, stripPrefix "topnow__" n) of
+  (Just k, _) -> Just (read k)
+  (_, Just k) -> Just (read k)
+  _ -> Nothing
 
 -- a `>!` statement's entry name (numberEvals)
 isImmediateStatement :: Name -> Bool
@@ -1091,11 +1154,13 @@ transactionalEscapes tops roots =
   , let found = S.toList (S.intersection immediateOperations (reach r)), not (null found) ]
   where
     refs = M.fromListWith (++) ([(n, topVars t) | t@(TBind n _ _ _) <- tops] ++ [(n, topVars t) | t@(TStruct n _ _) <- tops])
-    -- the Now wrappers are leaves: reaching one is the use
+    -- the Now wrappers are leaves: reaching one is the use; so is a statement
+    -- result, which reads a committed value and does not run its statement
+    results = statementResults' tops
     reach r = grow (S.singleton r) [r]
     grow seen [] = seen
     grow seen (n : rest)
-      | n `S.member` immediateOperations = grow seen rest
+      | n `S.member` immediateOperations || n `M.member` results = grow seen rest
       | otherwise =
           let next = [m | m <- M.findWithDefault [] n refs, not (m `S.member` seen)]
            in grow (foldr S.insert seen next) (next ++ rest)
@@ -1104,6 +1169,7 @@ transactionalEscapes tops roots =
 statementLabel :: Name -> String
 statementLabel n
   | Just k <- stripPrefix "top__" n = "statement " ++ show ((read k :: Int) + 1) ++ " (`>`)"
+  | Just k <- stripPrefix "topnow__" n = "statement " ++ show ((read k :: Int) + 1) ++ " (`>!`)"
   | otherwise = "`" ++ n ++ "` (run as a transactional statement)"
 
 -- ---- compile-time module import ---------------------------------------------

@@ -651,6 +651,11 @@ Str = Struct Add Eq {
   (-) = fn a b -> strSub a b,
   zero = "",
   (==) = fn a b -> a == b,
+  # byte order, as std/order's Order.string: a prefix sorts first
+  (<) = fn a b -> strCompare a b < 0,
+  (<=) = fn a b -> strCompare a b <= 0,
+  (>) = fn a b -> strCompare a b > 0,
+  (>=) = fn a b -> strCompare a b >= 0,
   len = fn s -> strlen s,
   at = fn s i -> charAt s i,
   fromCode = fn c -> chr c,

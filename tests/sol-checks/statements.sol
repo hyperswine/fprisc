@@ -52,8 +52,23 @@ main u = root = H.root Unit; work = tempDir "fpr-statements";
   _ = must "retry: status" (tc == 0) te;
   _ = must "retry: one retry per statement" (count "retrying statement (attempt 2)" te == 2) te;
   _ = must "retry: committed once" (readPath "{t}/c.txt" == "xa" and readPath "{t}/d.txt" == "xa") te;
-  # 7. the isolation example: visibility inside a statement and across statements
+  # 7. statement results: `x = > e.` binds the committed value for later statements only
+  v = fresh work "results";
+  _ = put v "s.sol" "total = > List.fold (fn a x -> a + x) 0 (List.range 1 10).\nlabel =\n  > \"sum=\{total\}\".\n> print label.\n";
+  ProcessResult vc vo ve = sol root v "s.sol" [];
+  _ = must "results: carried" (vc == 0 and vo == "sum=55\n") "{vo}{ve}";
+  _ = put v "early.sol" "> print later.\nlater = > 5.\n";
+  ProcessResult wc wo we = sol root v "early.sol" [];
+  _ = must "results: read before bound is refused" (wc != 0 and Str.contains "reads `later`, which statement 2 binds" we) we;
+  _ = put v "def.sol" "n = > 3.\ndouble u = n * 2.\n> print (double Unit).\n";
+  ProcessResult dc do de = sol root v "def.sol" [];
+  _ = must "results: a definition may not read one" (dc != 0 and Str.contains "`double` reads statement result `n`" de) de;
+  _ = put v "c.txt" "1";
+  _ = put v "retry.sol" "r = > c = readPath \"c.txt\"; _ = writePath \"c.txt\" (c + \"x\"); Str.len c.\n> writePath \"r.txt\" (str r).\n";
+  ProcessResult rc2 ro2 re2 = sol root v "retry.sol" [("SOL_FORCE_RETRY","1")];
+  _ = must "results: a retried statement records its result once" (rc2 == 0 and readPath "{v}/c.txt" == "1x" and readPath "{v}/r.txt" == "1") re2;
+  # 8. the isolation example: visibility inside a statement and across statements
   ProcessResult xc xo xe = H.call ["{root}/fpr","sol","{root}/sol/examples/txn_iso.sol"] [("FPR_HOME",root)] 120000;
   _ = must "txn_iso example" (xc == 0 and Str.endsWith "txn_iso: OK\n" xo) "{xo}{xe}";
-  print "statements: per-statement commit and abort, refusal before running, main as a statement, quiet >!, exit, per-statement retry, isolation PASS".
+  print "statements: per-statement commit and abort, refusal before running, main as a statement, quiet >!, exit, per-statement retry, statement results, isolation PASS".
 >! main Unit.

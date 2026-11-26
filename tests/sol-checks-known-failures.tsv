@@ -1,3 +1,3 @@
 # Checks that fail on main for a recorded reason: name<TAB>reason.
 # tests/run.sol still runs them; it fails if one of them starts passing.
-conformance:eq-float-structure	== on a tuple/list/record holding a float, or a polymorphic == at F64, segfaults (v1.0 semantics §5 defect); the fix is an owner decision (refuse vs typed equality)
+conformance:eq-float-polymorphic	a polymorphic == instantiated at a float-holding type segfaults (v1.0 semantics §5); concrete types are refused since 26 Nov, type variables are not

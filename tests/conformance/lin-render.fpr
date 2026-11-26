@@ -1,0 +1,5 @@
+# clause: v1.0 semantics §10 (linear values; decided 26 Nov 2026). A linear
+# value may not be passed to render: it would count as the value's one use and
+# release nothing.
+T 1 = Type (T Int).
+main = t = T 3; print "{t}".

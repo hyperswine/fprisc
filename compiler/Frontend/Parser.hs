@@ -93,9 +93,17 @@ expr = lamE <|> opExpr
   where
     lamE = do
       keyword "fn" -- word-boundary: `fnv1a ...` is an application, not a lambda
-      ps <- some lowerName
+      ps <- some lamParam
       _ <- symbol "->"
       SLam ps <$> block -- bindings allowed, same block form as arms
+
+-- a lambda parameter: a name, or `_` for one the body ignores. `_` becomes a
+-- fresh name ('$' cannot occur in a source name, so the body cannot refer to it)
+lamParam :: P String
+lamParam = lowerName <|> do
+  o <- getOffset
+  _ <- lexeme (char '_' <* notFollowedBy (satisfy identChar))
+  pure ("_$" ++ show o)
 
 opExpr :: P SExpr
 opExpr = dollarChain
@@ -108,7 +116,7 @@ opExpr = dollarChain
     pipeOperand =
       ( do
           keyword "fn"
-          ps <- some lowerName
+          ps <- some lamParam
           _ <- symbol "->"
           SLam ps <$> expr
       )
@@ -449,6 +457,7 @@ topDecl =
       try profileDecl,
       try deprecatedDecl,
       evalDecl,
+      resultDecl,
       sigDecl,
       structDecl,
       try typeDecl,
@@ -503,16 +512,39 @@ deprecatedDecl = do
 -- the profile a file declares, from either form
 evalDecl :: P STop
 evalDecl = do
+  e <- statementBody
+  dotTerm
+  pure (TEval e)
+
+-- `> e` or `>! e`. `>!` is an IMMEDIATE statement (Sol): realtime effects
+-- allowed, no retry. It is an ordinary statement body whose block starts with
+-- the binding `$immediate` ('$' cannot occur in a source name); Sol's
+-- statement numbering strips it, and every other consumer sees a harmless local.
+statementBody :: P SExpr
+statementBody = do
   _ <- try (char '>' <* notFollowedBy (oneOf ">="))
-  -- `>! e.` is an IMMEDIATE statement (Sol): realtime effects allowed, no
-  -- retry. It is an ordinary TEval whose block starts with the binding
-  -- `$immediate` ('$' cannot occur in a source name); Sol's statement
-  -- numbering strips it, and every other consumer sees a harmless local.
   now <- option False (True <$ char '!')
   sc
   e <- block
+  pure (if now then SBlock [SBind immediateMarker [] (SInt 0)] e else e)
+
+-- `x = > e.` / `x = >! e.`: a statement whose committed result later
+-- statements read as `x` (Sol; docs/2026-11-27-SOL-STATEMENT-RESULTS.md).
+-- It is the top-level definition `x = Stmt.result (-1) (fn _ -> e)`: the
+-- typed hole gives `x` the type of `e`; Sol numbers it as a statement in
+-- file order, fills in the slot, runs `e` once as that statement, and a read
+-- of `x` answers the committed value without running `e` again.
+resultDecl :: P STop
+resultDecl = do
+  n <- try (lowerName <* eqSign <* lookAhead (char '>' <* notFollowedBy (oneOf ">=")))
+  e <- statementBody
   dotTerm
-  pure (TEval (if now then SBlock [SBind immediateMarker [] (SInt 0)] e else e))
+  pure (TBind n [] [] (SApp (SApp (SVar statementResult) (SInt (-1))) (SLam [resultParam] e)))
+
+-- the builtin behind a statement result, and its thunk's parameter
+statementResult, resultParam :: String
+statementResult = "Stmt.result"
+resultParam = "_$result"
 
 -- the binding that marks a `>!` statement (see evalDecl)
 immediateMarker :: String

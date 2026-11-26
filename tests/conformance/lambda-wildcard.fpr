@@ -1,0 +1,3 @@
+# clause: v1.0 semantics §3 (allowed 26 Nov 2026). A lambda parameter may be
+# `_`, for an argument the body ignores.
+main = f = fn _ y -> y + 1; g = fn _ _ -> 7; print (f 1 2 + g 3 4).

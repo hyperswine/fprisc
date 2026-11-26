@@ -4,7 +4,7 @@
 # reach 2^61 slots, whose 2^61 * 8 bytes wrapped to 0, and was OOM-killed).
 H = use "helpers".
 mm n = "MutMap = use \"std/mutmap\".\nmain =\n  m = MutMap.withCapacity {n} (MutMap.ints Unit);\n  _ = print \"reserved\";\n  m2 = MutMap.insert 1 2 m;\n  (v, m3) = MutMap.get 1 m2;\n  _ = MutMap.free m3;\n  print v.\n".
-vr n = "main =\n  v = Vec.range 0 {n};\n  _ = print \"made\";\n  print (Vec.len v).\n".
+vr n = "main =\n  v = Vec.range 0 {n};\n  _ = print \"made\";\n  (k, v2) = Vec.len v;\n  _ = Vec.free v2;\n  print k.\n".
 impossible = [("mm-2^60", mm "1152921504606846976", "MutMap: capacity out of range"),
          ("mm-2^61", mm "2305843009213693952", "MutMap: capacity out of range"),
          ("mm-2^62-1", mm "4611686018427387903", "MutMap: capacity out of range"),

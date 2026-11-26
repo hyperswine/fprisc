@@ -6,7 +6,7 @@
 -- dispatch stay separate from the host primitive surface.
 module Sol.Hal
   ( BStrTable, globalBst, bstInsert, bstLookup, bstDelete, veqIO,
-    mtimeT, vmPanic, mkHal
+    mtimeT, vmPanic, mkHal, recordStatementResult
   ) where
 
 import Control.Monad (unless, when)
@@ -100,10 +100,27 @@ veqIO bst a b = do
 -- surface generated code can reach the outside world through. Path/Handle
 -- tids are passed in because the front-end assigns user-type ids in
 -- declaration order (prelude declares them first).
+-- The committed result of each statement, by statement index: `x = > e.`
+-- reads its slot through Stmt.result (docs/2026-11-27-SOL-STATEMENT-RESULTS.md).
+-- One script runs per process; the run loop writes a slot only after its
+-- statement commits, so a retried or aborted statement leaves nothing.
+{-# NOINLINE statementResults #-}
+statementResults :: IORef (IM.IntMap Value)
+statementResults = unsafePerformIO (newIORef IM.empty)
+
+recordStatementResult :: Int -> Value -> IO ()
+recordStatementResult i v = modifyIORef' statementResults (IM.insert i v)
+
 mkHal :: M.Map Name (Int, Int, Int) -> [String] -> IORef TxState -> IORef Int -> RtCounts -> M.Map Name (Int, [Value] -> IO Value)
 mkHal cons scriptArgs tx preempts rt =
   M.fromList $
     [ ("str", (1, \[v] -> pure (VStr (render v)))),
+      -- the committed value of statement i; the thunk exists only for typing
+      ("Stmt.result", (2, \[VInt i, _] -> do
+          m <- readIORef statementResults
+          case IM.lookup (fromIntegral i) m of
+            Just v -> pure v
+            Nothing -> vmPanic ("statement result " ++ show i ++ " read before its statement committed"))),
       -- Strings retain lazy sequential text and share an on-demand character index.
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
       -- byte order, -1 / 0 / 1 (runtime.c g_strCompare; std/order's String comparison): UTF-8 keeps

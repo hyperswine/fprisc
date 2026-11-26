@@ -160,6 +160,8 @@ solBuiltins =
       ("spawnHeap", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) (tcon "Result" [tInt, tStr])))), -- grant always Ok, not enforced (VM.hs)
       ("Sys.spawnApp", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("timeNow", scheme [0] (TFn (sv 0) tInt)),
+      -- `x = > e.`: the committed result of a statement (Frontend.Parser.resultDecl)
+      ("Stmt.result", scheme [0] (TFn tInt (TFn (TFn tUnit (sv 0)) (sv 0)))),
       ("Sys.memInfo", mono (TFn tInt (tList tInt))),
       ("myself", mono (TFn tInt tInt)),
       ("yield", scheme [0] (TFn tInt (sv 0))),
