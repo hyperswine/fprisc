@@ -100,7 +100,7 @@ sequenceCaller assembly symbols steps setup checkpoint template =
   calls = Str.replace "PREVIOUS_MEMBER" (member previous) dispatchBody;
   sig = J.JObj (List.map (fn row -> (name,export,params,result) = row; (name,J.JObj [("parameters",J.JArr (List.map J.JStr params)),("result",J.JStr result),("export",J.JStr export)])) exports);
   (decl,calls,sig).
-writeNow path content =
+writeStreamed path content =
   bytes = unwrap (Utf8.encode content); h = unwrap (Stream.openWrite path (Bytes.len bytes + 1));
   (result,next) = Stream.writeChunk bytes h; _ = unwrap (Stream.closeWrite next); unwrap result.
 queryTool root env argv =
@@ -182,9 +182,9 @@ build _ =
       ("requested_bytes",J.JNum (List.fold (fn n step -> n + num (get proofs (text step "entry")) "requested_bytes") 0 steps)),("per_entry",proofs)]
     else J.set "reserved_bytes" (J.JNum heapBytes) (get proofs entry);
   body = Str.replace "HEAP_SETUP" setup (Str.replace "INVOCATION" calls (Str.replace "DECLARATION" decl (F.readText "{root}/tools/static-arena/caller.c.in")));
-  _ = writeNow "{out}/caller.c" body;
-  _ = writeNow "{out}/start.S" (F.readText "{root}/tools/static-arena/start.S.in");
-  _ = writeNow "{out}/link.ld" (Str.replace "STACK_BYTES" "{stackBytes}" (Str.replace "HEAP_BYTES" "{heapBytes}" (F.readText "{root}/tools/static-arena/link.ld.in")));
+  _ = writeStreamed "{out}/caller.c" body;
+  _ = writeStreamed "{out}/start.S" (F.readText "{root}/tools/static-arena/start.S.in");
+  _ = writeStreamed "{out}/link.ld" (Str.replace "STACK_BYTES" "{stackBytes}" (Str.replace "HEAP_BYTES" "{heapBytes}" (F.readText "{root}/tools/static-arena/link.ld.in")));
   linked = runTool "static-arena-link.sol" [if isSequence then "sequence" else "single"];
   _ = require (Contract.verify root contractPath == contract) "runtime contract changed during admission";
   _ = require (hash source == sourceHash and hash "{root}/fpr" == compilerHash) "source/compiler changed during admission";
@@ -221,7 +221,7 @@ build _ =
     J.set "execution" (J.JObj [("status",J.JStr "RV64-QEMU-PASS"),("result_bits",J.JNum (Str.parse (substr line 25 (Str.len line - 25)))),("output",J.JStr output)]) bounded
     else bounded;
   _ = require (F.readBytes "{out}/image.elf" == bytes) "linked image changed during admission";
-  _ = writeNow "{out}/receipt.json" (J.pretty executed+"\n");
+  _ = writeStreamed "{out}/receipt.json" (J.pretty executed+"\n");
   _ = need (Fs.copyPublishNow "{out}/receipt.json" "{imagePath}.admission.json" 65536 True);
   _ = need (Fs.copyPublishNow "{out}/image.elf" imagePath 65536 True);
   print "static arena admitted: {imagePath}".

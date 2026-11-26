@@ -10,6 +10,7 @@ result-sizes	600	tests/sol-checks/result-sizes.sol	push
 std-contracts	900	tests/sol-checks/std-contracts.sol	push
 conformance	600	tests/sol-checks/conformance.sol	push
 statements	300	tests/sol-checks/statements.sol	push
+sol-surface	300	tests/sol-checks/sol-surface.sol	push
 digest	300	tests/sol-checks/digest.sol	push
 compile-tracked	1800	tests/sol-checks/compile-tracked.sol	push
 panic-stderr	300	tests/sol-checks/panic-stderr.sol	push

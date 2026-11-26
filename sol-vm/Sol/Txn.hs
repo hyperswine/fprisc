@@ -19,7 +19,7 @@ import Data.Bits ((.&.))
 import Data.Unique (Unique, newUnique)
 import Control.Concurrent (ThreadId, myThreadId, threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
 import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, mask_, onException, throwIO, try)
-import Control.Monad (foldM, forM_, unless, when)
+import Control.Monad (filterM, foldM, forM_, unless, when)
 import Data.IORef
 import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt (..))
@@ -619,6 +619,18 @@ commit ref jpath = do
                 M.fromList [(p,()) | (p,_) <- txPathLogs s]
               ]
           )
+  -- A path this transaction only READ, whose parent directory does not
+  -- exist, needs no lock: taking one would create that parent (acquireGo),
+  -- so `exists "a/b/c"` on a missing path used to leave a/b behind. While
+  -- the parent is missing the path is missing, which is all the read
+  -- claimed; a writer that creates it changes what validation sees below,
+  -- and the statement retries. (Removing it from the list, not skipping it
+  -- in takeLock: release would otherwise delete someone else's lock.)
+  let written = S.fromList ([p | e <- effs, Just p <- [effectPath e]] ++ map fst (txPathLogs s))
+  orphans <- fmap S.fromList $ flip filterM touched $ \p ->
+    if p `S.member` written || parentOf p == "." then pure False
+      else not <$> doesDirectoryExist (parentOf p)
+  let lockList = filter (`S.notMember` orphans) touched
   hold <- newIORef False
   staleMeta <- newIORef []
   -- Recheck each metadata promise under its own path lock, before taking
@@ -632,7 +644,10 @@ commit ref jpath = do
         forM_ (M.lookup p (txMetaReads s)) $ \ms -> do
           stale <- metaStaleIO ms p
           when stale $ modifyIORef' staleMeta (p :)
-  withLocksHold hold takeLock touched $ do -- sorted: global lock order
+  withLocksHold hold takeLock lockList $ do -- sorted: global lock order
+    forM_ (S.toList orphans) $ \p -> forM_ (M.lookup p (txMetaReads s)) $ \ms -> do
+      stale <- metaStaleIO ms p
+      when stale $ modifyIORef' staleMeta (p :)
     staleC <-
       foldM
         ( \acc (p, snap) -> do

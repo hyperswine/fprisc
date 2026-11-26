@@ -427,10 +427,21 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
   -- or constructors keep the existing TAlias behavior untouched.)
   let (ptopsAll, utopsCore) = resolveCoreBuiltins ptopsAll0 utopsX0'
       utopsX1 = aliasStructRefs utopsCore
+      -- a top-level definition JOINS the prelude's definition or signature of
+      -- the same name (all clauses of one name are one function): it never
+      -- replaces it. `writeNow` redefined was silently unused (the prelude
+      -- clause matched first). Refused. (A runtime builtin the prelude only
+      -- declares with a signature, such as `run`, is different: a user
+      -- definition with its own signature replaces that one.)
       preludeBindNames = S.fromList [n | TBind n _ _ _ <- ptopsAll0]
       shadowedPrelude = S.toList (S.intersection preludeBindNames (S.fromList [n | TBind n _ _ _ <- utops]))
-  unless (null shadowedPrelude) $
-    note ("[sol] WARNING: script defines prelude name(s): " ++ unwords shadowedPrelude ++ " (shadows prelude binding)")
+  unless (null shadowedPrelude) $ do
+    let msgs = [n ++ " is defined by the Sol prelude; a definition of the same name joins the prelude's instead of replacing it -- rename yours"
+               | n <- shadowedPrelude]
+    Editor.legacy report "prelude-name" msgs
+    diagnostic "=== NAMES: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) msgs
+    exitFailure
 
   -- first-class paths (docs/2026-08-27-PATHS.md): the same surface rewrite the AOT
   -- pipeline runs -- @Shape.field literals validate against the merged

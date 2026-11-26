@@ -76,7 +76,7 @@ defaultPort (_,_,_,p,_) = p.
 defaultSettle (_,_,_,_,s) = s.
 
 # ---- small helpers -----------------------------------------------------------
-writeNow path content =
+writeStreamed path content =
   bytes = unwrap (Utf8.encode content);
   h = unwrap (Stream.openWrite path (Bytes.len bytes + 1));
   (result,next) = Stream.writeChunk bytes h;
@@ -103,7 +103,7 @@ solCommand u = case unwrap (Env.get "SOL") of
   | EnvMissing -> ["./fpr","sol"].
 
 # ---- the report: written now, so a failure leaves passed=false behind -------
-save out rep = writeNow "{out}/results.json" (J.pretty rep + "\n").
+save out rep = writeStreamed "{out}/results.json" (J.pretty rep + "\n").
 fail out rep message = _ = save out (J.set "error" (J.JStr message) rep); error message.
 addCase rep c = J.set "cases" (J.JArr (List.append (unwrap (J.items (field "cases" rep))) [c])) rep.
 setLastCase rep c = items = unwrap (J.items (field "cases" rep));
@@ -116,9 +116,9 @@ runLogged env argv log limit =
   case Proc.pipeline spec of
     Ok (PipelineResult code _ out errs) ->
       stdout = decode out; stderr = decode (Bytes.concat errs);
-      _ = writeNow log (stdout + stderr);
+      _ = writeStreamed log (stdout + stderr);
       if code == 0 then Ok stdout else Err "command failed (exit {code}); see {log}\n{tailOf 2000 (stdout + stderr)}"
-  | Err why -> _ = writeNow log "{why}\n"; Err "{argv}: {why}; see {log}".
+  | Err why -> _ = writeStreamed log "{why}\n"; Err "{argv}: {why}; see {log}".
 must out rep r = case r of Ok x -> x | Err e -> fail out rep e.
 
 # ---- the FPGA manifest -------------------------------------------------------
@@ -203,7 +203,7 @@ runCase o out rep name =
     files = "{dir}/files";
     _ = B.command ["mkdir","-p",files];
     _ = (if name == "host" then B.command ["rm","-f","{files}/output.txt"] else Unit);
-    _ = (if name == "wc" then _ = writeNow "{files}/words.txt" "alpha beta\ngamma\n"; writeNow "{files}/two words.txt" "delta zeta\n" else Unit);
+    _ = (if name == "wc" then _ = writeStreamed "{files}/words.txt" "alpha beta\ngamma\n"; writeStreamed "{files}/two words.txt" "delta zeta\n" else Unit);
     arguments = if name == "args" then programArguments else if name == "wc" then ["words.txt","two words.txt"] else [];
     output = executeGuest o out rep1 dir files arguments ["hello RV32"] [("TEST_UART","connected")];
     _ = checkCase out rep1 name output files;
@@ -236,7 +236,7 @@ sampleOk limit s = List.all (fn k -> case J.get k s of Ok (J.JNum n) -> n >= 0 |
   and (case (J.get "live" s, J.get "peak" s) of (Ok (J.JNum live), Ok (J.JNum peak)) -> live <= peak and peak <= limit | _ -> False).
 classifier o out rep dir =
   _ = B.command ["mkdir","-p",dir];
-  _ = writeNow "{dir}/program.fpr" (fixture o.root);
+  _ = writeStreamed "{dir}/program.fpr" (fixture o.root);
   build = buildImage o out rep "{dir}/program.fpr" dir;
   budget = heapBudget dir;
   limit = unwrap (J.num (field "usable_heap_block_bytes" (J.JObj budget)));
@@ -253,7 +253,7 @@ classifier o out rep dir =
   _ = (if lastNum "regions" >= 10 and lastNum "reclaimed" > 10 * limit then Unit else fail out rep "classifier region reclamation gate failed");
   execution = J.JObj (List.concat [budget,[("frequency_mhz",num o.mhz),("isa",J.JStr (if o.compressed then "RV32IMC" else "RV32IM")),
     ("elapsed_us",List.last runs),("elapsed_us_runs",J.JArr runs),("heap_samples",J.JArr samples),("passed",J.JBool True)]]);
-  _ = writeNow "{dir}/results.json" (J.pretty (J.JObj [("reference",field "reference" result),("repeats",num 10),
+  _ = writeStreamed "{dir}/results.json" (J.pretty (J.JObj [("reference",field "reference" result),("repeats",num 10),
     ("executions",J.JObj [(o.target,execution)])]) + "\n");
   [("build",build),("classifier_report",J.JStr "{dir}/results.json"),("elapsed_us_runs",J.JArr runs)].
 
