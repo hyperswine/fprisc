@@ -3,6 +3,7 @@ CLI = use "../sol/lib/cli".
 D = use "../sol/lib/digest".
 J = use "../sol/lib/json".
 M = use "toolchain-macho".
+Elf = use "toolchain-elf".
 Link = use "toolchain-linkage".
 I = use "toolchain-inventory".
 F = use "toolchain-files".
@@ -29,6 +30,11 @@ releaseFiles sdk =
     "-o","-name","*.hs","-o","-name","*.o","-o","-name","*.hi",")","-print0"] sdk [] "" 0));
   if status != 0 then error "cannot inspect release files: {err}" else
     if out == "" then Unit else error ("unexpected release file: " + (Str.split 0 out ! 0)).
+# the release's platform, from the host that staged it
+platform meta = host = field meta "host"; system = textField host "system"; machine = textField host "machine";
+  if system == "Darwin" and machine == "arm64" then "macos-arm64"
+  else if system == "Linux" and (machine == "x86_64" or machine == "aarch64") then "linux-{machine}"
+  else error "release packaging is qualified for macOS ARM64 and Linux x86_64/aarch64, not {system} {machine}".
 verify : unsafe String -> String -> String -> String -> J.Json -> String .
 verify root prefix core notices meta =
   sdk = "{prefix}/libexec/fprisc";
@@ -37,7 +43,7 @@ verify root prefix core notices meta =
   _ = require (field meta "sourceDirty" == J.JBool False and textField meta "sourceRevision" == revision) "stage the toolchain from this clean commit";
   _ = require (textField meta "version" == "fpr {core}") "staged compiler version differs from requested release";
   host = field meta "host";
-  _ = require (textField host "system" == "Darwin" and textField host "machine" == "arm64") "release packaging is qualified only for macOS ARM64";
+  _ = platform meta;
   recorded = field meta "files";
   actual = I.inventory prefix;
   entries = unwrap (J.fields actual);
@@ -45,7 +51,7 @@ verify root prefix core notices meta =
   _ = require (List.len (unwrap (J.fields recorded)) == List.len entries and List.all (fn pair ->
     (name,value) = pair; J.get name recorded == Ok value) entries and unwrap (D.sha256File "{sdk}/fpr") == textField meta "compilerSha256")
     "staged toolchain inventory mismatch";
-  _ = require ((Str.split 46 (textField meta "minimumMacOS") ! 0) == "27") "review the formula macOS requirement before packaging";
+  _ = (if textField host "system" == "Darwin" then require ((Str.split 46 (textField meta "minimumMacOS") ! 0) == "27") "review the formula macOS requirement before packaging" else Unit);
   _ = releaseFiles sdk;
   _ = require (B.exists "-f" "{sdk}/LICENSE") "the stage must include the FP-RISC license";
   _ = List.map (libraryNotices sdk) (unwrap (J.items (field meta "bundledLibraries")));
@@ -63,11 +69,11 @@ package root prefix version notices output =
   _ = B.command ["mkdir","-p",M.parent output];
   _ = B.command ["mkdir",output];
   work = tempDir "fprisc-release";
-  bundle = "{work}/fprisc-{version}-macos-arm64";
+  bundle = "{work}/fprisc-{version}-{platform meta}";
   _ = B.command ["cp","-RpP",prefix,bundle];
   _ = B.command ["find",bundle,"!","-type","l","-exec","chmod","u+w","\{}","+"];
   sdk = "{bundle}/libexec/fprisc";
-  _ = Link.verify bundle "{sdk}/fpr";
+  _ = (if platform meta == "macos-arm64" then Link.verify bundle "{sdk}/fpr" else Elf.verify bundle "{sdk}/fpr");
   _ = B.command ["mkdir","{sdk}/licenses"];
   _ = B.command ["cp","-RpL",notices + "/.","{sdk}/licenses"];
   withCompiler = J.set "compilerNotices" (J.JStr compiler) (J.set "release" (J.JStr version) meta);
@@ -79,7 +85,7 @@ package root prefix version notices output =
   proc = ProcessSpec ["cat"] "" [] "" 0;
   _ = (case Proc.pipeline (PipelineSpec [proc] (PipeBytes (unwrap (Utf8.encode (J.pretty manifest + "\n")))) (PipePublish scratch True) PipeOutputInherit 0 PipeFail) of
     Ok (PipelineResult 0 _ _ _) -> Unit | failed -> error "writing release manifest failed: {failed}");
-  Release.release root work version output.
+  Release.release root work version (platform meta) output.
 main : unsafe Unit -> Unit .
 >! parsed = unwrap (CLI.parse (List.map (fn n -> CLI.Option n "" CLI.One) ["root","sdk","version","notices","output"]) (args Unit));
   required n = CLI.valueOr "" n parsed;

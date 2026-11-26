@@ -7,9 +7,9 @@ substitute : unsafe String -> List (String,String) -> String .
 substitute text replacements = case replacements of
     [] -> text
   | (key,value) :: rest -> substitute (Str.replace key value text) rest.
-release : unsafe String -> String -> String -> String -> Unit .
-release root parent version output =
-  name = "fprisc-{version}-macos-arm64";
+release : unsafe String -> String -> String -> String -> String -> Unit .
+release root parent version platform output =
+  name = "fprisc-{version}-{platform}";
   file = "{name}.tar.gz";
   archive = "{output}/{file}";
   meta = unwrap (J.parse (F.readText "{parent}/{name}/libexec/fprisc/toolchain.json"));
@@ -23,9 +23,10 @@ release root parent version output =
                                  ("__ARCHIVE__",file),("__SHA256__",digest)];
   _ = writePath "{output}/SHA256SUMS" sums;
   _ = writePath "{output}/release.json" (J.pretty record + "\n");
-  _ = writePath "{output}/fprisc.rb" formula;
+  # the Homebrew formula is macOS-only
+  _ = (if platform == "macos-arm64" then writePath "{output}/fprisc.rb" formula else Unit);
   _ = print archive;
   print "SHA256 {digest}".
 main : unsafe Unit -> Unit .
->! case args Unit of [root,parent,version,output] -> release root parent version output
-  | _ -> error "expected SOURCE_ROOT BUNDLE_PARENT VERSION OUTPUT".
+>! case args Unit of [root,parent,version,platform,output] -> release root parent version platform output
+  | _ -> error "expected SOURCE_ROOT BUNDLE_PARENT VERSION PLATFORM OUTPUT".

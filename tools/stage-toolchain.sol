@@ -6,6 +6,7 @@ J = use "../sol/lib/json".
 Lib = use "toolchain-bundle-libs".
 Link = use "toolchain-linkage".
 M = use "toolchain-macho".
+Elf = use "toolchain-elf".
 F = use "toolchain-files".
 P = use "toolchain-plan".
 I = use "toolchain-inventory".
@@ -26,6 +27,10 @@ darwinInfo prefix exe bundled =
   minimum = case values of v :: _ -> v | [] -> error "missing macOS deployment target in {exe}";
   deps = List.drop 1 (Str.lines (B.query ["otool","-L",exe]));
   [("minimumMacOS",J.JStr minimum),("nativeLibraries",J.JArr (List.map J.JStr deps)),("bundledLibraries",bundled)].
+linuxInfo prefix exe bundled =
+  _ = Elf.verify prefix exe;
+  deps = List.map (fn e -> (n, p) = e; J.JStr "{n} => {p}") (Elf.resolvedClosure exe);
+  [("minimumGlibc",J.JStr (Elf.glibcFloor prefix)),("nativeLibraries",J.JArr deps),("bundledLibraries",bundled)].
 stage : unsafe String -> String -> String -> String -> Unit .
 stage root binary output plan =
   source = F.canonical binary;
@@ -36,7 +41,7 @@ stage root binary output plan =
   _ = B.command ["mkdir","-p",sdk];
   _ = B.command ["cp","-p",source,exe];
   system = B.query ["uname","-s"];
-  bundled = (if system == "Darwin" then Lib.bundle sdk exe else J.JArr []);
+  bundled = (if system == "Darwin" then Lib.bundle sdk exe else if system == "Linux" then Elf.bundle sdk exe else J.JArr []);
   _ = S.stage root output;
   digest = unwrap (D.sha256File exe);
   links = J.JObj (List.map (fn n -> (n,J.JStr (B.query ["readlink","{output}/bin/{n}"]))) ["fpr","sol"]);
@@ -45,7 +50,7 @@ stage root binary output plan =
           ("sourceDirty",J.JBool (B.query ["git","-C",root,"status","--porcelain"] != "")),("compilerSha256",J.JStr digest),
           ("host",J.JObj [("system",J.JStr system),("machine",J.JStr (B.query ["uname","-m"]))]),
           ("nativeBuildDependencies",J.JArr [J.JStr "C compiler, assembler/linker and platform SDK"]),("links",links)];
-  native = (if system == "Darwin" then darwinInfo output exe bundled else []);
+  native = (if system == "Darwin" then darwinInfo output exe bundled else if system == "Linux" then linuxInfo output exe bundled else []);
   inventory = I.inventory output;
   meta = J.JObj (List.concat [base,native,[("cabalPlan",P.plan plan source),("files",inventory)]]);
   _ = writePath "{sdk}/toolchain.json" (J.pretty meta + "\n");
