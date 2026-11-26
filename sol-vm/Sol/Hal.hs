@@ -103,6 +103,42 @@ veqIO bst a b = do
 -- surface generated code can reach the outside world through. Path/Handle
 -- tids are passed in because the front-end assigns user-type ids in
 -- declaration order (prelude declares them first).
+-- Native's bit operations on Int (runtime/bits.c), reproduced exactly.
+-- band/bor/bxor are exact two's-complement-infinite ops on any Int. The
+-- others take a small Int (the 63-bit tagged range) and a bit index or shift
+-- in 0..63, panicking otherwise by native's names; they work on the 64-bit
+-- word, unsigned, and the result is cut back to the 63-bit range, as
+-- TAG((sw)(uw ...)) does. So BITSHIFTR of a negative value is a logical
+-- shift of its 64-bit pattern, as natively.
+smallInt :: Integer -> Bool
+smallInt v = v >= -(2 ^ (62 :: Int)) && v < 2 ^ (62 :: Int)
+
+word64 :: Integer -> Integer
+word64 v = v `mod` (2 ^ (64 :: Int))
+
+tag63 :: Integer -> Integer
+tag63 x = let y = x `mod` (2 ^ (63 :: Int)) in if y >= 2 ^ (62 :: Int) then y - 2 ^ (63 :: Int) else y
+
+bit63 :: Integer -> Integer
+bit63 k = 2 ^ k
+
+bitWith :: String -> (Integer -> Integer -> Integer) -> Integer -> Integer -> IO Integer
+bitWith who f v k
+  | k < 0 || k > 63 = vmPanic (who ++ ": " ++ (if who `elem` ["BITSHIFTL", "BITSHIFTR"] then "shift" else "bit index") ++ " must be 0..63")
+  | not (smallInt v) = vmPanic (who ++ ": not an Int")
+  | otherwise = pure (tag63 (word64 (f (word64 v) k)))
+
+bitTest :: Integer -> Integer -> IO Bool
+bitTest b k
+  | k < 0 || k > 63 = vmPanic "BITTEST: bit index must be 0..63"
+  | not (smallInt b) = vmPanic "BITTEST: not an Int"
+  | otherwise = pure (odd (word64 b `div` 2 ^ k))
+
+bitMask :: Integer -> Integer -> IO Integer
+bitMask w o
+  | w < 0 || w > 63 || o < 0 || o > 63 = vmPanic "BITMASK: bad width/offset"
+  | otherwise = pure (tag63 (word64 ((if w == 63 then 2 ^ (63 :: Int) - 1 else 2 ^ w - 1) * 2 ^ o)))
+
 -- Bytes readers and writers: (width in bytes, big-endian)
 byteWidths, byteWriters :: [(String, (Int, Bool))]
 byteWidths = [("Bytes." ++ n, wb) | (n, wb) <- byteForms]
@@ -289,6 +325,15 @@ mkHal cons scriptArgs tx preempts rt =
       ("Num.log2", (1, \[a] -> pure (VNum (FMath.flog2 (toD a))))),
       ("Num.pow", (2, \[a, b] -> pure (VNum (FMath.fpow (toD a) (toD b))))),
       ("Num.atan2", (2, \[a, b] -> pure (VNum (FMath.fatan2 (toD a) (toD b))))),
+      ("band", (2, \[VInt a, VInt b] -> pure (VInt (a .&. b)))),
+      ("bor", (2, \[VInt a, VInt b] -> pure (VInt (a .|. b)))),
+      ("bxor", (2, \[VInt a, VInt b] -> pure (VInt (a `xor` b)))),
+      ("BITTEST", (2, \[VInt b, VInt i] -> vBool <$> bitTest b i)),
+      ("BITSET", (2, \[VInt b, VInt i] -> VInt <$> bitWith "BITSET" (\w k -> w .|. bit63 k) b i)),
+      ("BITCLEAR", (2, \[VInt b, VInt i] -> VInt <$> bitWith "BITCLEAR" (\w k -> w .&. complement (bit63 k)) b i)),
+      ("BITMASK", (2, \[VInt w, VInt o] -> VInt <$> bitMask w o)),
+      ("BITSHIFTL", (2, \[VInt v, VInt k] -> VInt <$> bitWith "BITSHIFTL" (\x n -> x * 2 ^ n) v k)),
+      ("BITSHIFTR", (2, \[VInt v, VInt k] -> VInt <$> bitWith "BITSHIFTR" (\x n -> x `div` 2 ^ n) v k)),
       ("Num.bits", (1, \[a] -> pure (VInt (fromIntegral (fromIntegral (castDoubleToWord64 (toD a)) :: Int64))))),
       ("!", (2, indexH)),
       ("open", (1, openH)),
@@ -537,7 +582,7 @@ mkHal cons scriptArgs tx preempts rt =
     consumeBStr v = vmPanic ("BStr.free: not a BStr: " ++ render v)
     tidOf n = maybe (-1) (\(t, _, _) -> t) (M.lookup n cons)
     serialV k = let (t, v) = conTV "SerialPort" in VData t v [VInt (fromIntegral k)]
-    serialKey (VData t _ [VInt k]) | t == tidOf "Serial" = pure (fromIntegral k)
+    serialKey (VData t _ [VInt k]) | t == fst (conTV "SerialPort") = pure (fromIntegral k)
     serialKey v = vmPanic ("Serial: not a port: " ++ render v)
     conTV n = maybe (-1, -1) (\(t, v, _) -> (t, v)) (M.lookup n cons)
     isCon n t g = conTV n == (t, g)

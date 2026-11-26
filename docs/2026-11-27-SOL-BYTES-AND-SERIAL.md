@@ -80,9 +80,33 @@ A port is a linear `Serial` handle, threaded like `BStr`:
   - writes reaching the device;
   - a missing port.
 
-**Not tested here:** a real board, and with it a non-standard baud rate, which a
-pseudo-terminal cannot show. A Tang Nano bridge is attached to this Mac, but
-nothing was sent to it without the owner's word.
+**Board run (27 November, with the owner's go-ahead).** `tests/boards/qlink-hello.sol`
+runs a qlink session with the Tang Nano 20K, which runs Spectre-84 with
+System.qa and a qlink console. It is manual, not in CI.
+- It opens the BL616 bridge's UART at 96774 baud, a rate termios cannot name,
+  set through `IOSSIOSPEED`, and discards stale input.
+- It sends HELLO frames (CRC-16/CCITT-FALSE computed in Sol) until the board
+  echoes the nonce. The board answered on the first round, 88 bytes.
+- It sends BYE three times and drains until quiet before closing: closing while
+  the board transmits wedges the bridge.
+
+The session found one bug: the HAL checked a port's type id against the type
+name rather than its constructor, so every operation after `open` panicked.
+
+## Bit operations
+
+Computing that CRC needed bit operations, which Sol did not have. It now has
+native's set, with native's results:
+- `band`, `bor` and `bxor`: exact on any `Int`.
+- `BITSHIFTL`, `BITSHIFTR`, `BITSET`, `BITCLEAR`, `BITTEST` and `BITMASK`: on
+  the 64-bit word of a small `Int`, cut back to the 63-bit range. So
+  `BITSHIFTR` of a negative value is a logical shift of its 64-bit pattern, as
+  in `runtime/bits.c`.
+
+`tests/fmath/bits.{fpr,sol}`, run by the `fmath-parity` check, compare 345 rows
+of edge values; the two sides are identical. The shift names and wrap-around are
+the core spec's open §1.9 / Q15 gap (a precondition, not masking); Sol follows
+native until that is decided.
 
 ## What this unblocks
 

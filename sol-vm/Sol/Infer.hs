@@ -201,6 +201,16 @@ solBuiltins =
       ("Num.atan2", mono (TFn tInt (TFn tInt tInt))),
       -- the IEEE bits of a float as a signed 64-bit Int (native: I64.ofF64Bits)
       ("Num.bits", mono (TFn tInt tInt)),
+      -- native's bit operations, the same results (Sol.Hal bitOp)
+      ("band", mono (TFn tInt (TFn tInt tInt))),
+      ("bor", mono (TFn tInt (TFn tInt tInt))),
+      ("bxor", mono (TFn tInt (TFn tInt tInt))),
+      ("BITSET", mono (TFn tInt (TFn tInt tInt))),
+      ("BITCLEAR", mono (TFn tInt (TFn tInt tInt))),
+      ("BITMASK", mono (TFn tInt (TFn tInt tInt))),
+      ("BITSHIFTL", mono (TFn tInt (TFn tInt tInt))),
+      ("BITSHIFTR", mono (TFn tInt (TFn tInt tInt))),
+      ("BITTEST", mono (TFn tInt (TFn tInt tBool))),
       -- the float-literal splices: Int-is-Numeric, no width vocabulary
       ("f64frombits", mono (TFn tInt (TFn tInt tInt))),
       ("f32frombits", mono (TFn tInt tInt)),
