@@ -297,8 +297,13 @@ closeStream rt key = attempt $ mask_ $ do
 
 encodeUtf8 :: String -> Either String BS.ByteString
 encodeUtf8 s
-  | any (\c -> ord c >= 0xD800 && ord c <= 0xDFFF) s = Left "UTF-8 encode: surrogate is not a Unicode scalar"
+  | any (\c -> (ord c >= 0xD800 && ord c < 0xDC80) || (ord c > 0xDCFF && ord c <= 0xDFFF)) s = Left "UTF-8 encode: surrogate is not a Unicode scalar"
+  -- U+DC80..U+DCFF are a string's raw bytes (Sol.Val.encodeRoundTrip)
+  | any (\c -> ord c >= 0xDC80 && ord c <= 0xDCFF) s = Right (BS.pack (concatMap rt s))
   | otherwise = Right (TE.encodeUtf8 (T.pack s))
+  where
+    rt c | ord c >= 0xDC80 && ord c <= 0xDCFF = [fromIntegral (ord c - 0xDC00)]
+         | otherwise = BS.unpack (TE.encodeUtf8 (T.singleton c))
 
 decodeUtf8 :: BS.ByteString -> Either String String
 decodeUtf8 = either (Left . show) (Right . T.unpack) . TE.decodeUtf8'

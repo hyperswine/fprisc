@@ -21,5 +21,12 @@ main u = root = H.root Unit; work = tempDir "fpr-fmath";
   ProcessResult n2 no2 ne2 = H.call ["{work}/bits"] env 120000;
   ProcessResult s2 so2 se2 = H.call ["{root}/fpr","sol","{root}/tests/fmath/bits.sol"] env 300000;
   _ = (if n2 != 0 or s2 != 0 or no2 != so2 or List.len (Str.lines no2) != 345 then error "bits: native and Sol differ\n{ne2}{se2}" else Unit);
-  print "fmath parity: 12 float functions x 2001 inputs and 345 bit-operation rows, native and Sol identical PASS".
+  # strings: lengths and positions in UTF-8 bytes, raw bytes from chr and mid-character slices
+  ProcessResult b3 bo3 be3 = H.call ["{root}/fpr","build","{root}/tests/fmath/strings.fpr","-o","{work}/strings"] env 600000;
+  _ = (if b3 != 0 then error "strings: native build failed\n{bo3}{be3}" else Unit);
+  _ = unwrap (Proc.runNow (ProcessSpec ["sh","-c","\"$1\" > \"$2\"","sh","{work}/strings","{work}/strings-native.out"] "" env "" 120000));
+  _ = unwrap (Proc.runNow (ProcessSpec ["sh","-c","\"$1\" sol \"$2\" > \"$3\"","sh","{root}/fpr","{root}/tests/fmath/strings.sol","{work}/strings-sol.out"] "" env "" 300000));
+  ProcessResult cc co ce = H.call ["cmp","{work}/strings-native.out","{work}/strings-sol.out"] [] 5000;
+  _ = (if cc != 0 then error "strings: native and Sol bytes differ\n{co}{ce}" else Unit);
+  print "fmath parity: 12 float functions x 2001 inputs, 345 bit-operation rows and byte-indexed strings, native and Sol identical PASS".
 >! main Unit.

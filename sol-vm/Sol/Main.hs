@@ -53,7 +53,8 @@ import Infer (builtinLinShapes, builtinLinShapesFor)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
-import GHC.IO.Encoding (setLocaleEncoding, utf8)
+import GHC.IO.Encoding (setLocaleEncoding)
+import System.IO (hSetEncoding, mkTextEncoding)
 import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
 import System.IO (hFlush, hGetLine, hIsTerminalDevice, hPutStr, hPutStrLn, stderr, stdin, stdout)
 import System.IO.Error (ioeGetErrorString, isUserError)
@@ -82,7 +83,12 @@ main = runScript `catch` ioFailure `catch` interrupted `catch` aborted
 
 runScript :: IO ()
 runScript = do
-  setLocaleEncoding utf8
+  -- UTF-8 that writes a string's escaped raw bytes (U+DC80..U+DCFF, from
+  -- `chr 233` or a slice inside a character) back as those bytes, as native
+  -- prints them (Sol.Val.encodeRoundTrip)
+  roundTrip <- mkTextEncoding "UTF-8//ROUNDTRIP"
+  setLocaleEncoding roundTrip
+  mapM_ (`hSetEncoding` roundTrip) [stdout, stderr, stdin]
   as <- getArgs
   case as of
     ["--help"] -> putStrLn solHelp

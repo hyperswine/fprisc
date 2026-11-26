@@ -223,8 +223,10 @@ mkHal cons scriptArgs tx preempts rt =
       -- Int-only < could not be); Str.codes: the characters as a list of
       -- codes, one pass -- a scanner walks that instead of charAt s i
       ("strCmp", (2, \[av, bv] -> liftA2 (\a b -> VInt (case compare a b of LT -> -1; EQ -> 0; GT -> 1)) (vsStr av) (vsStr bv))),
-      ("strCodes", (1, \[v] -> vsStr v >>= \s -> pure (foldr (\ch acc -> VData listT 1 [VInt (fromIntegral (fromEnum ch)), acc]) (VData listT 0 []) s))),
-      ("chr", (1, \[VInt c] -> pure (VStr [toEnum (fromIntegral c)]))),
+      -- bytes, as native's String.codes today (v1.0 semantics §5)
+      ("strCodes", (1, \[v] -> vsStr v >>= \s -> pure (foldr (\b acc -> VData listT 1 [VInt (fromIntegral b), acc]) (VData listT 0 []) (encodeRoundTrip s)))),
+      -- one byte, as native: a byte >= 128 alone is not UTF-8, so it is held as an escape
+      ("chr", (1, \[VInt c] -> if c < 0 || c > 255 then vmPanic "chr: byte outside 0..255" else pure (VStr (decodeRoundTrip [fromIntegral c])))),
       -- ---- BStr ops: the fast byte-buffer string tier ----
       -- At the Sol level, BStr looks like `BStr Int` (the Int is a ref-table
       -- key). The HAL dispatches via mkBStr/withBStr/consumeBStr.
@@ -1062,7 +1064,7 @@ mkHal cons scriptArgs tx preempts rt =
     charAtH [sv, VInt i]
       | Just a <- stringIndex sv, Just n <- stringLength sv =
           if i >= 0 && i < fromIntegral n
-            then pure (VInt (fromIntegral (fromEnum (a ! fromInteger (i + 1)))))
+            then pure (VInt (fromIntegral (a ! fromInteger (i + 1))))
             else vmPanic "charAt: index out of range"
     charAtH _ = vmPanic "charAt: bad args"
     codeAt sv k = charAtH [sv, VInt k] >>= \case VInt c -> pure c; _ -> vmPanic "charAt: bad args"
@@ -1092,7 +1094,7 @@ mkHal cons scriptArgs tx preempts rt =
           let n = fromIntegral size :: Integer
               o = max 0 o0
               count = max 0 (min (l0 + min 0 o0) (n - o))
-          pure (VStr [a ! fromInteger (i + 1) | i <- [o .. o + count - 1]])
+          pure (VStr (decodeRoundTrip [a ! fromInteger (i + 1) | i <- [o .. o + count - 1]]))
     substrH _ = vmPanic "substr: bad args"
     listItems :: Value -> [Value]
     listItems (VData t 1 [x, r]) | t == listT = x : listItems r

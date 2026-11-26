@@ -33,7 +33,7 @@ import qualified Sol.Digest as Digest
 import Data.Array.IO (IOArray, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
-import Data.Word (Word64)
+import Data.Word (Word64, Word8)
 import qualified Data.IntMap.Strict as IM
 import Data.List (intercalate)
 import System.IO.Unsafe (unsafePerformIO)
@@ -52,10 +52,15 @@ listT = 2
 data Value
   = VInt !Integer
   | VNum !Double -- inexact Numeric: arises from Num.div/Num.sqrt etc.; VInt promotes into it on contact
-  -- Preserve the String-facing pattern while sharing an optional code-point
-  -- index. Printing/sequential operations do not force the array. The first
-  -- indexed access costs O(n); subsequent length/access cost O(1).
-  | VString String Int (A.Array Int Char)
+  -- Preserve the String-facing pattern while sharing an optional index of the
+  -- string's UTF-8 BYTES: lengths and positions count bytes, as in native
+  -- (v1.0 semantics §5, decided 26 Nov 2026). Printing/sequential operations
+  -- do not force the array. The first indexed access costs O(n); subsequent
+  -- length/access cost O(1). A byte that is not part of valid UTF-8 (from
+  -- `chr 233`, or a slice inside a character) is held as the lone surrogate
+  -- U+DC00+byte and written back as that byte (encodeRoundTrip, and the
+  -- UTF-8//ROUNDTRIP handle encoding Sol.Main sets).
+  | VString String Int (A.Array Int Word8)
   | VBytes BS.ByteString -- immutable exact octets, never encoded via String
   | VByteReader Unique Int -- attempt-owned, unforgeable stream capability
   | VByteWriter Unique Int
@@ -70,10 +75,52 @@ data Value
 
 pattern VStr :: String -> Value
 pattern VStr s <- VString s _ _ where
-  VStr s = let n = length s in VString s n (A.listArray (1, n) s)
+  VStr s0 =
+    -- escapes that together form valid UTF-8 (two halves of a character
+    -- joined back) become that character, so one text has one spelling and
+    -- compares, sorts and hashes the same however it was built
+    let s = if any isEscape s0 then decodeRoundTrip (encodeRoundTrip s0) else s0
+        bs = encodeRoundTrip s
+        n = length bs
+     in VString s n (A.listArray (1, n) bs)
+    where isEscape c = c >= '\xDC80' && c <= '\xDCFF'
 
--- The array retains code points, not UTF-8 byte offsets or grapheme clusters.
-stringIndex :: Value -> Maybe (A.Array Int Char)
+-- a string's bytes: UTF-8, with each escape U+DC80..U+DCFF as its raw byte
+encodeRoundTrip :: String -> [Word8]
+encodeRoundTrip = concatMap enc
+  where
+    enc c
+      | o >= 0xDC80 && o <= 0xDCFF = [fromIntegral (o - 0xDC00)]
+      | o < 0x80 = [fromIntegral o]
+      | o < 0x800 = [0xC0 + hi 6, cont 0]
+      | o < 0x10000 = [0xE0 + hi 12, cont 6, cont 0]
+      | otherwise = [0xF0 + hi 18, cont 12, cont 6, cont 0]
+      where
+        o = fromEnum c
+        hi k = fromIntegral (o `div` (2 ^ (k :: Int)))
+        cont k = fromIntegral (0x80 + (o `div` (2 ^ (k :: Int))) `mod` 64)
+
+-- bytes back to a string: valid UTF-8 sequences become characters, any
+-- other byte the escape U+DC00+byte
+decodeRoundTrip :: [Word8] -> String
+decodeRoundTrip [] = []
+decodeRoundTrip (b : rest)
+  | b < 0x80 = toEnum (fromIntegral b) : decodeRoundTrip rest
+  | b >= 0xC2 && b <= 0xDF, c1 : r <- rest, isCont c1 = ch (fromIntegral (b - 0xC0) * 64 + contV c1) : decodeRoundTrip r
+  | b >= 0xE0 && b <= 0xEF, c1 : c2 : r <- rest, isCont c1, isCont c2
+  , let v = fromIntegral (b - 0xE0) * 4096 + contV c1 * 64 + contV c2
+  , v >= 0x800, v < 0xD800 || v > 0xDFFF = ch v : decodeRoundTrip r
+  | b >= 0xF0 && b <= 0xF4, c1 : c2 : c3 : r <- rest, isCont c1, isCont c2, isCont c3
+  , let v = fromIntegral (b - 0xF0) * 262144 + contV c1 * 4096 + contV c2 * 64 + contV c3
+  , v >= 0x10000, v <= 0x10FFFF = ch v : decodeRoundTrip r
+  | otherwise = toEnum (0xDC00 + fromIntegral b) : decodeRoundTrip rest
+  where
+    isCont c = c >= 0x80 && c < 0xC0
+    contV c = fromIntegral (c - 0x80) :: Int
+    ch = toEnum
+
+-- The array holds the UTF-8 bytes, not code points or grapheme clusters.
+stringIndex :: Value -> Maybe (A.Array Int Word8)
 stringIndex (VString _ _ a) = Just a
 stringIndex _ = Nothing
 

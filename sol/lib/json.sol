@@ -110,10 +110,19 @@ unicodeEscape s i parts cp = case and (cp >= 55296) (cp <= 56319) of
     | True -> hex4 s (i + 7) 0 0 |>? (fn low ->
         case and (low >= 56320) (low <= 57343) of
           False -> Err "json: invalid low surrogate at {i}"
-        | True -> stringParts s (i + 11) (Str.fromCode (65536 + (cp - 55296) * 1024 + low - 56320) :: parts)))
+        | True -> stringParts s (i + 11) (utf8Of (65536 + (cp - 55296) * 1024 + low - 56320) :: parts)))
   | False -> (case and (cp >= 56320) (cp <= 57343) of
       True -> Err "json: unpaired low surrogate at {i}"
-    | False -> stringParts s (i + 5) (Str.fromCode cp :: parts)).
+    | False -> stringParts s (i + 5) (utf8Of cp :: parts)).
+# a code point as its UTF-8 string (strings are byte-indexed: Str.fromCode makes one byte)
+utf8Of cp = bytes = (case cp < 128 of
+    True -> [cp]
+  | False -> (case cp < 2048 of
+      True -> [192 + cp / 64, 128 + cp % 64]
+    | False -> (case cp < 65536 of
+        True -> [224 + cp / 4096, 128 + (cp / 64) % 64, 128 + cp % 64]
+      | False -> [240 + cp / 262144, 128 + (cp / 4096) % 64, 128 + (cp / 64) % 64, 128 + cp % 64])));
+  unwrap (Utf8.decode (unwrap (Bytes.fromList bytes))).
 hex4 : unsafe String -> Int -> Int -> Int -> Result Int String .
 hex4 s i n acc = case n == 4 of
     True -> Ok acc
