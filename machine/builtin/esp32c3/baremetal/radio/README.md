@@ -150,3 +150,20 @@ IPv4 address on the test network. The configuration field layouts are
 checked against the pinned RV32 bindings. The password is held in the
 configuration buffer in SRAM and can be cleared after the driver has
 copied it.
+
+Build the station qualification image with the same two pinned checkouts
+used by the scan image.
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-station wifi-sta flash
+
+After booting the image in a test slot, run check_station.py on a Mac
+connected to the test access point with the board serial port, SSID, and
+an unused private IPv4 address in that subnet. The host prompts locally
+for the WPA2 passphrase. Add --open for an open test AP. The firmware
+uses the driver's RAM configuration and clears its temporary passphrase
+buffer after configuration. It sends no credentials back over USB.
+
+The verifier requires a Mac ping reply and a matching rise in the
+device's ICMP echo count. With --reconnect it waits for link loss and a
+second association after restarting the test AP. Entering Q over USB
+stops the station and releases the Wi-Fi controller.

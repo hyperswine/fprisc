@@ -72,7 +72,10 @@ void c3_wifi_probe_poll(uint64_t deadline_us) {
     if (packet.owner) esp_wifi_internal_free_rx_buffer(packet.owner);
     if (!size) return;
     if (esp_wifi_internal_tx(WIFI_IF_STA, response, size)) ++stats.tx_errors;
-    else ++stats.replies;
+    else {
+        ++stats.replies;
+        if (response[12] == 0x08 && response[13] == 0x00) ++stats.echo_replies;
+    }
 }
 
 struct c3_probe_stats c3_wifi_probe_stats(void) {

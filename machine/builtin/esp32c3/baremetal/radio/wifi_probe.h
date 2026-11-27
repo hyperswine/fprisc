@@ -3,7 +3,7 @@
 #include "net_probe.h"
 
 struct c3_probe_stats {
-    uint32_t received, dropped, replies, tx_errors;
+    uint32_t received, dropped, replies, tx_errors, echo_replies;
 };
 
 /* Register the responder after station setup. The same task owns start,

@@ -71,7 +71,8 @@ static void ownership_vectors(void) {
     c3_wifi_probe_poll(0);
     assert(released == 3 && transmitted == 2);
     struct c3_probe_stats stats = c3_wifi_probe_stats();
-    assert(stats.received == 5 && stats.dropped == 1 && stats.replies == 1 && stats.tx_errors == 1);
+    assert(stats.received == 5 && stats.dropped == 1 && stats.replies == 1 && stats.tx_errors == 1 &&
+           stats.echo_replies == 1);
     assert(c3_wifi_probe_stop() == 0 && !rx && released == 5);
     assert(c3_wifi_probe_stop() == 0 && released == 5);
 }

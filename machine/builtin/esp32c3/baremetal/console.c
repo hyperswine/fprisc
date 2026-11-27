@@ -91,6 +91,15 @@ static unsigned read_usb_byte(void) {
     return (uint8_t)*fifo;
 }
 
+int c3_console_read(void *context) {
+    (void)context;
+    return read_usb_byte();
+}
+
+int c3_console_try_read(void) {
+    return (*config & (1u << 2)) ? (uint8_t)*fifo : -1;
+}
+
 static V read_byte(V unit) {
     (void)unit;
     return TAG(read_usb_byte());
