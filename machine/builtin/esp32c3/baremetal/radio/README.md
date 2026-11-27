@@ -197,3 +197,18 @@ throughout. It checks device sample intervals, records heap and packet
 counters, then restarts BLE while the station is connected.
 The optional AP restart verifies recovery in a second association.
 Use an isolated test AP and an unused private station IPv4 address.
+
+## Temporary radio qualification on the journal partition layout
+
+radio_ota.py checks the board identity and verifies its original
+partition table, slot images, OTA selector, and protected flash against
+the supplied 4 MiB backup. It selects slot 0 before staging the radio
+image in slot 1. On exit it restores the original slot bytes and
+selection, and verifies the journal digest from just before the test.
+
+    python3 radio_ota.py PORT ble BLE_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --observer MAC_OBSERVER
+    python3 radio_ota.py PORT wifi WIFI_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --ssid TEST_SSID
+
+The scan verifier checks shutdown and the AP count. With an SSID
+argument it also checks for that access point without printing the
+names or addresses of other APs.

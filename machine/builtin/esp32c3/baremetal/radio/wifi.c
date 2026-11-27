@@ -1,4 +1,5 @@
 #include "builtin.h"
+#include <string.h>
 #include "task.h"
 #include "wifi_config.h"
 #include "wifi_hw.h"
@@ -27,9 +28,11 @@ extern int esp_wifi_set_country(const wifi_country_t *);
 extern int esp_wifi_start(void), esp_wifi_stop(void), esp_wifi_scan_stop(void);
 extern int esp_wifi_scan_start(const wifi_scan_config_t *, bool block);
 extern int esp_wifi_scan_get_ap_num(uint16_t *);
+extern int esp_wifi_scan_get_ap_record(wifi_ap_record_t *);
 extern int esp_wifi_clear_ap_list(void);
 extern void c3_console_text(const char *);
 extern void c3_console_unsigned(uint32_t);
+extern int c3_console_read(void *);
 
 const char *WIFI_EVENT = "WIFI_EVENT";
 wifi_osi_funcs_t g_wifi_osi_funcs;
@@ -44,7 +47,6 @@ extern int esp_wifi_set_storage(unsigned);
 extern int esp_wifi_set_config(unsigned, wifi_config_t *);
 extern int esp_wifi_get_mac(unsigned, uint8_t *);
 extern int esp_wifi_connect_internal(void), esp_wifi_disconnect_internal(void);
-extern int c3_console_read(void *);
 extern int c3_console_try_read(void);
 #else
 static bool scan_done;
@@ -134,6 +136,12 @@ static V run_scan(V unit) {
 
     start_controller();
 
+    c3_console_text("FPR WIFI SCAN READY\n");
+    uint8_t name[32];
+    unsigned length = c3_console_read(NULL);
+    if (length > sizeof(name)) fpr_cpanic("Wi-Fi scan target length");
+    for (unsigned i = 0; i < length; ++i) name[i] = c3_console_read(NULL);
+
     c3_console_text("Wi-Fi passive scan\n");
     scan_done = false;
     check(esp_wifi_scan_start(&scan, false), "Wi-Fi scan start");
@@ -146,6 +154,15 @@ static V run_scan(V unit) {
     check(scan_status, "Wi-Fi scan completion");
     uint16_t count;
     check(esp_wifi_scan_get_ap_num(&count), "Wi-Fi scan result count");
+    if (length) {
+        bool seen = false;
+        for (unsigned i = 0; i < count && !seen; ++i) {
+            wifi_ap_record_t record;
+            check(esp_wifi_scan_get_ap_record(&record), "Wi-Fi scan record");
+            seen = !memcmp(record.ssid, name, length) && record.ssid[length] == 0;
+        }
+        c3_console_text(seen ? "FPR WIFI TARGET SEEN\n" : "FPR WIFI TARGET ABSENT\n");
+    }
     check(esp_wifi_clear_ap_list(), "Wi-Fi scan list release");
     c3_console_text("FPR WIFI SCAN APs=");
     c3_console_unsigned(count);
