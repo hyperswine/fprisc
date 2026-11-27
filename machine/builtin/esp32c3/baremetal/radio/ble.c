@@ -22,7 +22,7 @@ static struct c3_btdm_osi callbacks;
 static uint8_t command[C3_HCI_MAX_COMMAND];
 static unsigned pending_step = C3_HCI_ADV_STEPS;
 static int pending_result;
-static bool in_flight;
+static bool in_flight, running;
 
 extern int btdm_controller_init(struct c3_btdm_config *config);
 extern int btdm_controller_enable(unsigned mode);
@@ -30,6 +30,8 @@ extern void btdm_controller_disable(void);
 extern void btdm_controller_deinit(void);
 extern void coex_pti_v2(void);
 extern void c3_console_text(const char *message);
+extern int c3_console_try_read(void);
+extern void c3_console_unsigned(uint32_t);
 
 static void send_available(void) {
     in_flight = false;
@@ -70,7 +72,8 @@ static int advertise(void) {
 }
 
 void c3_ble_start_advertising(void) {
-    static struct c3_btdm_config config = {
+    if (running) return;
+    static const struct c3_btdm_config defaults = {
         .magic = 0x5a5aa5a5, .version = 0x02509280,
         .controller_task_stack_size = 8192, .controller_task_prio = 3,
         .bluetooth_mode = BLE_MODE, .ble_max_act = 3,
@@ -81,6 +84,8 @@ void c3_ble_start_advertising(void) {
         .ble_ping_en = 1, .dtm_en = true, .enc_en = true,
         .connect_en = true, .scan_en = true, .ble_aa_check = true, .adv_en = true,
     };
+    static struct c3_btdm_config config;
+    config = defaults;
     c3_btdm_install_services(&callbacks, 1);
     c3_btdm_install_interrupts(&callbacks);
     c3_ble_install_platform(&callbacks);
@@ -112,21 +117,42 @@ void c3_ble_start_advertising(void) {
     pending_result = 0;
     in_flight = false;
     if (advertise()) fpr_cpanic("BLE advertising HCI");
+    running = true;
     c3_console_text("FPR BLE ADVERTISING 43AA9E7E-1EA0-4AB4-A7C2-1A280B18B13C\n");
 }
 
 void c3_ble_stop_advertising(void) {
+    if (!running) return;
     uint64_t deadline = c3_tasks_now_us() + COMMAND_TIMEOUT_US;
     while (in_flight && c3_tasks_now_us() < deadline) c3_task_park(&pending_step, deadline);
     if (in_flight) fpr_cpanic("BLE transmit drain");
     btdm_controller_disable();
     btdm_controller_deinit();
+    c3_btdm_release_interrupts();
     c3_radio_phy_release();
+    running = false;
+    c3_console_text("FPR BLE STOPPED\n");
+    c3_console_text("FPR BLE HEAP live=");
+    c3_console_unsigned(c3_radio_allocated());
+    c3_console_text(" peak=");
+    c3_console_unsigned(c3_radio_peak());
+    c3_console_text("\n");
 }
 
 static V run_ble(V unit) {
     (void)unit;
     c3_ble_start_advertising();
-    for (;;) c3_task_park(&pending_step, C3_WAIT_FOREVER);
+    for (;;) {
+        switch (c3_console_try_read()) {
+        case 'B':
+            c3_ble_stop_advertising();
+            c3_ble_start_advertising();
+            break;
+        case 'Q':
+            c3_ble_stop_advertising();
+            return V_UNIT;
+        }
+        c3_task_park(&pending_step, c3_tasks_now_us() + 100000);
+    }
 }
 FPR_FN(fpr_g_EspBLE_x2eadvertise, run_ble, 1);

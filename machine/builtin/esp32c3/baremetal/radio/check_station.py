@@ -13,9 +13,10 @@ ECHO = re.compile(rb"FPR WIFI ECHO (\d+)")
 
 
 class Console:
-    def __init__(self, port):
+    def __init__(self, port, on_line=None):
         self.port = port
         self.pending = bytearray()
+        self.on_line = on_line
 
     def until(self, pattern, timeout):
         deadline = time.monotonic() + timeout
@@ -29,6 +30,8 @@ class Console:
             print(line.decode(errors="replace"), flush=True)
             if b"PANIC" in line or line.startswith(b"C3 trap"):
                 raise RuntimeError("C3 reported a firmware failure")
+            if self.on_line is not None:
+                self.on_line(line)
             match = pattern.fullmatch(line)
             if match:
                 return match

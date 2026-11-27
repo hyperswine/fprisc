@@ -176,6 +176,11 @@ static void interrupt_vectors(void) {
     CHECK(osi.interrupt_free(handle) != 0);
     osi.interrupt_handler_set(8, controller_irq, &radio_hits);
     CHECK(c3_irq_dispatch(IRQ_REG(8 * 4)) && radio_hits == 3);
+    c3_btdm_release_interrupts();
+    CHECK(!IRQ_REG(8 * 4));
+    osi.interrupt_handler_set(8, controller_irq, &radio_hits);
+    CHECK(c3_irq_dispatch(IRQ_REG(8 * 4)) && radio_hits == 4);
+    c3_btdm_release_interrupts();
 }
 
 static unsigned notified;

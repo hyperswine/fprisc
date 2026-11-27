@@ -183,3 +183,17 @@ then Wi-Fi when it receives Q over USB.
 RV32 emulator vectors exercise shared PHY acquisition and release and
 retry of arbiter pre-initialization through mocked vendor entry points.
 Use the Mac BLE observer and station echo checker for on-air verification.
+
+After installing the BLE or combined test image, use the compiled
+CoreBluetooth observer with the matching Mac checker.
+
+    python3 check_ble.py PORT PATH_TO_BLE_OBSERVER
+    python3 check_coex.py PORT SSID STATION_IPV4 PATH_TO_BLE_OBSERVER --reconnect
+
+The BLE verifier exercises repeated controller stop and restart while
+checking post-stop heap occupancy. The coexistence verifier defaults
+to a 30-minute window and repeats concurrent pings and BLE scans
+throughout. It checks device sample intervals, records heap and packet
+counters, then restarts BLE while the station is connected.
+The optional AP restart verifies recovery in a second association.
+Use an isolated test AP and an unused private station IPv4 address.

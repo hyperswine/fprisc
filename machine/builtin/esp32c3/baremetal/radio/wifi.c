@@ -158,7 +158,15 @@ FPR_FN(fpr_g_EspWiFi_x2escan, run_scan, 1);
 #else
 static bool quitting;
 static bool quit_requested(void) {
-    if (!quitting) quitting = c3_console_try_read() == 'Q';
+    if (quitting) return true;
+    int command = c3_console_try_read();
+#ifdef C3_COEX
+    if (command == 'B') {
+        c3_ble_stop_advertising();
+        c3_ble_start_advertising();
+    }
+#endif
+    quitting = command == 'Q';
     return quitting;
 }
 

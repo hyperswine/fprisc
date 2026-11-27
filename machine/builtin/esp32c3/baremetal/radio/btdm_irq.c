@@ -60,6 +60,11 @@ static int32_t release(const void *handle) {
     return -EINVAL;
 }
 
+void c3_btdm_release_interrupts(void) {
+    for (unsigned i = 0; i < sizeof(irqs) / sizeof(irqs[0]); ++i)
+        if (irqs[i].handler) release(&irqs[i]);
+}
+
 static void replace(int32_t source, c3_btdm_isr handler, const void *arg) {
     struct controller_irq *irq = find_irq(source);
     if (!irq || !handler) __builtin_trap();
