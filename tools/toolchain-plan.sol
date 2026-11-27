@@ -1,7 +1,7 @@
 # Record only the Cabal plan whose exe:fpr matches the staged compiler.
 B = use "../sol/lib/build".
 D = use "../sol/lib/digest".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 optional row key fallback = case J.get key row of Ok value -> value | Err _ -> fallback.
 name row = unwrap (J.get "pkg-name" row |>? J.text).

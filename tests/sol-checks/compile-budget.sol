@@ -9,7 +9,7 @@
 # A program well under budget passes and says so: record the new baseline in
 # tests/compile_budget.json in the same commit as the improvement.
 H = use "helpers".
-J = use "../../sol/lib/json".
+J = use "std/jsondoc".
 programs root = [
   ("hello", "profile base.\nmain = print 42.\n", ""),
   ("std-live", "profile base.\nLive = use \"std/live\".\nmain = print 42.\n", ""),

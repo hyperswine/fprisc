@@ -2,7 +2,7 @@
 B = use "../sol/lib/build".
 CLI = use "../sol/lib/cli".
 D = use "../sol/lib/digest".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 digits text = text != "" and List.all (fn c -> c >= 48 and c <= 57) (Str.codes text).
 stable reported = case Str.split 32 reported of
     ["fprmeta",version] -> (case Str.split 46 version of

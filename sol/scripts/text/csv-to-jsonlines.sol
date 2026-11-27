@@ -1,6 +1,6 @@
 # Stream CSV records to JSON arrays, publishing only after complete validation.
 # fpr sol sol/scripts/text/csv-to-jsonlines.sol SOURCE DESTINATION [--replace]
-J = use "../../lib/json".
+J = use "std/jsondoc".
 emit writer row =
   bytes = unwrap (Utf8.encode "{J.render (J.strs row)}\n");
   (written,writer2) = Stream.writeChunk bytes writer;

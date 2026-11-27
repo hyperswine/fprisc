@@ -1,4 +1,4 @@
-J = use "sol/lib/json".
+J = use "std/jsondoc".
 S = use "pi-scheduler-cases".
 L = use "pi-language-cases".
 expand spec = case spec of

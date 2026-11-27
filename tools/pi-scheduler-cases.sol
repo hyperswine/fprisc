@@ -1,4 +1,4 @@
-J = use "sol/lib/json".
+J = use "std/jsondoc".
 scenario shape variant name probe (harts,route) (count,load) rep =
   J.JObj [("kind",J.JStr "scheduler"),("binary",J.JStr name),("args",J.JArr [J.JStr route,J.JStr load]),
     ("harts",J.JNum harts),("shape",J.JStr shape),("variant",J.JStr variant),("probe",J.JBool probe),

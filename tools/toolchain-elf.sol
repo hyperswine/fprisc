@@ -5,7 +5,7 @@
 # only system libraries or libraries inside the toolchain.
 # docs/2026-11-27-LINUX-RELEASE-ARCHIVE.md.
 B = use "../sol/lib/build".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 M = use "toolchain-macho".
 # The C library, its loader and the compiler runtime: present on every

@@ -1,7 +1,7 @@
 B = use "../../sol/lib/build".
 F = use "../../tools/toolchain-files".
 D = use "../../sol/lib/digest".
-J = use "../../sol/lib/json".
+J = use "std/jsondoc".
 hash path = unwrap (D.sha256File (F.canonical path)).
 unavailable detail =
   why = Str.trim detail;

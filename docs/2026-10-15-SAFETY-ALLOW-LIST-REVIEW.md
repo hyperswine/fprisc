@@ -128,6 +128,10 @@ code should not add a dependency on these paths.
 - `std/sessionauth.fpr` (canonical: `examples/printer-dashboard/sessionauth.fpr`)
 - `std/checkdemo.fpr` (canonical: `examples/checkdemo.fpr`)
 
+## Added 27 November 2026
+
+- `std/jsondoc.fpr` (replaces the `sol/lib/json.sol` entry; [2026-11-27-SOL-STD-LIBRARIES.md](2026-11-27-SOL-STD-LIBRARIES.md)): structural recursion over the text, of the first kind above. The parser's cursor helpers (`ws`, `value`, `array`, `object`, `digits`, `stringGo`, `escape`, `unicode`, `hexGo`) advance an index to `strlen` or stop with an error, and container recursion is bounded by the depth limit `parseWith` checks; the renderers (`render`, `prettyAt`, `quoteGo`) walk the value or advance through the string. No measures yet. `sol/lib/test.sol` left the list with its file: `std/test.fpr` serves both sides.
+
 ## Open
 
 - Measures for the first-kind helpers in the library (above).

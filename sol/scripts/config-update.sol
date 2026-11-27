@@ -1,7 +1,7 @@
 # Transactional JSON config update. Precedence: CLI > named env > JSON.
 # fpr sol sol/scripts/config-update.sol CONFIG [--label TEXT] [--attempts N]
 C = use "../lib/config".
-J = use "../lib/json".
+J = use "std/jsondoc".
 CLI = use "../lib/cli".
 options = [CLI.Option "label" "l" CLI.One, CLI.Option "attempts" "n" CLI.One].
 label parsed json = case CLI.values "label" parsed of

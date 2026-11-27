@@ -1,0 +1,8 @@
+# One source, run natively and as Sol (tests/sol-checks/std-shared.sol):
+# std/test prints the same report and `main`'s Int is the exit status (1).
+Test = use "std/test".
+main = Test.run [
+  Test.that "two is even" (2 % 2 == 0),
+  Test.equal "sum" 6 (1 + 2 + 3),
+  Test.equal "list" [1, 2] [1, 2, 3],
+  Test.equalString "greeting" "hi" (strcat "h" "i")].

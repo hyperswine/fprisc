@@ -1,7 +1,7 @@
 # Closed static activation/sequence driver. Publication follows every proof.
 F = use "toolchain-files".
 B = use "../sol/lib/build".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 CLI = use "../sol/lib/cli".
 D = use "../sol/lib/digest".
 Contract = use "static-arena-contract-core".

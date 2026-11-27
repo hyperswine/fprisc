@@ -1,9 +1,9 @@
 # Build and order release-index entries. When ssh-keygen is present, also sign
 # and verify with a throwaway key. The production fpr-release key is not used.
-T = use "../../sol/lib/test".
+T = use "std/test".
 C = use "../../tools/publish-release-index-core".
 B = use "../../sol/lib/build".
-J = use "../../sol/lib/json".
+J = use "std/jsondoc".
 
 must r = case r of Ok x -> x | Err e -> error e.
 
@@ -17,7 +17,7 @@ hasKeygen u = C.existsFile "/usr/bin/ssh-keygen" or C.existsFile "/usr/local/bin
 
 entriesOf path = must (J.items (must (J.get "entries" (must (C.readJson path))))).
 
-signChecks : unsafe String -> String -> List (String, String) .
+signChecks : unsafe String -> String -> List T.Outcome .
 signChecks work fixtures =
   if hasKeygen Unit then
     _ = B.command ["cp", "-a", "{fixtures}/tap", "{work}/tap"];
@@ -49,7 +49,7 @@ signChecks work fixtures =
     _ = print "skipping signature checks: ssh-keygen is not installed";
     [].
 
-main : unsafe Unit -> Unit .
+main : unsafe Unit -> Int .
 main u =
   root = Str.trim (B.query ["git", "rev-parse", "--show-toplevel"]);
   fixtures = "{root}/tests/fixtures/release-index";
@@ -82,4 +82,4 @@ main u =
     T.equal "qos index order" True (C.indexText "qos-portable" qosNext == cat "{fixtures}/expected/qos-portable.json"),
     T.equal "qos requires" ["xcode-clt", "homebrew:libgit2", "homebrew:libarchive", "homebrew:glfw"] (must (C.inferRequires qosMeta "macos-arm64")),
     T.that "refuses a different hash for the same version" conflicted] (signChecks work fixtures)).
->! main Unit.
+>! Script.exit (main Unit).

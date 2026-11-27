@@ -1,6 +1,6 @@
 # Physical admission for little-endian linked RV32/RV64 ELFs. Decode each
 # multibyte field to an exact VM integer before checking address arithmetic.
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 CLI = use "../sol/lib/cli".
 Map = use "../std/map".

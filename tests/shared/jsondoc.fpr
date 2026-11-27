@@ -1,0 +1,16 @@
+# One source, run natively and as Sol (tests/sol-checks/std-shared.sol): the
+# ordered JSON document must parse, reshape and render to the same bytes.
+J = use "std/jsondoc".
+text = "\{\"b\": 1, \"a\": [true, null, \"x\\u00e9\\ud83d\\ude00\", 1.5e3, -0, 123456789012345678901], \"b\": 2, \"s\": \"tab\\tnl\\n\"}".
+show r = case r of Ok v -> J.render v | Err e -> "Err {e}".
+main =
+  doc = (case J.parse text of Ok v -> v | Err e -> J.JStr e);
+  _ = print (J.render doc);
+  _ = print (J.pretty doc);
+  _ = print (show (J.get "b" doc));
+  _ = print (show (J.path ["a"] doc));
+  _ = print (J.render (J.rename "s" "t" (J.without "a" (J.set "c" (J.nums [1, 2]) (J.set "b" (J.JStr "q\"") doc)))));
+  _ = print (case J.num (J.JReal "2.5") of Ok n -> "{n}" | Err e -> e);
+  _ = print (case J.parseWith (J.Limits 100 2 10 10) "[[[1]]]" of Ok v -> "?" | Err e -> e);
+  _ = print (case J.parse "\{\"a\" 1}" of Ok v -> "?" | Err e -> e);
+  print (case J.parse "[1, 2" of Ok v -> "?" | Err e -> e).

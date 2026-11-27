@@ -1,7 +1,7 @@
 # Collect binary notices from the GHC docs or the installed Cabal source cache.
 B = use "../sol/lib/build".
 CLI = use "../sol/lib/cli".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 M = use "toolchain-macho".
 F = use "toolchain-files".
 textField row k = unwrap (J.get k row |>? J.text).

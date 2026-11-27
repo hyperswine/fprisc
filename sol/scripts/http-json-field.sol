@@ -1,7 +1,7 @@
 # Fetch bounded JSON, require a string field, then update a file transactionally.
 # fpr sol sol/scripts/http-json-field.sol FIELD URL OUTPUT
 H = use "../lib/http".
-J = use "../lib/json".
+J = use "std/jsondoc".
 fetch key url target =
   response = case Http.request H.defaultOptions (H.get url) of Ok value -> value | Err e -> error (str e);
   case response of HttpResponse status headers bytes ->

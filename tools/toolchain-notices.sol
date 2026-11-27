@@ -1,7 +1,7 @@
 # Compare canonical paths before opening a notice. Keep embedded and trailing
 # whitespace intact when removing realpath's final line terminator.
 D = use "../sol/lib/digest".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 verifyFile root pair =
   (name,value) = pair;

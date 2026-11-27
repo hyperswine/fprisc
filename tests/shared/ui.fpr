@@ -1,0 +1,11 @@
+# One source, run natively and as Sol (tests/sol-checks/std-shared.sol): a
+# std/ui page lowers to the same std/view tree, statics and stylesheet.
+UI = use "std/ui".
+G = use "std/view".
+page = UI.page UI.day { UI.stack | gap = 4, pad = 4 } [
+  UI.hstack { UI.stack | justify = UI.Between, align = UI.Center } [
+    UI.label { UI.txt | size = UI.Title } "Inventory é",
+    UI.text UI.txt "3 items" ],
+  UI.card UI.panel [ UI.text { UI.txt | tone = UI.Muted } "a note" ] ].
+main = case G.renderStyled page of
+  (statics, dyns) -> _ = print (strJoin "|" statics); print (UI.css page).

@@ -34,10 +34,10 @@
       "note": "Native libgit2 operations; deferred mutations/head/tag/push dataflow, guarded pushNow, and one journaled CAS-compensable commitNow per attempt. Bounded responses; no external helpers."
     },
     {
-      "module": "sol/lib/json.sol",
+      "module": "std/jsondoc.fpr",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Bounded UTF-8 source/depth/container-item/decoded-string admission before pure tree parsing. Exact integer and binary64 decimal/exponent Numeric; ordered duplicate keys, first get wins; strict scalar Unicode. JSON Lines via parseLineWith and Stream.foldLines. sol-format-check.py and sol-library-check.py."
+      "note": "One JSON document library for FP-RISC and Sol (replaced sol/lib/json.sol, docs/2026-11-27-SOL-STD-LIBRARIES.md). Text/depth/container-item/decoded-string admission while parsing; ordered duplicate keys, first get wins; JNum for exact Int, JReal keeps other numbers as text; UTF-8 bytes on both sides."
     },
     {
       "module": "sol/lib/logic.sol",
@@ -179,9 +179,9 @@
     },
     {
       "module": "std/json.fpr",
-      "status": "native-only",
-      "gate": "known-string-contract-gap",
-      "note": "Native byte-string Unicode construction corrupts escapes in Sol. Use sol/lib/json.sol; consolidation requires an explicit Unicode adapter."
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Runs in Sol since strings became UTF-8 bytes (docs/2026-11-27-SOL-BYTE-STRINGS.md). Objects as a sorted Map; std/jsondoc.fpr is the ordered document."
     },
     {
       "module": "sol/lib/archive.sol",
@@ -194,12 +194,6 @@
       "status": "hosted",
       "gate": "import-and-call",
       "note": "Native kernel host snapshot; process inventory requires OS permission."
-    },
-    {
-      "module": "sol/lib/test.sol",
-      "status": "hosted",
-      "gate": "import-and-call",
-      "note": "Checks for Sol scripts run by `fpr test`: that/equal/run print TAP-like lines and exit 1 on failure (docs/2026-10-31-PROJECT-WORKFLOW.md). sol-library-check.py."
     },
     {
       "module": "sol/lib/digest.sol",
@@ -224,6 +218,12 @@
       "status": "hosted",
       "gate": "import-and-call",
       "note": "Linked libcurl >=8.4 in an isolated owned request worker; no curl executable. Bounded binary capture and streamed/staged file download, TLS peer+hostname checks, explicit CA/DNS/redirect policy, deadlines and cancellation. Core loopback checks: sol-http-check.py. Native std/http remains separate."
+    },
+    {
+      "module": "std/test.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "One test library for FP-RISC and Sol (replaced sol/lib/test.sol, docs/2026-11-27-SOL-STD-LIBRARIES.md); a Sol auto-run main's Int is the exit status."
     }
   ]
 }

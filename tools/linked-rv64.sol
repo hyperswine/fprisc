@@ -3,7 +3,7 @@ remainder a b = a - (a / b) * b.
 # stack or control - flow authority. Branches include both successors.
 T = use "target-image-core".
 R = use "riscv-compressed".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 M = use "../std/map".
 O = use "../std/option".
 Order = use "../std/order".

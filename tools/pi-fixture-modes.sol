@@ -1,5 +1,5 @@
 # Compiler controls for each ordinary, isolated and optimization-control run.
-J = use "sol/lib/json".
+J = use "std/jsondoc".
 flag name = (name,J.JStr "1").
 mode normal isolated enabled =
   inlineFlags = if normal then [] else [flag "FPR_NO_INLINE"];

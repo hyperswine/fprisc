@@ -4,7 +4,7 @@ B = use "../sol/lib/build".
 CLI = use "../sol/lib/cli".
 D = use "../sol/lib/digest".
 H = use "../sol/lib/http".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 
 namespace = "fprmeta-index".
 identity = "fpr-release".

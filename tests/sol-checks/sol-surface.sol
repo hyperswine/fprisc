@@ -28,7 +28,7 @@ main u = root = H.root Unit; work = tempDir "fpr-sol-surface";
   _ = must "a runtime builtin may be shadowed" (c5 == 0 and o5 == "3\n") "{o5}{e5}";
   # strings are byte-indexed (v1.0 semantics §5); JSON \u escapes and raw UTF-8 survive, and
   # two halves of a character joined back compare equal to it
-  (d6, c6, o6, e6) = runCase root work "byte-strings" "J = use \"{root}/sol/lib/json\".\n> v = unwrap (J.parse \"\\\{\\\"a\\\":\\\"caf\\\\u00e9 \\\\ud83d\\\\ude00\\\"\\\}\");\n  a = unwrap (J.text (unwrap (J.get \"a\" v)));\n  print (a == \"café 😀\", strlen a, strlen \"é\", strcat (substr \"é\" 0 1) (substr \"é\" 1 1) == \"é\").\n";
+  (d6, c6, o6, e6) = runCase root work "byte-strings" "J = use \"std/jsondoc\".\n> v = unwrap (J.parse \"\\\{\\\"a\\\":\\\"caf\\\\u00e9 \\\\ud83d\\\\ude00\\\"\\\}\");\n  a = unwrap (J.text (unwrap (J.get \"a\" v)));\n  print (a == \"café 😀\", strlen a, strlen \"é\", strcat (substr \"é\" 0 1) (substr \"é\" 1 1) == \"é\").\n";
   _ = must "byte-indexed strings and JSON unicode" (c6 == 0 and o6 == "(True, 10, 2, True)\n") "{o6}{e6}";
   print "sol-surface: keyword-prefixed names, prelude names refused, missing-path reads, strings in interpolation, builtin shadowing, byte-indexed strings PASS".
 >! main Unit.

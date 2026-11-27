@@ -546,10 +546,10 @@ templateFiles version template name =
             unlines
               [ "# A test is a script in tests/: exit status 0 passes (fpr test).",
                 "W = use \"../src/words\".",
-                "T = use \"sol/lib/test\".",
+                "Test = use \"std/test\".",
                 "",
-                "> T.run [T.equal \"shout adds a bang\" \"hi!\" (W.shout \"hi\"),",
-                "         T.that \"an empty shout\" (W.shout \"\" == \"!\")]."
+                "main = Test.run [Test.equal \"shout adds a bang\" \"hi!\" (W.shout \"hi\"),",
+                "                 Test.that \"an empty shout\" (W.shout \"\" == \"!\")]."
               ]
           )
         ]

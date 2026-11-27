@@ -1,5 +1,5 @@
 # Read only fresh-aligned RV64 budget proofs for the selected exports.
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 invalid = "missing/ambiguous fresh compiler heap proof".
 readDigits : unsafe List Int -> Int -> Int .

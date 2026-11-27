@@ -1,5 +1,5 @@
 B = use "../sol/lib/build".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 usage = "sol-install.sol SOURCE_ROOT [--binary FPR] [--prefix PREFIX] [--output ARCHIVE]".
 options : unsafe List String -> String -> String -> String -> (String,String,String) .
 options argv binary prefix output = case argv of

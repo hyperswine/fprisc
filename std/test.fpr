@@ -1,22 +1,32 @@
 # std/test.fpr -- Test: checks for the programs `fpr test` runs.
 #
 #   Test = use "std/test".
-#   main = Test.run (
-#        Test.that "two is even" (2 % 2 == 0)
-#     :: Test.equalInt "sum" 6 (1 + 2 + 3)
-#     :: Test.equalString "greeting" "hi" (strcat "h" "i")
-#     :: Nil).
+#   main = Test.run [
+#     Test.that "two is even" (2 % 2 == 0),
+#     Test.equal "sum" 6 (1 + 2 + 3),
+#     Test.equal "greeting" "hi" (strcat "h" "i")].
 #
 # A test file is an ordinary program (docs/2026-10-31-PROJECT-WORKFLOW.md):
 # `fpr test` passes it when it exits 0.  `run` prints one line per check,
 # "ok N - name" or "not ok N - name: why", and answers 0 when every check
 # passed and 1 otherwise, which `main` returns as the exit status.
+#
+# The same file serves Sol (docs/2026-11-27-SOL-STD-LIBRARIES.md; it replaced
+# sol/lib/test.sol): a Sol script's auto-run `main` ends the run with its Int as
+# the exit status too, and a script with statements ends with
+# `>! Script.exit (Test.run [...])`.
 
 Outcome = Type (Pass name | Fail name why).
 
 # a named condition
 that : String -> Bool -> Outcome .
 that name ok = case ok of True -> Pass name | False -> Fail name "expected True".
+
+# two values of any type that compares; a failure shows both
+equal : String -> a -> a -> Outcome .
+equal name want got = case want == got of
+    True -> Pass name
+  | False -> Fail name "want {want}, got {got}".
 
 equalInt : String -> Int -> Int -> Outcome .
 equalInt name want got = case want == got of

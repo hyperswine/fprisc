@@ -1,4 +1,4 @@
-J = use "sol/lib/json".
+J = use "std/jsondoc".
 D = use "sol/lib/digest".
 C = use "qualification-compile".
 Hart = use "pi-hart-registers".

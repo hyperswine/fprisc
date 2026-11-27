@@ -1,7 +1,7 @@
 B = use "../sol/lib/build".
 CLI = use "../sol/lib/cli".
 F = use "../tools/toolchain-files".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 Map = use "../std/map".
 groups = [
   ("Filament runout reported",["run out","ran out","runout"]),

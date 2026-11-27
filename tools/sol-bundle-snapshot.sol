@@ -1,6 +1,6 @@
 # Preserve the order recorded by the installer when rebuilding from an archive.
 B = use "../sol/lib/build".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 snapshotNames : unsafe List J.Json -> List String -> List String .
 snapshotNames entries acc = case entries of
     [] -> List.rev acc

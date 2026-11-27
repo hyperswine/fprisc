@@ -1,6 +1,6 @@
 Core = use "target-image-core".
 F = use "toolchain-files".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 CLI = use "../sol/lib/cli".
 main : unsafe Unit -> Unit .
 >! parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report"]) (args Unit));

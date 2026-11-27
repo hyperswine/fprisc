@@ -2,7 +2,7 @@
 B = use "../sol/lib/build".
 F = use "toolchain-files".
 M = use "toolchain-macho".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 Library = Type (Library String String String String String (List String)).
 State = Type (State (List String) (List (String,String)) (List Library)).
 libSource (Library _ real _ _ _ _) = real.

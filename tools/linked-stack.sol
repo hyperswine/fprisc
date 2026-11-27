@@ -2,7 +2,7 @@
 F = use "toolchain-files".
 T = use "target-image-core".
 RV = use "linked-rv64".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 CLI = use "../sol/lib/cli".
 M = use "../std/map".
 entry spec = case List.rev (Str.split 58 spec) of

@@ -1,5 +1,5 @@
 D = use "../sol/lib/digest".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 inventory prefix =
   names = List.filter (fn p -> List.last (Str.split 47 p) != "toolchain.json") (F.files prefix);

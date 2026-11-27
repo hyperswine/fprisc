@@ -1,0 +1,362 @@
+# std/jsondoc.fpr -- JSON as an ordered document, shared by FP-RISC and Sol.
+#
+#   J = use "std/jsondoc".
+#   case J.parse text of
+#       Ok doc -> J.path ["user", "name"] doc |>? J.text
+#     | Err why -> ...                          # "json: expected ':' at 14"
+#
+# The document keeps what the text said: an object's keys stay in input order,
+# duplicate keys are kept (`get` answers the first), and `render` writes keys
+# back in that order.  So "read, reshape, write back" leaves a file's layout
+# alone, and a script that hashes rendered JSON gets the same text every run.
+# (`std/json` is the other model: objects as a Map, keys sorted.)
+#
+# Numbers: an integer an Int holds exactly is `JNum`; anything with a fraction
+# or an exponent, an integer past 62 bits, or -0, is `JReal` with its text, so it
+# renders as it was written.  `real` hands that text over for arithmetic.
+#
+# Strings are UTF-8 bytes on both sides (docs/2026-11-27-SOL-BYTE-STRINGS.md):
+# escapes decode to UTF-8, surrogate pairs combine, and a lone surrogate, a raw
+# control character or an unknown escape is an error.  `render` escapes `"` and
+# `\` as themselves and every control character as \u00XX (sol/lib/json's
+# spelling, so rendered text and hashes over it did not change), and writes
+# every other byte as it is.
+#
+# Admission: `parseWith` checks the text's size, nesting depth, items per
+# container and each decoded string's size while parsing, before a too-large
+# input builds a large tree.  `parse` uses `defaultLimits`.
+#
+# This file replaced sol/lib/json.sol on 27 November
+# (docs/2026-11-27-SOL-STD-LIBRARIES.md); its names are that library's.
+
+L = use "list".
+S = use "string".
+
+Json = Type (JNull | JBool Bool | JNum Int | JReal String | JStr String
+           | JArr (List Json) | JObj (List (String, Json))).
+
+# ---- parse -------------------------------------------------------------------
+
+# text bytes, container depth, items per container, decoded string bytes
+Limits = Type (Limits Int Int Int Int).
+defaultLimits : Limits .
+defaultLimits = Limits 16777216 128 100000 1048576.
+
+parse : unsafe String -> Result Json String .
+parse s = parseWith defaultLimits s.
+
+parseWith : unsafe Limits -> String -> Result Json String .
+parseWith limits s = case limits of
+  Limits input depth items field -> (case strlen s > input of
+      True -> Err "json: input byte limit exceeded"
+    | False -> (case value limits 0 s (ws s 0) of
+          Err why -> Err why
+        | Ok (v, i) -> (case ws s i >= strlen s of
+              True -> Ok v
+            | False -> Err "json: trailing characters at {i}"))).
+
+peek : String -> Int -> Int .
+peek s i = case i >= strlen s of True -> 0 | False -> charAt s i.
+ws : unsafe String -> Int -> Int .
+ws s i = case i < strlen s and S.isSpace (charAt s i) of True -> ws s (i + 1) | False -> i.
+
+value : unsafe Limits -> Int -> String -> Int -> Result (Json, Int) String .
+value limits depth s i = case peek s i of
+    123 -> container limits depth s i
+  | 91 -> container limits depth s i
+  | 34 -> (case string limits s (i + 1) of Ok (t, j) -> Ok (JStr t, j) | Err e -> Err e)
+  | 116 -> literal s i "true" (JBool True)
+  | 102 -> literal s i "false" (JBool False)
+  | 110 -> literal s i "null" JNull
+  | c -> (case c == 45 or S.isDigit c of
+        True -> number s i
+      | False -> (case i >= strlen s of
+            True -> Err "json: unexpected end of input"
+          | False -> Err "json: unexpected character at {i}")).
+
+literal : String -> Int -> String -> Json -> Result (Json, Int) String .
+literal s i word v = case substr s i (strlen word) == word of
+    True -> Ok (v, i + strlen word)
+  | False -> Err "json: invalid literal at {i}".
+
+container : unsafe Limits -> Int -> String -> Int -> Result (Json, Int) String .
+container limits depth s i = case limits of
+  Limits input maxDepth items field -> (case depth >= maxDepth of
+      True -> Err "json: nesting depth limit exceeded"
+    | False -> (case peek s i == 123 of
+          True -> object limits (depth + 1) s (ws s (i + 1)) 0 Nil
+        | False -> array limits (depth + 1) s (ws s (i + 1)) 0 Nil)).
+
+itemLimit : Limits -> Int .
+itemLimit limits = case limits of Limits input depth items field -> items.
+
+array : unsafe Limits -> Int -> String -> Int -> Int -> List Json -> Result (Json, Int) String .
+array limits depth s i n acc = case n == 0 and peek s i == 93 of
+    True -> Ok (JArr Nil, i + 1)
+  | False -> (case n >= itemLimit limits of
+        True -> Err "json: container item limit exceeded"
+      | False -> (case value limits depth s i of
+            Err e -> Err e
+          | Ok (v, j) -> (case peek s (ws s j) of
+                44 -> array limits depth s (ws s (ws s j + 1)) (n + 1) (v :: acc)
+              | 93 -> Ok (JArr (L.reverse (v :: acc)), ws s j + 1)
+              | _ -> Err "json: expected ',' or ']' at {ws s j}"))).
+
+object : unsafe Limits -> Int -> String -> Int -> Int -> List (String, Json) -> Result (Json, Int) String .
+object limits depth s i n acc = case n == 0 and peek s i == 125 of
+    True -> Ok (JObj Nil, i + 1)
+  | False -> (case n >= itemLimit limits of
+        True -> Err "json: container item limit exceeded"
+      | False -> (case peek s i == 34 of
+            False -> Err "json: expected a key at {i}"
+          | True -> (case string limits s (i + 1) of
+                Err e -> Err e
+              | Ok (k, j) -> (case peek s (ws s j) == 58 of
+                    False -> Err "json: expected ':' at {ws s j}"
+                  | True -> (case value limits depth s (ws s (ws s j + 1)) of
+                        Err e -> Err e
+                      | Ok (v, j2) -> (case peek s (ws s j2) of
+                            44 -> object limits depth s (ws s (ws s j2 + 1)) (n + 1) ((k, v) :: acc)
+                          | 125 -> Ok (JObj (L.reverse ((k, v) :: acc)), ws s j2 + 1)
+                          | _ -> Err "json: expected ',' or '}' at {ws s j2}")))))).
+
+# ---- numbers -----------------------------------------------------------------
+
+digits : unsafe String -> Int -> Int .
+digits s i = case S.isDigit (peek s i) of True -> digits s (i + 1) | False -> i.
+
+number : unsafe String -> Int -> Result (Json, Int) String .
+number s i =
+  start = (case peek s i == 45 of True -> i + 1 | False -> i);
+  case integerEnd s start of
+    Err e -> Err e
+  | Ok a -> (case fractionEnd s a of
+        Err e -> Err e
+      | Ok b -> (case exponentEnd s b of
+            Err e -> Err e
+          | Ok j ->
+              t = substr s i (j - i);
+              (case b == a and j == b and a - start <= 18 and t != "-0" of
+                  True -> Ok (JNum (parseInt t), j)
+                | False -> Ok (JReal t, j)))).
+
+integerEnd : unsafe String -> Int -> Result Int String .
+integerEnd s i = case peek s i == 48 of
+    True -> (case S.isDigit (peek s (i + 1)) of True -> Err "json: leading zero at {i}" | False -> Ok (i + 1))
+  | False -> (case peek s i >= 49 and peek s i <= 57 of
+        True -> Ok (digits s (i + 1))
+      | False -> Err "json: expected digit at {i}").
+fractionEnd : unsafe String -> Int -> Result Int String .
+fractionEnd s i = case peek s i == 46 of
+    False -> Ok i
+  | True -> (case S.isDigit (peek s (i + 1)) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected fraction at {i}").
+exponentEnd : unsafe String -> Int -> Result Int String .
+exponentEnd s i = case peek s i == 101 or peek s i == 69 of
+    False -> Ok i
+  | True ->
+      j = (case peek s (i + 1) == 43 or peek s (i + 1) == 45 of True -> i + 2 | False -> i + 1);
+      (case S.isDigit (peek s j) of True -> Ok (digits s j) | False -> Err "json: expected exponent at {j}").
+
+# ---- strings -----------------------------------------------------------------
+
+fieldLimit : Limits -> Int .
+fieldLimit limits = case limits of Limits input depth items field -> field.
+
+# `i` is just past the opening quote; answers the decoded text and the position
+# past the closing quote.  [from, i) is a clean run, acc the decoded pieces
+# newest first, size their total bytes.
+string : unsafe Limits -> String -> Int -> Result (String, Int) String .
+string limits s i = stringGo (fieldLimit limits) s i i Nil 0.
+
+stringGo : unsafe Int -> String -> Int -> Int -> List String -> Int -> Result (String, Int) String .
+stringGo limit s from i acc size = case size + (i - from) > limit of
+    True -> Err "json: string byte limit exceeded"
+  | False -> (case i >= strlen s of
+        True -> Err "json: unterminated string"
+      | False -> (case charAt s i of
+            34 -> Ok (strJoin "" (L.reverse (substr s from (i - from) :: acc)), i + 1)
+          | 92 -> escape limit s i (substr s from (i - from) :: acc) (size + (i - from))
+          | c -> (case c < 32 of
+                True -> Err "json: raw control character in string at {i}"
+              | False -> stringGo limit s from (i + 1) acc size))).
+
+# `i` is at the backslash
+escape : unsafe Int -> String -> Int -> List String -> Int -> Result (String, Int) String .
+escape limit s i acc size = case peek s (i + 1) of
+    117 -> unicode limit s i acc size
+  | c -> (case simpleEscape c of
+        "" -> Err "json: invalid escape at {i}"
+      | t -> stringGo limit s (i + 2) (i + 2) (t :: acc) (size + strlen t)).
+
+simpleEscape : Int -> String .
+simpleEscape c =
+  if c == 110 then "\n"
+  else if c == 116 then "\t"
+  else if c == 114 then "\r"
+  else if c == 98 then chr 8
+  else if c == 102 then chr 12
+  else if c == 34 then "\""
+  else if c == 92 then "\\"
+  else if c == 47 then "/"
+  else "".
+
+# \uXXXX at i, possibly the first half of a surrogate pair
+unicode : unsafe Int -> String -> Int -> List String -> Int -> Result (String, Int) String .
+unicode limit s i acc size = case hex4 s (i + 2) of
+    Err e -> Err e
+  | Ok hi -> (case hi >= 55296 and hi <= 56319 of
+        True -> (case substr s (i + 6) 2 == "\\u" of
+            False -> Err "json: missing low surrogate at {i}"
+          | True -> (case hex4 s (i + 8) of
+                Err e -> Err e
+              | Ok lo -> (case lo >= 56320 and lo <= 57343 of
+                    False -> Err "json: invalid low surrogate at {i + 6}"
+                  | True -> pushed limit s (i + 12) acc size (utf8 (65536 + (hi - 55296) * 1024 + (lo - 56320))))))
+      | False -> (case hi >= 56320 and hi <= 57343 of
+            True -> Err "json: unpaired low surrogate at {i}"
+          | False -> pushed limit s (i + 6) acc size (utf8 hi))).
+pushed : unsafe Int -> String -> Int -> List String -> Int -> String -> Result (String, Int) String .
+pushed limit s next acc size t = stringGo limit s next next (t :: acc) (size + strlen t).
+
+hex4 : unsafe String -> Int -> Result Int String .
+hex4 s i = hexGo s i 4 0.
+hexGo : unsafe String -> Int -> Int -> Int -> Result Int String .
+hexGo s i n acc = case n == 0 of
+    True -> Ok acc
+  | False -> (case hexVal (peek s i) of
+        16 -> Err "json: invalid unicode escape at {i}"
+      | d -> hexGo s (i + 1) (n - 1) (acc * 16 + d)).
+# 0..15, or 16 for "not a hex digit"
+hexVal : Int -> Int .
+hexVal c =
+  if c < 48 then 16
+  else if c <= 57 then c - 48
+  else if c < 65 then 16
+  else if c <= 70 then c - 55
+  else if c < 97 then 16
+  else if c <= 102 then c - 87
+  else 16.
+
+# a code point as UTF-8 bytes
+utf8 : Int -> String .
+utf8 cp = case cp < 128 of
+    True -> chr cp
+  | False -> (case cp < 2048 of
+        True -> strJoin "" [chr (192 + cp / 64), chr (128 + cp % 64)]
+      | False -> (case cp < 65536 of
+            True -> strJoin "" [chr (224 + cp / 4096), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)]
+          | False -> strJoin "" [chr (240 + cp / 262144), chr (128 + (cp / 4096) % 64), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)])).
+
+# ---- render ------------------------------------------------------------------
+
+render : unsafe Json -> String .
+render j = case j of
+    JNull -> "null"
+  | JBool b -> (if b then "true" else "false")
+  | JNum n -> "{n}"
+  | JReal t -> t
+  | JStr t -> quote t
+  | JArr xs -> "[{strJoin "," (L.map render xs)}]"
+  | JObj kvs -> "\{{strJoin "," (L.map renderField kvs)}\}".
+renderField : unsafe (String, Json) -> String .
+renderField p = case p of (k, v) -> "{quote k}:{render v}".
+
+# a string as a JSON string literal
+quote : unsafe String -> String .
+quote t = "\"{strJoin "" (L.reverse (quoteGo t 0 0 Nil))}\"".
+# [from, i) is a run that needs no escape; acc the pieces, newest first
+quoteGo : unsafe String -> Int -> Int -> List String -> List String .
+quoteGo t from i acc = case i >= strlen t of
+    True -> substr t from (i - from) :: acc
+  | False -> (case escapeOf (charAt t i) of
+        "" -> quoteGo t from (i + 1) acc
+      | e -> quoteGo t (i + 1) (i + 1) (e :: substr t from (i - from) :: acc)).
+escapeOf : Int -> String .
+escapeOf c =
+  if c == 34 then "\\\""
+  else if c == 92 then "\\\\"
+  else if c < 32 then "\\u00{hexDigit (c / 16)}{hexDigit (c % 16)}"
+  else "".
+hexDigit : Int -> String .
+hexDigit n = substr "0123456789abcdef" n 1.
+
+# two-space indentation; empty containers and scalars stay inline
+pretty : unsafe Json -> String .
+pretty j = prettyAt "" j.
+prettyAt : unsafe String -> Json -> String .
+prettyAt ind j = case j of
+    JArr (x :: xs) -> "[\n{indented ind (L.map (prettyAt "{ind}  ") (x :: xs))}\n{ind}]"
+  | JObj (p :: ps) -> "\{\n{indented ind (L.map (prettyField ind) (p :: ps))}\n{ind}\}"
+  | _ -> render j.
+prettyField : unsafe String -> (String, Json) -> String .
+prettyField ind p = case p of (k, v) -> "{quote k}: {prettyAt "{ind}  " v}".
+indented : String -> List String -> String .
+indented ind xs = strJoin ",\n" (L.map (fn x -> "{ind}  {x}") xs).
+
+# ---- accessors: each answers a Result, so they chain with |>? ----------------
+
+get : String -> Json -> Result Json String .
+get k j = case j of
+    JObj kvs -> (case L.filter (fn p -> case p of (k2, v) -> k2 == k) kvs of
+        (k2, v) :: rest -> Ok v
+      | Nil -> Err "json: no key '{k}'")
+  | _ -> Err "json: not an object".
+path : List String -> Json -> Result Json String .
+path ks j = L.fold (fn r k -> case r of Ok v -> get k v | Err e -> Err e) (Ok j) ks.
+at : Int -> Json -> Result Json String .
+at i j = case j of
+    JArr xs -> (case i >= 0 and i < L.length xs of
+        True -> Ok (L.getWithDefault JNull i xs)
+      | False -> Err "json: index {i} out of range")
+  | _ -> Err "json: not an array".
+num : Json -> Result Int String .
+num j = case j of
+    JNum n -> Ok n
+  | JReal t -> Err "json: not an integer: {t}"
+  | _ -> Err "json: not a number".
+# a number's text, integer or not
+real : Json -> Result String String .
+real j = case j of
+    JNum n -> Ok "{n}"
+  | JReal t -> Ok t
+  | _ -> Err "json: not a number".
+text : Json -> Result String String .
+text j = case j of JStr t -> Ok t | _ -> Err "json: not a string".
+bool : Json -> Result Bool String .
+bool j = case j of JBool b -> Ok b | _ -> Err "json: not a boolean".
+items : Json -> Result (List Json) String .
+items j = case j of JArr xs -> Ok xs | _ -> Err "json: not an array".
+fields : Json -> Result (List (String, Json)) String .
+fields j = case j of JObj kvs -> Ok kvs | _ -> Err "json: not an object".
+
+# ---- reshaping: pure, order-preserving --------------------------------------
+
+# upsert a key: an existing key is replaced where it stands, a new key goes last
+set : String -> Json -> Json -> Json .
+set k v j = case j of
+    JObj kvs -> (case L.any (fn p -> case p of (k2, v2) -> k2 == k) kvs of
+        True -> JObj (L.map (fn p -> case p of (k2, v2) -> (if k2 == k then (k, v) else (k2, v2))) kvs)
+      | False -> JObj (L.append kvs [(k, v)]))
+  | _ -> j.
+without : String -> Json -> Json .
+without k j = case j of
+    JObj kvs -> JObj (L.filter (fn p -> case p of (k2, v) -> k2 != k) kvs)
+  | _ -> j.
+rename : String -> String -> Json -> Json .
+rename old new j = case j of
+    JObj kvs -> JObj (L.map (fn p -> case p of (k, v) -> (if k == old then (new, v) else (k, v))) kvs)
+  | _ -> j.
+mapItems : (Json -> Json) -> Json -> Json .
+mapItems f j = case j of JArr xs -> JArr (L.map f xs) | _ -> j.
+filterItems : (Json -> Bool) -> Json -> Json .
+filterItems p j = case j of JArr xs -> JArr (L.filter p xs) | _ -> j.
+
+# ---- lifting plain values ----------------------------------------------------
+
+nums : List Int -> Json .
+nums xs = JArr (L.map (fn n -> JNum n) xs).
+strs : List String -> Json .
+strs xs = JArr (L.map (fn t -> JStr t) xs).
+# an association list of strings -> an object of strings (the CSV record shape)
+ofRecord : List (String, String) -> Json .
+ofRecord kvs = JObj (L.map (fn p -> case p of (k, v) -> (k, JStr v)) kvs).

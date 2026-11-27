@@ -1,5 +1,5 @@
 # Immutable qualification fixtures live in pi-fixtures; building needs no test interpreter.
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 CLI = use "../sol/lib/cli".
 F = use "toolchain-files".
 B = use "../sol/lib/build".

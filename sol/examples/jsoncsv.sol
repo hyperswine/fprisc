@@ -6,11 +6,13 @@
 #
 #   ./fpr sol sol/examples/jsoncsv.sol
 #
-# The vocabulary is the prelude plus lib/json + lib/csv: Str.*, List.*,
+# The vocabulary is the prelude plus std/jsondoc + lib/csv: Str.*, List.*,
 # Try.parseNum, |>? and mapOk -- no per-script helpers beyond `expect`.
 
-J = use "../lib/json".
+J = use "std/jsondoc".
 C = use "../lib/csv".
+# A number with a fraction parses as J.JReal with its text; `number` reads either kind.
+number j = J.real j |>? Try.parseNum.
 JNull = J.JNull.  JBool = J.JBool.  JNum = J.JNum.  JStr = J.JStr.  JArr = J.JArr.  JObj = J.JObj.
 
 expect what got want = case got == want of
@@ -32,7 +34,7 @@ customers = "\{
 
 > doc = unwrap (J.parse customers);
   _ = expect "path into nested objects" (J.path ["customers"] doc |>? J.at 1 |>? J.get "name" |>? J.text) (Ok "Bo \"the\" Bold");
-  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 0 |>? J.get "credit" |>? J.num) (Ok 120.5);
+  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 0 |>? J.get "credit" |>? number) (Ok 120.5);
   _ = expect "null is a value"          (J.path ["customers"] doc |>? J.at 0 |>? J.path ["address", "zip"]) (Ok JNull);
   _ = expect "a missing key derails"    (J.path ["customers", "nope"] doc) (Err "json: not an object");
   expect "index out of range"       (J.path ["customers"] doc |>? J.at 9) (Err "json: index 9 out of range").
@@ -42,7 +44,7 @@ customers = "\{
 # active customers only, a tier computed from credit, address flattened to city
 tier c = case c >= 100 of True -> "gold" | False -> "basic".
 reshape cust =
-  credit = unwrap (J.get "credit" cust |>? J.num);
+  credit = unwrap (J.get "credit" cust |>? number);
   city = unwrap (J.path ["address", "city"] cust |>? J.text);
   cust |> J.set "tier" (JStr (tier credit)) |> J.set "city" (JStr city)
        |> J.without "address" |> J.without "tags" |> J.rename "name" "who".
@@ -58,7 +60,7 @@ reshape cust =
 # ---- 3. round trips and refusals ---------------------------------------------
 
 tricky = JObj [("s", JStr "quote \" backslash \\ tab \t nl \n é €"), ("e", JArr []), ("o", JObj []),
-               ("n", JArr [JNum 0, JNum -1, JNum 2.25, JNum 1000]), ("b", JArr [JBool True, JBool False, JNull])].
+               ("n", JArr [JNum 0, JNum -1, J.JReal "2.25", JNum 1000]), ("b", JArr [JBool True, JBool False, JNull])].
 > expect "parse (render x) == x"     (J.parse (J.render tricky)) (Ok tricky).
 > expect "parse (pretty x) == x"     (J.parse (J.pretty tricky)) (Ok tricky).
 > expect "\\u escapes decode"        (J.parse "\"\\u00e9\\u20ac\"") (Ok (JStr "é€")).

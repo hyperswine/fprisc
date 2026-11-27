@@ -1,5 +1,5 @@
 F = use "toolchain-files".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 D = use "../sol/lib/digest".
 sources = ["machine/builtin/heap.c","machine/builtin/arc.c","machine/virt/memshim.c","machine/builtin/builtin.h","machine/builtin/uniform.inc","machine/builtin/uniform-aggregate.inc","runtime/fpr.h",
   "compiler/Codegen/Heap.hs","compiler/Codegen/Calling.hs","compiler/Codegen/Calling/Types.hs","compiler/Codegen/Export/Plan.hs",

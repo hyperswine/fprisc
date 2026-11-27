@@ -1,7 +1,7 @@
-T = use "../sol/lib/test".
-J = use "../sol/lib/json".
+T = use "std/test".
+J = use "std/jsondoc".
 R = use "../tools/riscv-compressed".
 > obj = unwrap (J.parse "\{\"answer\":42\}");
-  T.run [T.equal "JSON roundtrip" obj (unwrap (J.parse (J.render obj))),
+  Script.exit (T.run [T.equal "JSON roundtrip" obj (unwrap (J.parse (J.render obj))),
     T.equal "compressed NOP expands to ADDI zero,zero,0" 19 (R.expand 1),
-    T.equal "integer arithmetic" 42 (6 * 7)].
+    T.equal "integer arithmetic" 42 (6 * 7)]).

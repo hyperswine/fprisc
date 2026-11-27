@@ -5,7 +5,7 @@
 # std list size lemmas prove; byte-string lengths and the minimum-range overflow
 # trap are preserved. Every build uses --cost --harts 4 with regions off.
 H = use "helpers".
-J = use "../../sol/lib/json".
+J = use "std/jsondoc".
 strings size bound = "make : Int -> String | size make <= {size}.\nmake n = substr \"abcdefgh\" 0 n.\ncombine : Int -> String{bound}.\ncombine n = strcat (make n) (make n).\nmain = print (strlen (combine 8)).\n".
 duplicate = "duplicate : (xs : List Int | measure xs) -> List Int | size duplicate <= len xs.\nduplicate xs = case xs of [] -> [] | x :: r -> x :: x :: duplicate r.\ncopy : (xs : List Int | measure xs) -> List Int.\ncopy xs = case xs of [] -> [] | x :: r -> x :: copy r.\ncombine : (xs : List Int) -> List Int | alloc combine <= 72 * len xs + 72.\ncombine xs = copy (duplicate xs).\nmain = combine [1,2,3].\n".
 library = "L = use \"std/list\".\nmain =\n  _ = print (L.length (L.repeat (-3) 7));\n  _ = print (L.length (L.range 4 2));\n  _ = print (L.length (L.range 4611686018427387903 4611686018427387903));\n  _ = print (L.length (L.map (fn x -> x + 1) [1,2,3]));\n  _ = print (L.length (L.zip [1,2,3] [4,5]));\n  _ = print (L.length (L.unique [1,2,1,3,2]));\n  print (L.length (L.append [1,2] [3,4,5])).\n".

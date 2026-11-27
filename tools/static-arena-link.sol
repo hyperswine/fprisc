@@ -1,6 +1,6 @@
 # Controlled RV64 link recipe for a fresh static activation or a finite sequence.
 F = use "toolchain-files".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 D = use "../sol/lib/digest".
 B = use "../sol/lib/build".
 runtime = ["machine/builtin/heap.c","machine/builtin/arc.c","machine/virt/memshim.c"].

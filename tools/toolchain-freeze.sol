@@ -1,5 +1,5 @@
 # Cabal freezes the checkout's flags, while its version comes from the build.
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 empty = J.JObj [].
 get obj key fallback = case J.get key obj of Ok v -> v | Err _ -> fallback.

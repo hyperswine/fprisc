@@ -1,4 +1,4 @@
-J = use "sol/lib/json".
+J = use "std/jsondoc".
 allocationFields kind enabled count bytes = case count of
     J.JNull -> []
   | J.JNum n ->

@@ -1,7 +1,7 @@
 # JSON configuration: strict keys and typed fields, with named environment
 # overrides selected explicitly by the caller. Environment wins over JSON;
 # an application's CLI override can be applied before these accessors.
-J = use "json".
+J = use "std/jsondoc".
 M = use "../../std/map".
 readWith limits path = Try.readPath path |>? (J.parseWith limits) |> mapErr (fn why -> "config {path}: {why}").
 read path = readWith (J.Limits 1048576 64 4096 65536) path.

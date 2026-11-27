@@ -1,7 +1,7 @@
 # Package the qualified private copy and derive every release file from the archive.
 B = use "../sol/lib/build".
 D = use "../sol/lib/digest".
-J = use "../sol/lib/json".
+J = use "std/jsondoc".
 F = use "toolchain-files".
 substitute : unsafe String -> List (String,String) -> String .
 substitute text replacements = case replacements of

@@ -1,9 +1,9 @@
 # Select JSON objects by a string field; malformed/schema errors abort publication.
 # fpr sol sol/scripts/text/jsonlines-select.sol FIELD VALUE SOURCE DESTINATION [--replace]
-J = use "../../lib/json".
+J = use "std/jsondoc".
 limits = J.Limits 65536 64 1024 65536.
 emit key wanted writer line =
-  value = unwrap (J.parseLineWith limits line);
+  value = unwrap (Utf8.decode line |>? J.parseWith limits);
   text = unwrap (J.get key value |>? J.text);
   case text == wanted of
     False -> writer
