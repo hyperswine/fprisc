@@ -3,6 +3,8 @@ Board = use "../boards/supermini".
 GPIO = use "../lib/gpio".
 Clock = use "../lib/clock".
 
+EspGPIO.watch : Int -> Int .
+EspGPIO.waitEdge : Int -> Int .
 EspIO.writeByte : Int -> Int .
 
 emitStamp stamp i =
@@ -28,6 +30,13 @@ waitLevel stamp deadline expected stable =
       _ = Clock.sleepUntil deadline;
       waitLevel stamp deadline expected (if matches then stable + 1 else 0).
 
+waitEdge stamp deadline expected =
+  edge = EspGPIO.waitEdge Board.button;
+  if edge < 0 then edge else
+    if edge != expected then waitEdge stamp deadline expected else
+      accepted = waitLevel stamp deadline expected 0;
+      accepted.
+
 run stamp deadline =
   _ = Clock.nowMs stamp;
   _ = emit 65 stamp;
@@ -38,12 +47,13 @@ run stamp deadline =
   releasedLevel = if Board.buttonActiveLow then 1 else 0;
   initial = waitLevel stamp deadline releasedLevel 0;
   if initial < 0 then initial else
-    pressed = waitLevel stamp deadline (1 - releasedLevel) 0;
-    if pressed < 0 then pressed else waitLevel stamp deadline releasedLevel 0.
+    pressed = waitEdge stamp deadline (1 - releasedLevel);
+    if pressed < 0 then pressed else waitEdge stamp deadline releasedLevel.
 
 main =
   rc = GPIO.input Board.button Board.buttonActiveLow;
-  if rc != 0 then rc else
+  armed = if rc != 0 then rc else EspGPIO.watch Board.button;
+  if armed != 0 then armed else
     stamp = Mem.alloc 8;
     deadline = Mem.alloc 8;
     result = run stamp deadline;

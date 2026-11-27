@@ -39,11 +39,22 @@ high and a return from main. GPIO8 stays untouched.
 
 The Clock API reads a latched snapshot of the 52-bit SYSTIMER UNIT0 counter
 at 16 MHz and returns milliseconds. For this RAM image the counter is
-already running at ROM handoff. Deadline waits poll the counter with CPU
-interrupts disabled. See chapter 10 of the [ESP32-C3 TRM](https://documentation.espressif.com/esp32-c3_technical_reference_manual_en.pdf).
+already running at ROM handoff. Deadline waits arm SYSTIMER comparator 0 and idle in WFI. See chapter 10 of the [ESP32-C3 TRM](https://documentation.espressif.com/esp32-c3_technical_reference_manual_en.pdf).
 
 The polling GPIO backend programs the C3 IO MUX and GPIO Matrix directly.
 It implements input with optional pull-up, level reads, push-pull and
 open-drain output, and level writes on the same header pins as the IDF
 backend. An invalid pin or operation for the configured direction returns
 -EINVAL. This hardware check exercises the input path.
+
+The button example arms both GPIO9 edges, waits for a GPIO interrupt, then
+uses timer interrupts to sample during the debounce window. The GPIO ISR
+acknowledges the status and queues up to seven samples for the main loop.
+The queue reports -EOVERFLOW if it fills. The hardware can coalesce edges
+that arrive before the status bit is serviced. Unexpected traps print
+mcause and mepc over USB and halt.
+
+On the physical C3, the alarm test measured 1,000 ms on both the device
+and the Mac. The GPIO interrupt test reported initial high at 1,204 ms,
+low at 38,638 ms, and high at 39,710 ms. A temporary breakpoint after
+interrupt setup reported cause 3 and PC 0x40380040 over USB.

@@ -9,6 +9,21 @@ _start:
     sw zero, 0(t0)
     addi t0, t0, 4
     j 1b
-2:  call c3_main
+2:  la t0, c3_vectors
+    ori t0, t0, 1
+    csrw mtvec, t0
+    call c3_irq_init
+    call c3_main
 3:  wfi
     j 3b
+
+    /* C3 uses four-byte entries in vectored mode. */
+    .section .text.vectors,"ax",@progbits
+    .balign 256
+    .option push
+    .option norvc
+c3_vectors:
+    .rept 32
+    j c3_trap
+    .endr
+    .option pop

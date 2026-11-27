@@ -20,6 +20,22 @@ static void puts_usb(const char *s) {
     while (s[n]) ++n;
     write_bytes(s, n);
 }
+static void put_hex(uint32_t value) {
+    char digits[8];
+    for (unsigned i = 0; i < sizeof(digits); ++i)
+        digits[i] = "0123456789abcdef"[(value >> (28 - 4 * i)) & 15];
+    write_bytes(digits, sizeof(digits));
+}
+
+_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc) {
+    puts_usb("C3 trap cause=0x");
+    put_hex(cause);
+    puts_usb(" pc=0x");
+    put_hex(pc);
+    puts_usb("\n");
+    for (;;) __asm__ volatile("wfi");
+}
+
 void fpr_cpanic_n(const char *s, uw n) {
     puts_usb("C3 PANIC: ");
     write_bytes(s, n);
