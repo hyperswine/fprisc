@@ -15,7 +15,7 @@ static unsigned char flash[CAPACITY], baseline[CAPACITY], work[PAGE * 2];
 static uintptr_t fds[128], cache[256];
 static spiffs fs;
 static jmp_buf outage;
-static unsigned byte_count, cut;
+static unsigned byte_count, cut, erases;
 static int injecting;
 
 void spiffs_api_lock(spiffs *unused) {}
@@ -35,6 +35,7 @@ static s32_t write_bytes(spiffs *unused, u32_t at, u32_t n, u8_t *src) {
 }
 static s32_t erase(spiffs *unused, u32_t at, u32_t n) {
     assert(at <= CAPACITY && n <= CAPACITY - at && at % BLOCK == 0 && n % BLOCK == 0);
+    ++erases;
     for (unsigned i = 0; i < n; ++i) { interruption(); flash[at+i] = 255; }
     return 0;
 }
@@ -90,26 +91,40 @@ static int replay(unsigned expected) {
     assert(!SPIFFS_close(&fs,fd));
     return 0;
 }
-int main(void) {
+int main(int argc, char **argv) {
+    int collection = argc == 2 && strcmp(argv[1], "--gc") == 0;
+    if (argc != 1 && !collection) return 2;
     memset(flash,255,sizeof(flash));
     assert(mount_fs()<0 && !SPIFFS_format(&fs) && !mount_fs());
-    for (unsigned i=0; i<3; ++i) assert(!append(i));
-    memcpy(baseline,flash,sizeof(flash));
+    unsigned prefix = 3;
+    if (collection) {
+        prefix = 0;
+        do {
+            memcpy(baseline, flash, sizeof(flash));
+            erases = 0;
+            assert(!append(prefix));
+            if (!erases) ++prefix;
+        } while (!erases);
+        printf("First garbage collection follows %u acknowledged records\n", prefix);
+    } else {
+        for (unsigned i=0; i<prefix; ++i) assert(!append(i));
+        memcpy(baseline,flash,sizeof(flash));
+    }
     for (cut=0;;++cut) {
         memcpy(flash,baseline,sizeof(flash));
         assert(!mount_fs());
         byte_count=0; injecting=1;
         if (!setjmp(outage)) {
-            assert(!append(3));
+            assert(!append(prefix));
             injecting=0;
-            assert(!mount_fs() && !replay(4));
+            assert(!mount_fs() && !replay(prefix+1));
             break;
         }
         injecting=0;
-        assert(!mount_fs() && !replay(3));
+        if (mount_fs() || replay(prefix)) return 1;
     }
-    printf("%u interrupted byte positions preserved three acknowledged records\n",cut);
-    unsigned total=4;
+    printf("%u interrupted byte positions preserved %u acknowledged records\n",cut,prefix);
+    unsigned total=prefix+1;
     while (!append(total)) ++total;
     assert(!mount_fs() && !replay(total));
     printf("Volume full after %u acknowledged records, all replayed on remount\n",total);

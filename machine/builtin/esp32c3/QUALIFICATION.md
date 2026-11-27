@@ -43,6 +43,8 @@ failure characteristics.
 
 ### Failure during SPIFFS garbage collection
 
+Run `tests/check_spiffs_power.sh BUILD_DIR --gc` to reproduce the readback
+failure. This command returns a nonzero status when it detects data loss.
 Extending the same NOR simulator to the first append which relocated live
 pages changed the outcome. After 79 acknowledged records, a simulated cut
 at mutating byte position 523 left record 48 unreadable on remount
