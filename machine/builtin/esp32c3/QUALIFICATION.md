@@ -116,3 +116,17 @@ boundaries and 1,025 record-program boundaries. Every reboot preserved
 previously acknowledged records and allowed a subsequent append. A full
 volume rejected the next append and a corrupt committed record failed
 mount. The same tests passed with address and undefined-behavior sanitizers.
+
+The external flash app was installed from a separate application directory.
+The installer matched the pre-existing slot 1 against its owner-held backup,
+verified the programmed 226,768-byte image and selected slot 1 at sequence 4.
+After reboot its ELF identity began `19bd37df9`, entry heap was 309,976
+bytes, and it returned a healthy journal status. The power-cut checker
+received 150 consecutive individual acknowledgements before deliberately
+leaving an incoming serial frame incomplete.
+
+The RAM-only `tests/media-reset` IDF project exercises an interruption
+after body readback and immediately before marker programming. Build it with
+`idf.py -C tests/media-reset -B /path/to/build build`, then load the resulting
+`journal_reset.bin` through the ROM RAM loader with the journal app installed
+in flash. A successful injection consumes one otherwise unused slot.

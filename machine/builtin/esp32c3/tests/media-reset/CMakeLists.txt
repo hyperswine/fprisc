@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET esp32c3)
+set(COMPONENTS main)
+set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_SOURCE_DIR}/../../sdkconfig.defaults;${CMAKE_CURRENT_SOURCE_DIR}/../../sdkconfig.files")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(journal_reset)
