@@ -31,9 +31,16 @@ Verified on the physical C3 with GCC 13.2.0 and esptool 4.9.0:
 
 Start with BOOT released. When the checker reports GPIO9 high, hold BOOT
 briefly and release it. The FP-RISC program imports the board definition and
-the same GPIO library used by the IDF examples. It samples 128 matching
-reads per state and sends the electrical levels over USB. The checker
-requires high, low, high and a return from main. GPIO8 stays untouched.
+the same GPIO library used by the IDF examples. It samples once per millisecond and requires a 20 ms debounce window.
+It sends each accepted electrical level with an eight-byte little-endian
+millisecond timestamp over USB. The checker first compares a one-second
+device deadline with the host monotonic clock, then requires high, low,
+high and a return from main. GPIO8 stays untouched.
+
+The Clock API reads a latched snapshot of the 52-bit SYSTIMER UNIT0 counter
+at 16 MHz and returns milliseconds. For this RAM image the counter is
+already running at ROM handoff. Deadline waits poll the counter with CPU
+interrupts disabled. See chapter 10 of the [ESP32-C3 TRM](https://documentation.espressif.com/esp32-c3_technical_reference_manual_en.pdf).
 
 The polling GPIO backend programs the C3 IO MUX and GPIO Matrix directly.
 It implements input with optional pull-up, level reads, push-pull and

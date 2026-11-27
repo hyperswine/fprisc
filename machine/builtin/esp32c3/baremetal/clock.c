@@ -1,0 +1,56 @@
+#include <errno.h>
+#include "../main/bytes.h"
+
+/* ESP32-C3 TRM, SYSTIMER UNIT0. CNT_CLK averages 16 MHz. */
+#define TIMER_REG(offset) (*(volatile uint32_t *)(uintptr_t)(0x60023000u + (offset)))
+enum {
+    UNIT0_OP = 0x04, UNIT0_HI = 0x40, UNIT0_LO = 0x44,
+    VALUE_VALID = 1u << 29, UPDATE = 1u << 30,
+    TICKS_PER_MS = 16000
+};
+
+static uint64_t milliseconds(void) {
+    TIMER_REG(UNIT0_OP) = UPDATE;
+    while (!(TIMER_REG(UNIT0_OP) & VALUE_VALID)) {}
+    uint64_t high = TIMER_REG(UNIT0_HI) & 0xfffffu;
+    return ((high << 32) | TIMER_REG(UNIT0_LO)) / TICKS_PER_MS;
+}
+
+static uint64_t load_stamp(V addr) {
+    const uint8_t *bytes = buffer_ptr(addr);
+    uint64_t stamp = 0;
+    for (unsigned i = 0; i < 8; ++i) stamp |= (uint64_t)bytes[i] << (8 * i);
+    return stamp;
+}
+
+static void store_stamp(V addr, uint64_t stamp) {
+    uint8_t *bytes = buffer_ptr(addr);
+    for (unsigned i = 0; i < 8; ++i) {
+        bytes[i] = (uint8_t)stamp;
+        stamp >>= 8;
+    }
+}
+
+static V now_ms(V addr) {
+    store_stamp(addr, milliseconds());
+    return V_UNIT;
+}
+
+static V after_ms(V addr, V delta, V dest) {
+    if (!ISINT(delta) || UNTAG(delta) < 0) return TAG(-EINVAL);
+    uint64_t stamp = load_stamp(addr);
+    if (stamp > (uint64_t)INT64_MAX - UNTAG(delta)) return TAG(-EINVAL);
+    store_stamp(dest, stamp + UNTAG(delta));
+    return TAG(0);
+}
+
+static V sleep_until(V addr) {
+    uint64_t deadline = load_stamp(addr);
+    if (deadline <= INT64_MAX)
+        while (milliseconds() < deadline) {}
+    return V_UNIT;
+}
+
+FPR_FN(fpr_g_EspClock_x2enowMs, now_ms, 1);
+FPR_FN(fpr_g_EspClock_x2eafterMs, after_ms, 3);
+FPR_FN(fpr_g_EspClock_x2esleepUntil, sleep_until, 1);
