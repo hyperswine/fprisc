@@ -85,3 +85,30 @@ GPIO9 reported both debounced BOOT edges. The rollback selected slot 0
 and verified its original image digest. The test then restored the
 previous slot 1 image and OTA metadata, matched the pre-test digest over
 all 4 MiB of flash, and replayed all 151 records from the restored logger.
+
+## Bare-metal journal
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-journal journal flash
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-endurance endurance flash
+
+The journal uses the existing FPR-C3-LOG-v1 format and command protocol.
+After flash boot, open USB serial with DTR and RTS deasserted, send ASCII
+question mark, and read the identity line and journal status byte. The
+parent directory's check_journal.py provides the length-prefixed replay
+decoder. The endurance image starts after the same identity query and
+emits heap and allocation statistics at every checkpoint.
+
+The backend accepts the dedicated 64 KiB fprjournal partition at
+0x280000 and checks that no other table entry overlaps it. ROM read and
+program calls are confined to that partition. Bounded, aligned transfers
+use SRAM buffers, and the cache is suspended around each ROM operation.
+The journal verifies the programmed body before writing its commit
+marker. Existing records remain available after a partially written
+record. SPI initialization comes from the flash bootloader.
+
+Physical verification used one durable append and a separate journal-cut
+build. The latter paused immediately before programming the commit word.
+After two USB power cycles, replay returned all 151 original records and
+the new durable record. Independent flash readback confirmed the new
+commit in slot 279, an intact body with erased commit word in slot 280,
+and byte-for-byte preservation of the preceding records.

@@ -1,8 +1,10 @@
 #include <errno.h>
 #include "bytes.h"
 #include "log.h"
+#ifndef FPR_C3_BAREMETAL
 #include "flash_access.h"
 #include "esp_rom_crc.h"
+#endif
 
 static c3log journal;
 static V enabled(V unit) {
@@ -12,6 +14,10 @@ static V enabled(V unit) {
     return V_FALSE;
 #endif
 }
+#ifdef FPR_C3_BAREMETAL
+int c3_bare_journal_mount(c3log *log);
+static V mount_log(V unit) { return TAG(c3_bare_journal_mount(&journal)); }
+#else
 static int read_at(void *ctx, size_t at, void *out, size_t n) {
     return esp_partition_read(ctx, at, out, n) == ESP_OK ? 0 : -EIO;
 }
@@ -28,6 +34,7 @@ static V mount_log(V unit) {
         .program=write_at, .crc=checksum};
     return TAG(c3log_mount(&journal));
 }
+#endif
 static V append_log(V name, V ptr, V length) {
     if (!ISPTR(name) || TID(name) != T_STR || !ISINT(length) || UNTAG(length)<1) return TAG(-EINVAL);
     str_t *s=(str_t *)name;
