@@ -14,3 +14,7 @@ EspFile.append : String -> Int .
 EspFile.flush : Int -> Int .
 append name = EspFile.append name.
 flush fd = EspFile.flush fd.
+EspFile.edit : String -> Int .
+EspFile.truncate : Int -> Int -> Int .
+edit name = EspFile.edit name.
+truncate fd size = EspFile.truncate fd size.

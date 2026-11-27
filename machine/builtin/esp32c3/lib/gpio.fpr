@@ -1,0 +1,11 @@
+EspGPIO.input : Int -> Bool -> Int .
+EspGPIO.output : Int -> Bool -> Int .
+EspGPIO.openDrain : Int -> Bool -> Int .
+EspGPIO.read : Int -> Int .
+EspGPIO.write : Int -> Bool -> Int .
+
+input pin pullUp = EspGPIO.input pin pullUp.
+output pin initialHigh = EspGPIO.output pin initialHigh.
+read pin = EspGPIO.read pin.
+write pin high = EspGPIO.write pin high.
+openDrain pin released = EspGPIO.openDrain pin released.

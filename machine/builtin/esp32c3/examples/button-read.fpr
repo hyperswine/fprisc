@@ -1,0 +1,14 @@
+profile builtin.
+File = use "../lib/file".
+IO = use "../lib/io".
+Journal = use "../lib/journal".
+
+main = mounted = File.mount Unit;
+  if mounted != 0 then mounted else
+    p = Mem.alloc 72;
+    _ = IO.writeByte 6;
+    rc = Journal.inspect "FPRBTN.BIN" p True;
+    _ = IO.writeByte 0;
+    _ = Mem.free p;
+    _ = Rc.release p;
+    rc.

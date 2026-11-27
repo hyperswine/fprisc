@@ -83,9 +83,40 @@ The initial status byte is 6 for a healthy journal and 21 for an error.
 Send ASCII A, one length byte (1–64), and that many payload bytes to append.
 Send L to replay length-prefixed records, followed by a zero and a status.
 A short or CRC-invalid record ends replay at the preceding valid record and
-produces status 21. Appends stay disabled while that suffix exists. Q exits.
+produces status 21. Appends stay disabled while that suffix exists. Send R to truncate one
+damaged final record after the valid prefix. R refuses interior damage.
+Q exits.
 
 On the tested generic ESP32-C3, a RAM probe sampled GPIO9 with the internal
 pull-up enabled. Pressing BOOT changed the input from high to low and
-releasing it restored high, with 140 ms between sampled edges. The PCB model
-and onboard LED wiring have yet to be identified.
+releasing it restored high, with 140 ms between sampled edges. An open-drain double-blink test and visual confirmation identified GPIO8 as
+the active-low onboard LED. The exact PCB model remains unknown.
+
+## Button and LED timestamp logger
+
+Build `examples/button.fpr` with `--files spiffs` for the tested board. It
+uses the pin assignments in `boards/supermini.fpr`, samples BOOT every
+20 ms, and accepts a change after two consecutive matching reads. Each
+accepted change and the initial state append one CRC-checked record to
+`FPRBTN.BIN`. The nine-byte payload contains eight little-endian bytes of
+milliseconds since boot followed by 1 for pressed or 0 for released.
+The LED follows the committed state. Logging runs without USB commands.
+
+The GPIO module configures pull-up inputs, push-pull outputs, and open-drain
+outputs. Operations return zero on success or a negative error. A successful
+read returns 0 or 1. The clock module writes monotonic milliseconds to an
+eight-byte caller-owned buffer. `afterMs stamp delay dest` forms an absolute
+deadline and supports using the same buffer for both arguments.
+`sleepUntil dest` yields to IDF and returns once the deadline has passed.
+
+
+## Endurance measurement
+
+Build `examples/endurance.fpr` with the file-enabled RAM configuration and
+`-DFPR_RUNTIME_STATS=ON`. Run `python check_endurance.py PORT IMAGE` for
+the two-hour qualification. The workload double-blinks the LED, samples BOOT
+and appends one timestamped record to `FPREND.BIN` every 30 blink cycles.
+Each checkpoint reports live Builtin allocation count and bytes, peak Builtin
+bytes, current and minimum IDF 8-bit heap, and the main task's stack
+high-water mark in bytes. The checker requires consecutive checkpoints,
+positive remaining stack, and stable live allocator and IDF heap readings.

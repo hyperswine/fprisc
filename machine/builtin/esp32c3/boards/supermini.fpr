@@ -1,0 +1,5 @@
+# ESP32-C3 SuperMini discrete LED variant.
+button = 9.
+led = 8.
+buttonActiveLow = True.
+ledActiveLow = True.

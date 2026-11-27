@@ -84,6 +84,11 @@ static V open_file(V name, int flags) {
 }
 static V open_read(V name) { return open_file(name, O_RDONLY); }
 static V create_new(V name) { return open_file(name, O_WRONLY | O_CREAT | O_EXCL); }
+static V open_edit(V name) { return open_file(name, O_RDWR); }
+static V truncate_file(V fd, V length) {
+    if (!ISINT(fd) || UNTAG(fd) < 0 || !ISINT(length) || UNTAG(length) < 0) return TAG(-EINVAL);
+    return TAG(ftruncate(UNTAG(fd), UNTAG(length)) < 0 ? -errno : 0);
+}
 static V open_append(V name) { return open_file(name, O_WRONLY | O_CREAT | O_APPEND); }
 
 static V flush_file(V fd) {
@@ -117,6 +122,8 @@ FPR_FN(fpr_g_EspFile_x2eopen, open_read, 1);
 FPR_FN(fpr_g_EspFile_x2eread, read_file, 3);
 FPR_FN(fpr_g_EspFile_x2ewrite, write_file, 3);
 FPR_FN(fpr_g_EspFile_x2eclose, close_file, 1);
+FPR_FN(fpr_g_EspFile_x2eedit, open_edit, 1);
+FPR_FN(fpr_g_EspFile_x2etruncate, truncate_file, 2);
 FPR_FN(fpr_g_EspFile_x2eappend, open_append, 1);
 FPR_FN(fpr_g_EspFile_x2eflush, flush_file, 1);
 

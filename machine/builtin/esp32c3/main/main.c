@@ -16,6 +16,14 @@ void fpr_cpanic(const char *message) {
     abort();
 }
 
+void fpr_cpanic_n(const char *message, uw size) {
+    fputs("C3 BUILTIN PANIC: ", stdout);
+    fwrite(message, 1, size, stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+    abort();
+}
+
 static void serial_line(const char *format, ...) {
     char line[128];
     va_list args;
@@ -32,6 +40,21 @@ static V serial_result(V value, V passed) {
     return V_UNIT;
 }
 FPR_FN(fpr_g_Serial_x2eresult, serial_result, 2);
+
+#ifdef FPR_BUILTIN_HEAP_STATS
+static V report_stats(V cycle) {
+    fpr_builtin_heap_stats stats;
+    fpr_builtin_heap_get_stats(&stats);
+    serial_line("FPR STATS %ld blocks=%u live=%u peak=%u heap=%u minheap=%u stack=%u\n",
+        (long)UNTAG(cycle), (unsigned)fpr_builtin_live_allocations(),
+        (unsigned)stats.live_bytes, (unsigned)stats.peak_bytes,
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+        (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspStats_x2ereport, report_stats, 1);
+#endif
 
 void app_main(void) {
     /* IDF owns tp. Runtime primitives find the sole Builtin hart through task TLS. */
