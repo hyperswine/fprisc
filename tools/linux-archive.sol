@@ -7,7 +7,11 @@
 #      release tar flags and smoke-tests the extracted archive;
 #   3. the archive alone in a fresh debian:bookworm-slim with only gcc: fpr and
 #      sol run, a new project checks, tests and runs, and a Sol script runs.
-#   ./fpr sol tools/linux-archive.sol --platform linux/amd64 --rev HEAD --out DIR [--cache DIR]
+#   ./fpr sol tools/linux-archive.sol --platform linux/amd64 --rev HEAD --out DIR [--cache DIR] [--version V]
+# With --version (a version commit), step 2 also packages the release:
+# tools/compiler-licenses.sol, tools/stage-toolchain.sol and
+# tools/package-toolchain.sol write the archive, SHA256SUMS and release.json to
+# OUT/release, and step 3 smoke-tests that archive.
 # The build tree and cabal store persist under --cache (default
 # ~/.cache/fprisc-linux/<arch>), which must be a directory the container
 # runtime shares (colima shares $HOME). Uses whatever `docker` context is set.
@@ -19,16 +23,22 @@ buildSteps = Str.join " && " [
   "([ -f /root/.cabal/packages/hackage.haskell.org/01-index.tar ] || cabal update >/dev/null)",
   "make fpr", "./fpr --version", "rm -rf /tmp/work",
   "./fpr sol tools/archive-smoke.sol --work /tmp/work", "cp /tmp/work/fprisc-*.tar.gz /out/"].
-smokeSteps = Str.join " && " [
+releaseSteps = Str.join " && " [
+  "cd /build/fprisc", "rm -rf /tmp/notices /tmp/stage /tmp/release",
+  "./fpr sol tools/compiler-licenses.sol --plan dist-newstyle/cache/plan.json --output /tmp/notices",
+  "./fpr sol tools/stage-toolchain.sol --output /tmp/stage",
+  "./fpr sol tools/package-toolchain.sol --sdk /tmp/stage --version \"$VERSION\" --notices /tmp/notices --output /tmp/release",
+  "rm -rf /out/release", "mkdir -p /out/release", "cp /tmp/release/* /out/release/", "ls -l /out/release"].
+smokeSteps archive = Str.join " && " [
   "apt-get update >/dev/null", "apt-get install -y --no-install-recommends gcc libc6-dev >/dev/null",
-  "mkdir -p '/x/with space'", "tar -xzf /out/fprisc-*.tar.gz -C '/x/with space'",
+  "mkdir -p '/x/with space'", "tar -xzf {archive} -C '/x/with space'",
   "P=$(ls -d '/x/with space'/fprisc-*)",
   "export HOME= PATH=\"$P/bin:/usr/bin:/bin\" TMPDIR=/tmp SOL_STATE_DIR=/tmp/sol-state LANG=C.UTF-8",
   "fpr --version", "sol --version", "cd /tmp", "fpr new hello", "cd hello", "fpr check", "fpr test",
   "fpr run -- Ada",
   "printf 'Order = use \"std/order\".\\n> print (if Order.isLess (Order.int 2 3) then \"order: less\" else \"order: other\").\\n' > /tmp/o.sol",
   "sol /tmp/o.sol", "echo CLEAN-SMOKE-PASSED"].
->! parsed = unwrap (CLI.parse (List.map (fn n -> CLI.Option n "" CLI.One) ["platform","rev","out","cache"]) (args Unit));
+>! parsed = unwrap (CLI.parse (List.map (fn n -> CLI.Option n "" CLI.One) ["platform","rev","out","cache","version"]) (args Unit));
   platform = CLI.valueOr "linux/amd64" "platform" parsed;
   arch = List.last (Str.split 47 platform);
   root = B.query ["git","rev-parse","--show-toplevel"];
@@ -43,8 +53,11 @@ smokeSteps = Str.join " && " [
   _ = print "linux-archive: image for {platform}";
   _ = B.command ["docker","build","-q","--platform",platform,"-t","fprisc-linux-build","{root}/packaging/linux"];
   _ = print "linux-archive: building {rev}";
-  _ = B.command ["docker","run","--rm","--platform",platform,"-e","REV={rev}","-v","{source}:/src:ro","-v","{out}:/out",
-                 "-v","{cache}/build:/build","-v","{cache}/cabal:/root/.cabal","fprisc-linux-build","sh","-c",buildSteps];
+  version = CLI.valueOr "" "version" parsed;
+  steps = (if version == "" then buildSteps else buildSteps + " && " + releaseSteps);
+  _ = B.command ["docker","run","--rm","--platform",platform,"-e","REV={rev}","-e","VERSION={version}","-v","{source}:/src:ro","-v","{out}:/out",
+                 "-v","{cache}/build:/build","-v","{cache}/cabal:/root/.cabal","fprisc-linux-build","sh","-c",steps];
   _ = print "linux-archive: clean smoke test";
-  _ = B.command ["docker","run","--rm","--platform",platform,"-v","{out}:/out:ro","debian:bookworm-slim","sh","-c",smokeSteps];
+  archive = (if version == "" then "/out/fprisc-*.tar.gz" else "/out/release/fprisc-*.tar.gz");
+  _ = B.command ["docker","run","--rm","--platform",platform,"-v","{out}:/out:ro","debian:bookworm-slim","sh","-c",smokeSteps archive];
   print "linux-archive: passed ({out})".
