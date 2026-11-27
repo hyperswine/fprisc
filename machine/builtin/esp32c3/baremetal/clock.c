@@ -1,6 +1,7 @@
 #include <errno.h>
 #include "../main/bytes.h"
 #include "interrupt.h"
+#include "clock_hw.h"
 
 /* ESP32-C3 TRM, SYSTIMER UNIT0. CNT_CLK averages 16 MHz. */
 #define TIMER_REG(offset) (*(volatile uint32_t *)(uintptr_t)(0x60023000u + (offset)))
@@ -10,7 +11,7 @@ enum {
     COMP0_LOAD = 0x50, INT_ENABLE = 0x64, INT_CLEAR = 0x6c,
     TARGET0_ENABLE = 1u << 24, TARGET0_INT = 1u,
     VALUE_VALID = 1u << 29, UPDATE = 1u << 30,
-    TICKS_PER_MS = 16000
+    TICKS_PER_US = 16, TICKS_PER_MS = 1000 * TICKS_PER_US
 };
 
 static uint64_t ticks(void) {
@@ -58,12 +59,7 @@ static V after_ms(V addr, V delta, V dest) {
     return TAG(0);
 }
 
-static V sleep_until(V addr) {
-    uint64_t deadline = load_stamp(addr);
-    const uint64_t max_ms = ((UINT64_C(1) << 52) - 1) / TICKS_PER_MS;
-    if (deadline > max_ms || milliseconds() >= deadline) return V_UNIT;
-
-    uint64_t target = deadline * TICKS_PER_MS;
+static void arm_timer(uint64_t target) {
     c3_timer_ack();
     TIMER_REG(TARGET0_CONF) = 0;
     TIMER_REG(TARGET0_HI) = (uint32_t)(target >> 32);
@@ -71,6 +67,32 @@ static V sleep_until(V addr) {
     TIMER_REG(COMP0_LOAD) = 1;
     TIMER_REG(INT_ENABLE) |= TARGET0_INT;
     TIMER_REG(CONF) |= TARGET0_ENABLE;
+}
+
+uint64_t c3_clock_now_us(void) {
+    return ticks() / TICKS_PER_US;
+}
+
+void c3_clock_wait_us(uint64_t deadline) {
+    const uint64_t max_us = ((UINT64_C(1) << 52) - 1) / TICKS_PER_US;
+    if (deadline == UINT64_MAX) {
+        c3_wait_interrupt();
+        return;
+    }
+    if (deadline > max_us || c3_clock_now_us() >= deadline) return;
+    uint64_t target = deadline * TICKS_PER_US;
+    arm_timer(target);
+    if (ticks() < target) c3_wait_interrupt();
+    c3_timer_ack();
+}
+
+static V sleep_until(V addr) {
+    uint64_t deadline = load_stamp(addr);
+    const uint64_t max_ms = ((UINT64_C(1) << 52) - 1) / TICKS_PER_MS;
+    if (deadline > max_ms || milliseconds() >= deadline) return V_UNIT;
+
+    uint64_t target = deadline * TICKS_PER_MS;
+    arm_timer(target);
     while (ticks() < target) c3_wait_interrupt();
     c3_timer_ack();
     return V_UNIT;

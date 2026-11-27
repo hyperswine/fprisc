@@ -52,3 +52,13 @@ Run tests/check-tasks.sh with the C3 GCC toolchain and qemu-system-riscv32.
 It exercises the actual RV32 context switch, timed and indefinite waits,
 ISR-style wakeups, full and empty queues, and semaphore limits. Clock
 and idle are test hooks in this check.
+
+btdm_services.c installs the task, queue, semaphore, mutex and clock
+callbacks into the pinned table. It reserves up to two controller task
+stacks of 8 KiB each and four 1 KiB queue buffers. The adapter translates
+controller ticks to 1 ms and reserves UINT32_MAX for indefinite waits.
+task_clock.c supplies the SYSTIMER clock and deadline wakeup for the C3.
+The callback vectors run with a simulated clock on RV32 and cover
+blocking, ISR wake notification, and deletion of a blocked task. Board
+interrupt registration, the allocator, and PHY initialization are
+separate from these services.

@@ -57,8 +57,7 @@ journal|journal-cut|endurance)
     compile "$here/file_unavailable.c" file_unavailable.o
     compile "$here/../main/log.c" log.o
     compile "$here/../main/flash_log.c" flash_log.o -DFPR_C3_BAREMETAL -DFPR_RAW_JOURNAL
-    compile "$root/machine/virt/memshim.c" memshim.o
-    set -- "$@" flash.o file_unavailable.o log.o flash_log.o memshim.o -T "$here/flash_rom.ld" ;;
+    set -- "$@" flash.o file_unavailable.o log.o flash_log.o -T "$here/flash_rom.ld" ;;
 esac
 compile "$here/gpio.c" gpio.o
 compile "$here/clock.c" clock.o
@@ -68,7 +67,8 @@ compile "$root/machine/builtin/unsafe.c" unsafe.o
 compile "$root/runtime/runtime.c" runtime.o
 compile "$root/runtime/i32.c" i32.o
 compile "$root/machine/builtin/heap.c" heap.o -DFPR_BUILTIN_HEAP_STATS
+compile "$root/machine/virt/memshim.c" memshim.o
 "$cc" -march=rv32imc -mabi=ilp32 -nostdlib -T "$here/ram.ld" \
     -Wl,--gc-sections,--no-relax,-Map="$output.map" \
-    start.o console.o gpio.o clock.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o guest.o "$@" -lgcc -o "$output.elf"
+    start.o console.o gpio.o clock.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o "$output.elf"
 "${ESPTOOL:-esptool.py}" --chip esp32c3 elf2image -o "$output.bin" "$output.elf"

@@ -1,5 +1,5 @@
 #include "task.h"
-#include "btdm_abi.h"
+#include "btdm_services.h"
 #include "os_queue.h"
 
 #define FINISH (*(volatile uint32_t *)0x100000)
@@ -84,6 +84,48 @@ static void queue_vectors(void) {
     CHECK(!c3_semaphore_give(&sem, NULL));
 }
 
+static struct c3_btdm_osi osi;
+
+static void blocked_controller(void *sem) {
+    CHECK(osi.semphr_take(sem, UINT32_MAX));
+    fail(__LINE__);
+}
+
+static void callback_vectors(void) {
+    c3_btdm_install_services(&osi, 1);
+    CHECK(osi.magic == C3_BTDM_OSI_MAGIC && osi.version == C3_BTDM_OSI_VERSION);
+    CHECK(osi.get_time_us() == now);
+    void *sem = osi.semphr_create(1, 0);
+    CHECK(sem && !osi.semphr_take(sem, 0));
+    uint64_t start = now;
+    CHECK(!osi.semphr_take(sem, 2) && now == start + 2000);
+    void *task = NULL;
+    CHECK(osi.task_create((void *)blocked_controller, "probe", 1024, sem, 3, &task, 0));
+    osi.task_yield();
+    c3_btdm_isr_enter();
+    CHECK(osi.is_in_isr() && !osi.semphr_take(sem, 0));
+    bool higher = false;
+    CHECK(osi.semphr_give_from_isr(sem, &higher) && higher);
+    c3_btdm_isr_leave();
+    CHECK(!osi.is_in_isr());
+    osi.task_delete(task);
+    osi.semphr_delete(sem);
+    CHECK(osi.semphr_create(1, 0) == sem);
+
+    const void *mutex = osi.mutex_create();
+    CHECK(mutex && osi.mutex_lock(mutex) && osi.mutex_lock(mutex));
+    CHECK(osi.mutex_unlock(mutex) && osi.mutex_unlock(mutex));
+    CHECK(!osi.mutex_unlock(mutex));
+    osi.mutex_delete(mutex);
+    CHECK(osi.mutex_create() == mutex);
+    void *queue_slot = osi.queue_create(2, sizeof(unsigned));
+    CHECK(queue_slot);
+    unsigned sent = 42, received = 0;
+    CHECK(osi.queue_send(queue_slot, &sent, 0));
+    CHECK(osi.queue_recv_from_isr(queue_slot, &received, NULL) && received == sent);
+    osi.queue_delete(queue_slot);
+}
+
 void main(void) {
     c3_tasks_init(1);
     CHECK(c3_task_create(reader, &channel, 3, stacks[0], sizeof(stacks[0])) == 2);
@@ -104,6 +146,7 @@ void main(void) {
     CHECK(c3_task_delete(2));
     CHECK(!c3_task_delete(2) && !c3_task_delete(1));
     CHECK(c3_task_create(writer, NULL, 1, stacks[0], sizeof(stacks[0])) == 2);
+    callback_vectors();
     for (const char *s = "RV32 task services PASS\n"; *s; ++s) UART = (uint8_t)*s;
     FINISH = 0x5555;
     for (;;) {}
