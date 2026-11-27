@@ -444,7 +444,7 @@ builtinArities =
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
         ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.uptimeMs", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1), ("Sys.loop", 2),
-        ("use", 1), ("run", 2), ("View.serve", 5),
+        ("use", 1), ("run", 2), ("View.serve", 5), ("View.live", 5),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
         ("Vec.set", 3), ("Vec.pack", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
         ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
@@ -466,6 +466,7 @@ builtinCall env g args
   | M.member g schemeArities = schemeCall env g args
   | g == "use" || g == "run" = modCall env g args
   | g == "View.serve" = viewServe env args
+  | g == "View.live" = viewLive env args
   | S.member g actorNames = actorCall env g args
   | otherwise = vecCall env g args
 
@@ -484,6 +485,18 @@ viewServe env [VInt port, fi, fu, fv, subsV] =
         cbView = apply env fv
       }
 viewServe _ _ = vmPanic "View.serve: expected port init update view subs"
+
+-- a std/view page on std/live's wire (Web.serveLive owns the socket)
+viewLive :: VMEnv -> [Value] -> IO Value
+viewLive env [VInt port, model, fpage, fstep, fframe] =
+  serveLive (fromIntegral port) model
+    (\m -> apply env fpage m >>= text "page")
+    (\t m -> apply env fstep (VStr t) >>= \f -> apply env f m)
+    (\m -> apply env fframe m >>= text "frame")
+  where
+    text _ (VStr s) = pure s
+    text what v = vmPanic ("View.live: " ++ what ++ " must answer a String, got " ++ render v)
+viewLive _ _ = vmPanic "View.live: expected port model page step frame"
 
 -- ---- the actor shim (the sketch tier; docs/2026-08-27-PATHS.md phase 1) ---------------
 --

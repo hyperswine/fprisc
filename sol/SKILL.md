@@ -83,6 +83,10 @@ count xs = case xs of [] -> 0 | x :: rest -> 1 + count rest.
   (Map model), `std/test` (`Test.run [Test.that .., Test.equal ..]` answers the
   exit status), `std/list`, `std/string`, `std/map`, `std/option`, `std/order`,
   `std/ui` and `std/view` (render identically).
+- **Web pages:** `sol/lib/live.sol` serves a `std/ui`/`std/view` page on
+  `std/live`'s wire (`Live.serve port { title, init, update, view, codec = @Msg }`,
+  see `sol/examples/live-counter.sol`); `View.serve` with `sol/lib/ui.sol` is
+  the older Sol-only Html driver.
 - **`sol/lib`** holds what is Sol-only: `build` (process helpers), `cli`,
   `csv`, `git`, `archive`, `http`, `digest`, `proc`, `ui` (the `View.serve`
   Html), ...

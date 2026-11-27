@@ -253,9 +253,11 @@ recvUntil s marker = go BS.empty
 
 header :: String -> [String] -> Maybe String
 header name hdrs =
-  case [drop (length name + 1) h | h <- hdrs, (name ++ ":") `isPrefixOf` h] of
+  -- header names are case-insensitive (RFC 9110); Node's client sends them lower-case
+  case [drop (length name + 1) h | h <- hdrs, map lowerC (name ++ ":") `isPrefixOf` map lowerC h] of
     (v : _) -> Just (dropWhile (== ' ') v)
     [] -> Nothing
+  where lowerC c = if c >= 'A' && c <= 'Z' then chr (ord c + 32) else c
 
 handleConn :: Rt -> Socket -> IO ()
 handleConn rt conn = do
@@ -291,6 +293,74 @@ handleConn rt conn = do
         ("HTTP/1.1 " ++ status ++ "\r\nContent-Type: " ++ mime ++
          "\r\nContent-Length: " ++ show (BS.length bytes) ++
          "\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n") <> bytes
+
+-- ---- View.live: a std/view page on std/live's wire ---------------------------
+--
+--   >! View.live port init page step frame.
+--
+-- The Sol side does everything a page is made of (sol/lib/live.sol): `page m`
+-- is the whole HTML document for GET / (std/live's shell, statics and
+-- dynamics, the std/livejs client), `step text m` is the model after one
+-- websocket frame ({"msg": wire, "arg": text}: decoded with the app's codec,
+-- then `update`; a refused frame leaves it as it was), and `frame m` is the
+-- text pushed to every open page after a change (protocol 0, a snapshot
+-- {"s":[...],"d":[...]}, which every std/live client accepts). This side owns
+-- the socket, the one model (every step runs in order, under one lock) and
+-- the broadcast.
+serveLive :: Int -> Value -> (Value -> IO String) -> (String -> Value -> IO Value) -> (Value -> IO String) -> IO Value
+serveLive port init page step frame = do
+  hSetBuffering stdout LineBuffering
+  model <- newMVar init
+  conns <- newIORef (M.empty :: M.Map Int (String -> IO ()))
+  next <- newIORef (1 :: Int)
+  addr : _ <- getAddrInfo (Just defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}) Nothing (Just (show port))
+  sock <- socket (addrFamily addr) Stream defaultProtocol
+  setSocketOption sock ReuseAddr 1
+  bind sock (addrAddress addr)
+  listen sock 16
+  bound <- getSocketName sock
+  let actualPort = case bound of SockAddrInet p _ -> fromIntegral p; SockAddrInet6 p _ _ _ -> fromIntegral p; _ -> port
+  verbose ("[live] serving a std/view page on http://localhost:" ++ show actualPort)
+  let broadcast text = readIORef conns >>= mapM_ (\send -> try (send text) :: IO (Either SomeException ())) . M.elems
+      serveConn conn = do
+        req <- recvUntil conn (BC.pack "\r\n\r\n")
+        let ls = lines (filter (/= '\r') (BC.unpack req))
+            reqLine = case ls of (l : _) -> l; [] -> ""
+            hdrs = drop 1 ls
+            target = case words reqLine of (_ : p : _) -> p; _ -> "/"
+            path = takeWhile (/= '?') target
+        case (path, header "Sec-WebSocket-Key" hdrs) of
+          ("/ws", Just key) -> do
+            let accept' = b64encode (sha1 (map (fromIntegral . ord) (key ++ wsGUID)))
+            sendAll conn (BC.pack ("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " ++ accept' ++ "\r\n\r\n"))
+            sendLock <- newMVar ()
+            let send text = withMVar sendLock (\_ -> wsSendText conn text)
+            sid <- atomicModifyIORef' next (\n -> (n + 1, n))
+            first <- withMVar model frame
+            send first
+            atomicModifyIORef' conns (\m -> (M.insert sid send m, ()))
+            let loop = wsRecvText conn >>= \case
+                  Nothing -> pure ()
+                  Just text -> do
+                    out <- modifyMVar model (\m -> do m2 <- step text m; f <- frame m2; pure (m2, f))
+                    broadcast out
+                    loop
+            _ <- try loop :: IO (Either SomeException ())
+            atomicModifyIORef' conns (\m -> (M.delete sid m, ()))
+          ("/", _) -> do
+            body <- utf8Enc <$> withMVar model page
+            sendAll conn (BC.pack ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " ++ show (BS.length body) ++ "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n") <> body)
+          _ -> sendAll conn (BC.pack "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 14\r\nConnection: close\r\n\r\nno such page\n\n")
+  forever $ do
+    (conn, _) <- accept sock
+    _ <- forkIO $ do
+      r <- try (serveConn conn) :: IO (Either SomeException ())
+      case r of
+        Left e -> diagnostic ("[live] connection error: " ++ show e)
+        Right () -> pure ()
+      close conn
+    pure ()
+  pure vUnit
 
 wsGUID :: String
 wsGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -506,31 +576,14 @@ wsRecvText s = do
 -- UTF-8 at the WS boundary. BC.pack/BC.unpack are Char8 (Latin-1
 -- truncation): any codepoint > 0xFF corrupted the frame — an em-dash
 -- (U+2014) became control byte 0x14 and broke the browser's JSON.parse.
+-- Sol strings are UTF-8 bytes (docs/2026-11-27-SOL-BYTE-STRINGS.md): a
+-- round-trip escape goes out as its raw byte, and bytes that are not UTF-8
+-- come back as escapes, so text crosses the socket unchanged either way.
 utf8Enc :: String -> BS.ByteString
-utf8Enc = BS.pack . concatMap enc
-  where
-    enc c
-      | o < 0x80 = [fromIntegral o]
-      | o < 0x800 = [0xc0 .|. sh 6, tl 0]
-      | o < 0x10000 = [0xe0 .|. sh 12, tc 6, tl 0]
-      | otherwise = [0xf0 .|. sh 18, tc 12, tc 6, tl 0]
-      where
-        o = ord c
-        sh n = fromIntegral (o `shiftR` n)
-        tc n = 0x80 .|. fromIntegral ((o `shiftR` n) .&. 0x3f)
-        tl n = 0x80 .|. fromIntegral ((o `shiftR` n) .&. 0x3f)
+utf8Enc = BS.pack . encodeRoundTrip
 
 utf8Dec :: BS.ByteString -> String
-utf8Dec = go . BS.unpack
-  where
-    go [] = []
-    go (b : bs)
-      | b < 0x80 = chr (fromIntegral b) : go bs
-      | b < 0xe0, (c1 : r) <- bs = chr (((fromIntegral b .&. 0x1f) `shiftL` 6) .|. cont c1) : go r
-      | b < 0xf0, (c1 : c2 : r) <- bs = chr (((fromIntegral b .&. 0x0f) `shiftL` 12) .|. (cont c1 `shiftL` 6) .|. cont c2) : go r
-      | (c1 : c2 : c3 : r) <- bs = chr (((fromIntegral b .&. 0x07) `shiftL` 18) .|. (cont c1 `shiftL` 12) .|. (cont c2 `shiftL` 6) .|. cont c3) : go r
-      | otherwise = go bs -- truncated tail: drop
-    cont c = fromIntegral c .&. 0x3f
+utf8Dec = decodeRoundTrip . BS.unpack
 
 wsSendText :: Socket -> String -> IO ()
 wsSendText s payload = do
