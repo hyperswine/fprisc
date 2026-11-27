@@ -1,0 +1,5 @@
+profile builtin.
+
+EspWiFi.scan : Unit -> Unit .
+
+main = EspWiFi.scan Unit.

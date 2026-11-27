@@ -64,6 +64,10 @@ static void put_decimal(uint32_t magnitude, bool negative) {
     write_bytes(digits + index, sizeof(digits) - index);
 }
 
+void c3_console_unsigned(uint32_t number) {
+    put_decimal(number, false);
+}
+
 static V serial_result(V value, V passed) {
     int32_t number = (int32_t)fpr_i32_bits(value);
     uint32_t magnitude = number < 0 ? 0u - (uint32_t)number : (uint32_t)number;

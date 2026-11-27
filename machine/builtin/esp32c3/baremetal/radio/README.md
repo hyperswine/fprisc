@@ -115,3 +115,17 @@ and repeating timers using microsecond deadlines. Set C3_RADIO_SYS when
 running tests/check-tasks.sh to generate the locked Wi-Fi header and
 exercise the callbacks through the vendor ABI. The emulator uses a
 simulated clock and interrupt matrix.
+
+## Build the passive Wi-Fi scan image
+
+Use the same C3_RADIO_SYS and C3_RADIO_REF pins as the BLE build.
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-wifi wifi flash
+
+The image includes the C3 driver's compiled IRAM functions, mapped flash
+code and constants, and a 64 KiB SRAM allocation arena. The FP-RISC scan
+guest starts a station with power saving disabled, requests a passive
+scan of channels 1 through 11, reports the AP count over USB, and stops
+the controller. This image uses no network credentials. It prints
+FPR WIFI SCAN APs and FPR DONE when the scan and shutdown complete.
+The current evidence covers the flash image and linker closure.

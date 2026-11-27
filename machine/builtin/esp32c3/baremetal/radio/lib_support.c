@@ -8,9 +8,9 @@ size_t strlen(const char *s) {
 
 /* Radio libraries may log from an interrupt. The first bring-up uses
  * phase markers from the application and leaves blob logging disabled. */
-int __esp_radio_printf(const char *format, ...) {
-    (void)format;
-    return 0;
+void __esp_radio_printf(const char *tag, const char *message) {
+    (void)tag;
+    (void)message;
 }
 
 void _putchar(char byte) { (void)byte; }

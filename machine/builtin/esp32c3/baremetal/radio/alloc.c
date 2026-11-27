@@ -2,7 +2,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { ALIGNMENT = 16, ARENA_BYTES = 24 * 1024 };
+#ifndef C3_RADIO_ARENA_BYTES
+#define C3_RADIO_ARENA_BYTES (24 * 1024)
+#endif
+
+enum { ALIGNMENT = 16, ARENA_BYTES = C3_RADIO_ARENA_BYTES };
+_Static_assert(ARENA_BYTES >= 32 && ARENA_BYTES % ALIGNMENT == 0,
+               "Radio allocation arena alignment");
 
 typedef struct __attribute__((may_alias)) {
     size_t bytes;
