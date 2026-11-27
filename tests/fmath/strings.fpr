@@ -1,9 +1,11 @@
 # The native half of the string parity in tests/sol-checks/fmath-parity.sol: lengths and
 # positions count UTF-8 bytes (v1.0 semantics §5); strings.sol must print the same bytes.
+S = use "std/string".
 s = "aé€😀z".
 main =
   _ = print "{strlen s} {charAt s 1} {charAt s 2} {charAt s 3} {charAt s 6}";
   _ = print "[{substr s 1 2}] [{substr s 3 3}] [{substr s 1 1}]";
   _ = print "{strlen (chr 233)} {charAt (chr 233) 0} {strlen (substr s 0 2)}";
+  _ = print "{S.indexOf "z" s} {S.indexOf "😀" s} {S.indexOf "\n" "a雪b\nc"} {S.slice 1 4 "a雪b\nc"}";
   _ = print (chr 233);
   print (substr s 2 1).

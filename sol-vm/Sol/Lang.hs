@@ -154,6 +154,9 @@ renameTops rn tops0 = map top tops0
          in TBind (look n) (map rp ps) g' (re bs' b)
       TSig n (ps, r) pcs -> TSig (look n) (map rt ps, rt r) pcs
       TType n l ps cs -> TType (look n) l ps [(look c, map rt tys) | (c, tys) <- cs]
+      -- a record type's name and its field types are the module's too: a
+      -- field `vary : List Variant` names this module's Variant
+      TShape n fs -> TShape (look n) [(x, rt t) | (x, t) <- fs]
       TEval e -> TEval (re S.empty e)
       TAlias t tgt -> TAlias (look t) (look tgt)
       TSigDef n fs -> TSigDef (look n) fs
@@ -179,6 +182,7 @@ topNames tops =
       [n | TSig n _ _ <- tops],
       [n | TType n _ _ _ <- tops],
       [c | TType _ _ _ cs <- tops, (c, _) <- cs],
+      [n | TShape n _ <- tops],
       [t | TAlias t _ <- tops],
       [n | TSigDef n _ <- tops],
       [n | TStruct n _ _ <- tops]
@@ -213,6 +217,7 @@ qualifyUses aliases = map top
          in TBind n (map rp ps) g' (re bs' b)
       TSig n (ps, r) pcs -> TSig n (map rt ps, rt r) pcs
       TType n l ps cs -> TType n l ps [(c, map rt tys) | (c, tys) <- cs]
+      TShape n fs -> TShape n [(x, rt t) | (x, t) <- fs]
       TStruct n sigs fs -> TStruct n sigs [(f, re S.empty e) | (f, e) <- fs]
       TEval e -> TEval (re S.empty e)
       -- the shared parser produces TUse for `m = use "spec".`; splicing
@@ -305,4 +310,5 @@ renameNamesBy f = top
       TStruct n sigs fs -> TStruct n sigs [(x, re S.empty e) | (x, e) <- fs]
       TSig n (ps, r) pcs -> TSig n (map rt ps, rt r) pcs
       TType n l ps cs -> TType n l ps [(f c, map rt tys) | (c, tys) <- cs]
+      TShape n fs -> TShape n [(x, rt t) | (x, t) <- fs]
       other -> other

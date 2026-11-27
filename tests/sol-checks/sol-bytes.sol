@@ -23,5 +23,12 @@ main u = root = H.root Unit; work = tempDir "fpr-sol-bytes";
   _ = H.write "{work}/serial2.sol" (unwrap (Utf8.encode ">! r = Serial.open \"/dev/no-such-port\" 115200; print (case r of Ok p -> _ = Serial.close p; \"opened\" | Err e -> \"err\").\n"));
   ProcessResult tc2 to2 te2 = inDir root work "{work}/serial2.sol";
   _ = must "a missing serial port is an Err" (tc2 == 0 and to2 == "err\n") "{to2}{te2}";
-  print "sol-bytes: integer codecs, set/patch, CRC-32, transactional binary files, serial refusals PASS".
+  # child processes: the same operations on pipes (QEMU's console in board-host.sol)
+  ProcessResult cc co ce = inDir root work "{root}/tests/sol-checks/child/child.sol";
+  _ = must "Child write/expect/read/wait, timeout, end of output, missing program"
+    (cc == 0 and co == "(got:hello\n, second\n)\nOk 7\nErr Child.wait: still running after 300 ms; terminated\nErr Child.read: the process closed its output\nOk 0\nChild.open no-such-program-xyz: does not exist (No such file or directory)\n") "{co}{ce}";
+  _ = H.write "{work}/child2.sol" (unwrap (Utf8.encode "> print (isOk (Child.open [\"true\"])).\n"));
+  ProcessResult c2 o2 e2 = inDir root work "{work}/child2.sol";
+  _ = must "Child in a transactional statement is refused" (c2 != 0 and Str.contains "reaches immediate operation(s) Child.open" e2) e2;
+  print "sol-bytes: integer codecs, set/patch, CRC-32, transactional binary files, serial and child refusals, child processes PASS".
 >! main Unit.

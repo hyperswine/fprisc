@@ -206,14 +206,16 @@ mkHal cons scriptArgs tx preempts rt =
       -- non-overlapping, case folding is ASCII, trim strips 32/9/10/13)
       ("strSplit", (2, \[VInt c, sv] -> vsStr sv >>= \s -> pure (strList (splitCodes (toEnum (fromIntegral c)) s)))),
       -- the first match at or after a 0-based position; -1 = none (runtime.c g_strIndexFrom)
+      -- positions count UTF-8 bytes, as charAt/substr/strlen do
+      -- (docs/2026-11-27-SOL-BYTE-STRINGS.md)
       ("strIndexFrom", (3, \[pv, sv, iv] -> case iv of
           VInt i0 -> liftA2 (\p s ->
             let from = max 0 (fromIntegral i0) :: Int
-                rest = drop from s
-                hit = indexOfStr p rest
-             in VInt (fromIntegral (if from > length s then -1 else if null p then from else if hit < 0 then -1 else hit + from))) (vsStr pv) (vsStr sv)
+                sb = BS.pack (encodeRoundTrip s)
+                hit = byteIndexOf (BS.pack (encodeRoundTrip p)) (BS.drop from sb)
+             in VInt (fromIntegral (if from > BS.length sb then -1 else if null p then from else if hit < 0 then -1 else hit + from))) (vsStr pv) (vsStr sv)
           _ -> pure (VInt (-1)))),
-      ("strIndexOf", (2, \[pv, sv] -> liftA2 (\p s -> VInt (fromIntegral (indexOfStr p s))) (vsStr pv) (vsStr sv))),
+      ("strIndexOf", (2, \[pv, sv] -> liftA2 (\p s -> VInt (fromIntegral (if null p then -1 else byteIndexOf (BS.pack (encodeRoundTrip p)) (BS.pack (encodeRoundTrip s))))) (vsStr pv) (vsStr sv))),
       ("strReplace", (3, \[ov, nv, sv] -> do o <- vsStr ov; n <- vsStr nv; s <- vsStr sv; pure (VStr (replaceStr o n s)))),
       ("strUpper", (1, \[v] -> VStr . map (\ch -> if ch >= 'a' && ch <= 'z' then toEnum (fromEnum ch - 32) else ch) <$> vsStr v)),
       ("strLower", (1, \[v] -> VStr . map (\ch -> if ch >= 'A' && ch <= 'Z' then toEnum (fromEnum ch + 32) else ch) <$> vsStr v)),
@@ -270,6 +272,30 @@ mkHal cons scriptArgs tx preempts rt =
           r <- Serial.expectPort k needle (fromIntegral ms)
           pure (tupleV (resultV VBytes r) s))),
       ("Serial.close", (1, \[s] -> serialKey s >>= Serial.closePort >> pure vUnit)),
+      -- a child process on pipes: the same transport as a port (Sol.Serial)
+      ("Child.open", (1, \[argv] -> do
+          let strs = listStrings argv
+          markEscape "Child.open" ("starts " ++ unwords strs ++ " now")
+          r <- Serial.spawnChild strs
+          pure (resultV childV r))),
+      ("Child.write", (2, \[VBytes b, c] -> do
+          k <- childKey c
+          r <- Serial.writePort k b 10000
+          pure (tupleV (resultV (const vUnit) r) c))),
+      ("Child.read", (3, \[VInt cap, VInt ms, c] -> do
+          k <- childKey c
+          r <- Serial.readPort k (fromIntegral cap) (fromIntegral ms)
+          pure (tupleV (resultV VBytes r) c))),
+      ("Child.expect", (3, \[VStr text, VInt ms, c] -> do
+          k <- childKey c
+          needle <- either vmPanic pure (ScriptIO.encodeUtf8 text)
+          r <- Serial.expectPort k needle (fromIntegral ms)
+          pure (tupleV (resultV VBytes r) c))),
+      ("Child.wait", (2, \[VInt ms, c] -> do
+          k <- childKey c
+          r <- Serial.waitChild k (fromIntegral ms)
+          pure (resultV (VInt . fromIntegral) r))),
+      ("Child.kill", (1, \[c] -> childKey c >>= Serial.killChild >> pure vUnit)),
       ("error", (1, \[v] -> vmPanic (render v))),
       -- ---- the Ok/Err tier: fallible work returns Result, chained with |>? --
       ("Try.parseInt", (1, tryParseIntH)),
@@ -586,6 +612,12 @@ mkHal cons scriptArgs tx preempts rt =
     serialV k = let (t, v) = conTV "SerialPort" in VData t v [VInt (fromIntegral k)]
     serialKey (VData t _ [VInt k]) | t == fst (conTV "SerialPort") = pure (fromIntegral k)
     serialKey v = vmPanic ("Serial: not a port: " ++ render v)
+    childV k = let (t, v) = conTV "ChildProcess" in VData t v [VInt (fromIntegral k)]
+    childKey (VData t _ [VInt k]) | t == fst (conTV "ChildProcess") = pure (fromIntegral k)
+    childKey v = vmPanic ("Child: not a child process: " ++ render v)
+    listStrings (VData lt 1 [VStr x, rest]) | lt == listT = x : listStrings rest
+    listStrings (VData lt 0 []) | lt == listT = []
+    listStrings v = error ("*** SOL PANIC: Child.open: not a list of strings: " ++ render v ++ " ***")
     conTV n = maybe (-1, -1) (\(t, v, _) -> (t, v)) (M.lookup n cons)
     isCon n t g = conTV n == (t, g)
 
@@ -1104,6 +1136,8 @@ mkHal cons scriptArgs tx preempts rt =
     splitCodes c s = case break (== c) s of
       (pre, []) -> [pre]
       (pre, _ : rest) -> pre : splitCodes c rest
+    byteIndexOf :: BS.ByteString -> BS.ByteString -> Int
+    byteIndexOf p t = let (pre, post) = BS.breakSubstring p t in if BS.null post then -1 else BS.length pre
     indexOfStr :: String -> String -> Int
     indexOfStr "" _ = -1
     indexOfStr p s = go 0 s

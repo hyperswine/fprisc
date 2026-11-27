@@ -56,6 +56,7 @@ import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newEmptyMVar, new
 import Control.Exception (AsyncException (ThreadKilled), SomeException, finally, fromException, mask, try)
 import qualified Data.Set as S
 import Data.Int (Int64)
+import Data.Word (Word8)
 import qualified Data.IntMap.Strict as IM
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr)
@@ -445,7 +446,7 @@ builtinArities =
         ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.uptimeMs", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1), ("Sys.loop", 2),
         ("use", 1), ("run", 2), ("View.serve", 5),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
-        ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
+        ("Vec.set", 3), ("Vec.pack", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
         ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
         ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
         ("sortListWith", 2),
@@ -1077,6 +1078,17 @@ vecCall env name args = case (name, args) of
     x <- getVec r (fromIntegral i) -- 0-based like list !
     pure (VData 4 0 [x, VVec r])
   ("Vec.set", [VInt i, x, VVec r]) -> setVec r (fromIntegral i) x >> pure (VVec r)
+  -- n bytes from `from` as a string, and the vector back (std/binary's
+  -- Bytes.pack; native Vec.pack): each element's low 8 bits is one byte
+  ("Vec.pack", [VInt from, VInt n, VVec r]) -> do
+    len <- lenVec r
+    let lo = fromIntegral from; cnt = fromIntegral n
+    when (lo < 0 || cnt < 0 || lo + cnt > len) $
+      vmPanic ("Vec.pack: range " ++ show lo ++ "+" ++ show cnt ++ " outside a vector of " ++ show len)
+    xs <- mapM (getVec r) [lo .. lo + cnt - 1]
+    let byte (VInt k) = fromIntegral (k `mod` 256) :: Word8
+        byte bad = error ("Vec.pack: not an Int: " ++ render bad)
+    pure (VData 4 0 [VStr (decodeRoundTrip (map byte xs)), VVec r])
   ("Vec.free", [VVec _]) -> pure vUnit -- ForeignPtr finalizers reclaim
   -- the operator surface (VecOps in the prelude): elementwise + - *,
   -- the dot product, and scalar scaling -- both operands are consumed

@@ -171,6 +171,18 @@ prelude =
       "Serial.read : Int -> Int -> Serial -> (Result Bytes String, Serial).",
       "Serial.expect : String -> Int -> Serial -> (Result Bytes String, Serial).",
       "Serial.close : Serial -> Unit.",
+      -- A child process with its stdin and stdout on pipes (stderr inherited),
+      -- a LINEAR handle with Serial's operations: QEMU's serial console is a
+      -- Child the way a board's UART is a Serial. `wait` closes its stdin and
+      -- answers its exit status, terminating it after the timeout; `kill`
+      -- ends it now. Every operation acts now (`>!` statements only).
+      "Child 1 = Type (ChildProcess Int).",
+      "Child.open : List String -> Result Child String.",
+      "Child.write : Bytes -> Child -> (Result Unit String, Child).",
+      "Child.read : Int -> Int -> Child -> (Result Bytes String, Child).",
+      "Child.expect : String -> Int -> Child -> (Result Bytes String, Child).",
+      "Child.wait : Int -> Child -> Result Int String.",
+      "Child.kill : Child -> Unit.",
       -- Typed native capabilities; byte/admission budgets come from callers.
       "GitOperation = Type (GitInit String | GitAdd String (List String) | GitUnadd String (List String) | GitCommit String | GitUncommit String | GitBranch String | GitDeleteBranch String | GitSwitch String | GitTag String | GitUntag String | GitStatus | GitDiff | GitDiffStaged | GitLog Int | GitHead).",
       "NativeGit.afterCommit : Int -> String -> String -> String -> GitOperation -> Unit.",
@@ -223,6 +235,7 @@ prelude =
       "Vec.len : Vector a -> (Int, Vector a).",
       "Vec.get : Int -> Vector a -> (a, Vector a).",
       "Vec.set : Int -> a -> Vector a -> Vector a.",
+      "Vec.pack : Int -> Int -> Vector Int -> (String, Vector Int).",
       "Vec.map : (a -> b) -> Vector a -> Vector b.",
       "Vec.filter : (a -> Bool) -> Vector a -> Vector a.",
       "Vec.fold : (b -> a -> b) -> b -> Vector a -> (b, Vector a).",
@@ -443,6 +456,7 @@ halArities =
       ("BStr.append", 2), ("BStr.cat", 2), ("BStr.len", 1),
       ("BStr.at", 2), ("BStr.sub", 3), ("BStr.free", 1),
       ("Serial.open", 2), ("Serial.write", 2), ("Serial.read", 3), ("Serial.expect", 3), ("Serial.close", 1),
+      ("Child.open", 1), ("Child.write", 2), ("Child.read", 3), ("Child.expect", 3), ("Child.wait", 2), ("Child.kill", 1),
       ("NativeGit.afterCommit", 5), ("NativeGit.query", 3), ("NativeGit.push", 4), ("NativeArchive.afterCommit", 4),
       ("Host.snapshot", 1),
       ("Proc.later", 1), ("Deferred.out", 1), ("Deferred.trim", 1), ("Deferred.line", 2), ("Deferred.field", 3),
@@ -459,7 +473,7 @@ halArities =
       ("band", 2), ("bor", 2), ("bxor", 2), ("BITSET", 2), ("BITCLEAR", 2), ("BITMASK", 2), ("BITSHIFTL", 2), ("BITSHIFTR", 2), ("BITTEST", 2),
       ("map", 2), ("filter", 2), ("foldl", 3),
       ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
-      ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
+      ("Vec.set", 3), ("Vec.pack", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
       ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
       ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
       ("sortListWith", 2), ("strHash", 1), ("intHash", 1),

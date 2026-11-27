@@ -719,6 +719,12 @@ runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
   res <- (do
     (forM_ (txCfgTopNames cfg) $ \n -> do
       v <- execFn env n []
+      -- An auto-run `main` that answers an Int ends the run with it as the
+      -- exit status, as a native program's main does (std/test's `run`
+      -- answers 0 or 1), through the same path as Script.exit.
+      when (n == "main") $ case v of
+        VInt k | k > 0 && k <= 255 -> throwIO (ScriptIO.ScriptExit (fromInteger k))
+        _ -> pure ()
       forM_ (statementIndex n) $ \i -> modifyIORef' pendingResults ((i, v) :)) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit (Just code)
     when (txCfgDumpTabStats cfg) $ do
       statsFlag <- lookupEnv "SOL_TABLE_STATS"
@@ -1149,7 +1155,8 @@ immediateOperations = S.fromList (realtimeNames ++
   , "Stream.readCsv", "Stream.writeChunk", "Sha256.stream", "Http.request", "Http.download"
   , "Proc.runNow", "Proc.streamNow", "Proc.inheritNow", "Proc.pipeline", "Proc.start"
   , "NativeGit.push", "NativeGit.commitNow"
-  , "Serial.open", "Serial.write", "Serial.read", "Serial.expect", "Serial.close" ])
+  , "Serial.open", "Serial.write", "Serial.read", "Serial.expect", "Serial.close"
+  , "Child.open", "Child.write", "Child.read", "Child.expect", "Child.wait", "Child.kill" ])
 
 -- For each transactional statement (and a zero-arg `main` run as one), the
 -- immediate operations it can reach through top-level references. A
