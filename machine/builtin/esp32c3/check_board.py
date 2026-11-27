@@ -47,7 +47,12 @@ def attach_read(port):
         serial.rts = False
         serial.port = port
         serial.open()
-        serial.reset_input_buffer()
+        # The USB device can still have boot output queued after the host
+        # opens the port. Drain it before requesting any binary file bytes.
+        deadline = time.monotonic() + 12
+        while serial.read(1024):
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Logger console did not become quiet")
         payload = payload_bytes()
         read_file(serial, payload)
         print(f"attached read PASS: {len(payload)} bytes, SHA-256 {hashlib.sha256(payload).hexdigest()}")
