@@ -66,3 +66,43 @@ void c3_radio_free(void *ptr) {
 
 size_t c3_radio_allocated(void) { return allocated; }
 size_t c3_radio_peak(void) { return peak; }
+
+void *c3_radio_calloc(size_t count, size_t bytes) {
+    if (!bytes || count > SIZE_MAX / bytes) return NULL;
+    size_t size = count * bytes;
+    uint8_t *ptr = c3_radio_alloc(size);
+    if (ptr) for (size_t i = 0; i < size; ++i) ptr[i] = 0;
+    return ptr;
+}
+
+void *c3_radio_realloc(void *ptr, size_t bytes) {
+    if (!ptr) return c3_radio_alloc(bytes);
+    if (!bytes) {
+        c3_radio_free(ptr);
+        return NULL;
+    }
+    for (size_t offset = 0; initialized && offset < ARENA_BYTES;) {
+        const block *b = at(offset);
+        if (b->used && arena + offset + ALIGNMENT == ptr) {
+            if (b->bytes >= bytes) return ptr;
+            uint8_t *replacement = c3_radio_alloc(bytes);
+            if (!replacement) return NULL;
+            for (size_t i = 0; i < b->bytes; ++i) replacement[i] = ((const uint8_t *)ptr)[i];
+            c3_radio_free(ptr);
+            return replacement;
+        }
+        offset += ALIGNMENT + b->bytes;
+    }
+    __builtin_trap();
+}
+
+size_t c3_radio_available(void) {
+    if (!initialized) return ARENA_BYTES - ALIGNMENT;
+    size_t available = 0;
+    for (size_t offset = 0; offset < ARENA_BYTES;) {
+        const block *b = at(offset);
+        if (!b->used) available += b->bytes;
+        offset += ALIGNMENT + b->bytes;
+    }
+    return available;
+}

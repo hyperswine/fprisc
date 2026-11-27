@@ -18,5 +18,17 @@ int main(void) {
     void *all = c3_radio_alloc(24 * 1024 - 16);
     assert(all && c3_radio_alloc(1) == 0);
     c3_radio_free(all);
+    assert(c3_radio_available() == 24 * 1024 - 16);
+    assert(c3_radio_calloc(SIZE_MAX, 2) == 0);
+    uint8_t *zero = c3_radio_calloc(2, 17);
+    assert(zero);
+    for (size_t i = 0; i < 34; ++i) assert(zero[i] == 0);
+    zero[16] = 0xba;
+    assert(c3_radio_realloc(zero, 17) == zero);
+    assert(c3_radio_realloc(zero, SIZE_MAX) == 0 && zero[16] == 0xba);
+    zero = c3_radio_realloc(zero, 78);
+    assert(zero && zero[16] == 0xba);
+    assert(c3_radio_realloc(zero, 0) == 0);
+    assert(c3_radio_available() == 24 * 1024 - 16);
     assert(c3_radio_allocated() == 0);
 }

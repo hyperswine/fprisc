@@ -1,6 +1,11 @@
 #include "task.h"
 #include "btdm_services.h"
 #include "event_group.h"
+#ifdef C3_TEST_WIFI
+#include "alloc.h"
+#include "wifi_services.h"
+#include "wifi_irq.h"
+#endif
 #include "btdm_irq.h"
 #include "../../interrupt.h"
 #include "os_queue.h"
@@ -211,6 +216,84 @@ static void event_vectors(void) {
     c3_events_delete(event);
 }
 
+#ifdef C3_TEST_WIFI
+static wifi_osi_funcs_t wifi;
+static unsigned timer_calls;
+static void timer_expired(void *arg) { ++*(unsigned *)arg; }
+static void *controller_sem;
+static void wifi_thread(void *arg) {
+    CHECK(wifi._task_get_current_task() == *(void **)arg);
+    controller_sem = wifi._wifi_thread_semphr_get();
+    CHECK(controller_sem && controller_sem == wifi._wifi_thread_semphr_get());
+    CHECK(wifi._semphr_take(controller_sem, UINT32_MAX));
+    fail(__LINE__);
+}
+
+static unsigned wifi_irq_hits;
+static void wifi_interrupt(const void *arg) {
+    CHECK(wifi._is_from_isr() && arg == &wifi_irq_hits);
+    ++wifi_irq_hits;
+}
+
+static void wifi_vectors(void) {
+    CHECK(c3_wifi_install_services(&wifi));
+    CHECK((uint32_t)wifi._magic == ESP_WIFI_OS_ADAPTER_MAGIC &&
+          wifi._version == ESP_WIFI_OS_ADAPTER_VERSION);
+    c3_wifi_install_interrupts(&wifi);
+    wifi._set_intr(0, 0, 1, 1);
+    wifi._set_intr(0, 2, 1, 1);
+    wifi._set_isr(1, (void *)wifi_interrupt, &wifi_irq_hits);
+    unsigned mac = IRQ_REG(0), power = IRQ_REG(8);
+    CHECK(mac != power && mac > 2 && power > 2);
+    CHECK(c3_irq_dispatch(mac) && c3_irq_dispatch(power) && wifi_irq_hits == 2);
+    CHECK(!wifi._is_from_isr());
+    uint32_t mask = (1u << mac) | (1u << power);
+    wifi._ints_off(1u << 1);
+    CHECK(!(IRQ_REG(0x104) & mask) && (IRQ_REG(0x104) & 6u) == 6u);
+    wifi._ints_on(1u << 1);
+    CHECK((IRQ_REG(0x104) & mask) == mask);
+    wifi._clear_intr(2, 1);
+    CHECK(!IRQ_REG(8) && !c3_irq_dispatch(power));
+    wifi._set_isr(1, NULL, NULL);
+    CHECK(!IRQ_REG(0) && !c3_irq_dispatch(mac));
+    CHECK(wifi._esp_timer_get_time() == (int64_t)now);
+    void *task = NULL;
+    CHECK(wifi._task_create((void *)wifi_thread, "wifi", 1024, &task, 3, &task));
+    c3_task_yield();
+    CHECK(controller_sem);
+    wifi._task_delete(task);
+    CHECK(wifi._semphr_create(1, 0) == controller_sem);
+    wifi._semphr_delete(controller_sem);
+
+    void **queue_slot = wifi._wifi_create_queue(2, sizeof(unsigned));
+    CHECK(queue_slot && *queue_slot);
+    unsigned back = 1, front = 2, value = 0;
+    CHECK(wifi._queue_send(*queue_slot, &back, 0));
+    CHECK(wifi._queue_send_to_front(*queue_slot, &front, 0));
+    CHECK(wifi._queue_msg_waiting(*queue_slot) == 2);
+    CHECK(wifi._queue_recv(*queue_slot, &value, 0) && value == front);
+    CHECK(wifi._queue_recv(*queue_slot, &value, 0) && value == back);
+    wifi._wifi_delete_queue(queue_slot);
+    CHECK(c3_radio_allocated() == 0);
+
+    unsigned timer;
+    wifi._timer_setfn(&timer, (void *)timer_expired, &timer_calls);
+    wifi._timer_arm_us(&timer, 100, true);
+    uint64_t start = now;
+    wifi._task_delay(1);
+    CHECK(now == start + 1000 && timer_calls == 10);
+    wifi._timer_disarm(&timer);
+    wifi._task_delay(1);
+    CHECK(timer_calls == 10);
+    wifi._timer_arm_us(&timer, 500, false);
+    wifi._task_delay(1);
+    CHECK(timer_calls == 11);
+    wifi._timer_done(&timer);
+    wifi._task_delay(1);
+    CHECK(timer_calls == 11);
+}
+#endif
+
 void main(void) {
     c3_tasks_init(1);
     CHECK(c3_task_create(reader, &channel, 3, stacks[0], sizeof(stacks[0])) == 2);
@@ -235,6 +318,9 @@ void main(void) {
     event_vectors();
     callback_vectors();
     interrupt_vectors();
+#ifdef C3_TEST_WIFI
+    wifi_vectors();
+#endif
     for (const char *s = "RV32 task services PASS\n"; *s; ++s) UART = (uint8_t)*s;
     FINISH = 0x5555;
     for (;;) {}

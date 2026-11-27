@@ -107,3 +107,11 @@ produced by RV32 GCC against the pinned Rust bindings. It uses rustc with
 the riscv32imc-unknown-none-elf target installed. The C generator itself
 requires Python. The RV32 task vectors also cover queue front insertion
 and event groups, including multiple waiters observing the same bits.
+
+The Wi-Fi callback binder shares controller task slots with BLE and adds
+thread-local semaphores, timer callbacks, allocation services, and Wi-Fi
+MAC and power interrupt routing. A dedicated task dispatches one-shot
+and repeating timers using microsecond deadlines. Set C3_RADIO_SYS when
+running tests/check-tasks.sh to generate the locked Wi-Fi header and
+exercise the callbacks through the vendor ABI. The emulator uses a
+simulated clock and interrupt matrix.

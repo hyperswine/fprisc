@@ -32,6 +32,21 @@ static struct task_slot {
 } task_slots[CONTROLLER_TASKS];
 
 static unsigned irq_depth;
+static bool scheduler_started;
+static unsigned main_task_handle;
+static void (*task_cleanup)(c3_task_id);
+
+void c3_services_set_task_cleanup(void (*cleanup)(c3_task_id)) {
+    task_cleanup = cleanup;
+}
+
+void *c3_services_current_task(void) {
+    c3_task_id id = c3_task_current();
+    for (unsigned i = 0; i < CONTROLLER_TASKS; ++i)
+        if (task_slots[i].id == id) return &task_slots[i];
+    return &main_task_handle;
+}
+
 static unsigned *task_waiters[C3_TASK_LIMIT];
 
 static void begin_wait(unsigned *waiters) {
@@ -77,6 +92,20 @@ static int32_t send(void *handle, void *item, uint32_t ticks) {
     bool ok = c3_queue_send(&s->queue, item, deadline(ticks));
     end_wait(c3_task_current());
     return ok;
+}
+
+int32_t c3_services_queue_send_front(void *handle, void *item, uint32_t ticks) {
+    struct queue_slot *s = handle;
+    if (!s || !s->used || !item || irq_depth) return 0;
+    begin_wait(&s->waiters);
+    bool ok = c3_queue_send_front(&s->queue, item, deadline(ticks));
+    end_wait(c3_task_current());
+    return ok;
+}
+
+uint32_t c3_services_queue_waiting(void *handle) {
+    const struct queue_slot *s = handle;
+    return s && s->used ? s->queue.count : 0;
 }
 
 static int32_t receive(void *handle, void *item, uint32_t ticks) {
@@ -183,6 +212,7 @@ static int32_t mutex_unlock(const void *handle) {
 static void run_task(void *arg) {
     struct task_slot *s = arg;
     s->entry(s->arg);
+    if (task_cleanup) task_cleanup(s->id);
     s->id = C3_TASK_INVALID;
 }
 
@@ -213,6 +243,7 @@ static void delete_task(void *handle) {
             for (unsigned j = 0; j < MUTEXES; ++j)
                 if (mutexes[j].owner == id) __builtin_trap();
             end_wait(id);
+            if (task_cleanup) task_cleanup(id);
             s->id = C3_TASK_INVALID;
             c3_task_delete(id);
             return;
@@ -230,7 +261,10 @@ void c3_btdm_isr_leave(void) { --irq_depth; }
 static void yield_from_isr(void) {}
 
 void c3_btdm_install_services(struct c3_btdm_osi *table, unsigned priority) {
-    c3_tasks_init(priority);
+    if (!scheduler_started) {
+        c3_tasks_init(priority);
+        scheduler_started = true;
+    }
     table->magic = C3_BTDM_OSI_MAGIC;
     table->version = C3_BTDM_OSI_VERSION;
     table->task_yield = c3_task_yield;
