@@ -116,8 +116,8 @@ deadline and supports using the same buffer for both arguments.
 
 Build `examples/endurance.fpr` with the file-enabled RAM configuration and
 `-DFPR_RUNTIME_STATS=ON`. Run `python check_endurance.py PORT IMAGE` for
-the two-hour qualification. The workload double-blinks the LED, samples BOOT
-and appends one timestamped record to `FPREND.BIN` every 30 blink cycles.
+the two-hour qualification. The workload releases the active-low LED to keep it off, samples BOOT
+and appends one timestamped record to `FPREND.BIN` every 30 two-second waits.
 Each checkpoint reports live Builtin allocation count and bytes, peak Builtin
 bytes, current and minimum IDF 8-bit heap, and the main task's stack
 high-water mark in bytes. The checker requires consecutive checkpoints,

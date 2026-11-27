@@ -9,18 +9,6 @@ wait p ms = _ = Clock.nowMs p;
   rc = Clock.afterMs p ms p;
   if rc != 0 then rc else _ = Clock.sleepUntil p; 0.
 
-phase p high ms =
-  rc = GPIO.write Board.led high;
-  if rc != 0 then rc else wait p ms.
-
-cycle p =
-  first = phase p False 200;
-  if first != 0 then first else
-    gap = phase p True 200;
-    if gap != 0 then gap else
-      second = phase p False 200;
-      if second != 0 then second else phase p True 1400.
-
 checkpoint p stateByte index =
   level = GPIO.read Board.button;
   if level < 0 then level else
@@ -32,8 +20,8 @@ checkpoint p stateByte index =
 loop p stateByte count group =
   rc = (if count == 0 then checkpoint p stateByte group else 0);
   if rc != 0 then rc else
-    blink = cycle p;
-    if blink != 0 then blink else
+    slept = wait p 2000;
+    if slept != 0 then slept else
       if count == 29 then loop p stateByte 0 (group + 1) else loop p stateByte (count + 1) group.
 
 run p =
