@@ -63,10 +63,11 @@ count xs = case xs of [] -> 0 | x :: rest -> 1 + count rest.
 - Floats are `F64`, as native (since 27 Nov 2026): `Int` and `F64` do not mix,
   and mixing is a type error; convert with `F64.ofInt n`, `F64.toInt x`,
   `Num.floor`/`Num.round x`. An unannotated `a + b` or `<` (also on a record
-  field) defaults to `Int`: give float helpers a signature. `%` is `Int` only;
-  `F64 ^ F64` is `exp(y log x)`, as native. `==` and printing do not reach a
-  float inside a structure (a tuple, list or record): compare or print it with
-  `F64.==`/`F64.str`, and test a float list for `[]` with a `case`.
+  field) defaults to `Int`: give float helpers a signature. `%` is `Int` only.
+  `F64 ^ F64` is within an ulp, and exact for a whole exponent when the power
+  is representable. `==` and printing do not reach a float inside a structure
+  (a tuple, list or record): compare or print it with `F64.==`/`F64.str`, and
+  test a float list for `[]` with a `case`.
 - Defining a prelude name (`run`, `write`, `close`, `print`, ...) is an error or
   a confusing type error: pick another name.
 

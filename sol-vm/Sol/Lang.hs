@@ -25,6 +25,7 @@ module Sol.Lang (module Sol.Lang, module FPRISC) where
 
 -- This profile adapter preserves its public frontend compatibility exports.
 import FPRISC hiding (collectCons, collectShapes)
+import Data.Char (isUpper)
 import Data.List (foldl', nub, sort, sortOn, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -171,6 +172,14 @@ renameTops rn tops0 = map top tops0
     re = transformEP step rp
     step bs e = case e of
       SVar v | not (S.member v bs) -> SVar (lookDotted v)
+      -- a module's @Model.field / @Msg literal names its own type, as a type
+      -- occurrence does: rename the root with the type (Modules.reSelf is the
+      -- AOT twin); a sol file path (no renamed upper-case root) is untouched
+      SApp (SVar "Path") (SStrI [SegStr p])
+        | (root@(c : _), fields) <- break (== '.') p,
+          isUpper c,
+          Just r <- M.lookup root rn ->
+            SApp (SVar "Path") (SStrI [SegStr (r ++ fields)])
       _ -> e
 
 
@@ -275,10 +284,56 @@ coreBuiltinMarks :: [Name] -> M.Map Name Name
 coreBuiltinMarks defined = M.fromList [(b, '@' : b) | b <- coreBuiltinNames, b `notElem` defined]
 
 resolveCoreBuiltins :: [STop] -> [STop] -> ([STop], [STop])
-resolveCoreBuiltins prel prog = (map (renameNamesBy prelName) prel, map (renameNamesBy progName) prog)
+resolveCoreBuiltins prel prog = (map (renameNamesBy prelName) prel, map (renameNamesBy progName . shadowTop) prog)
   where
+    -- THE ROOT SCRIPT SHADOWS. A type or constructor the script itself
+    -- declares under a builtin type's name (`Option`, `Result`) or a preamble
+    -- type's or constructor's (`Cmd`, `Msg`) is the script's: the two used to
+    -- merge into one type, so exhaustiveness asked the script's `case` for
+    -- `Some`/`None` and a value of one unified with the other. A spliced
+    -- module's definitions are already qualified (`CLI.Option`); the root's
+    -- are the unqualified ones, so only those are renamed, to `Main.<name>`
+    -- (the VM prints a constructor by its base name, so output is unchanged).
+    -- `None`, `Some`, `Ok` and `Err` stay the builtins, as above.
+    isRoot = \case
+      TEval {} -> True
+      t -> case topNames [t] of
+        n : _ -> '.' `notElem` n
+        [] -> False
+    rootTops = filter isRoot prog
+    -- types and constructors are separate namespaces: a type `Msg` beside
+    -- the preamble's constructor `Msg` is no clash
+    rootTypes = S.fromList ([n | TType n _ _ _ <- rootTops] ++ [n | TShape n _ <- rootTops])
+    rootCons = S.fromList [c | TType _ _ _ cs <- rootTops, (c, _) <- cs]
+    prelTypes = S.fromList (["Option", "Result"] ++ [n | TType n _ _ _ <- prel] ++ [n | TShape n _ <- prel])
+    prelCons = S.fromList [prelName c | TType _ _ _ cs <- prel, (c, _) <- cs]
+    shadowed =
+      S.difference
+        (S.union (S.intersection rootTypes prelTypes) (S.intersection rootCons prelCons))
+        (S.fromList ["None", "Some", "Ok", "Err"])
+    shadowName n = if S.member n shadowed then "Main." ++ n else n
+    -- `@Option` / `@Cmd.field` literals name the type as well
+    shadowPath = \case
+      SApp (SVar "Path") (SStrI [SegStr p])
+        | (root, fields) <- break (== '.') p,
+          S.member root shadowed ->
+            SApp (SVar "Path") (SStrI [SegStr ("Main." ++ root ++ fields)])
+      e -> e
+    tp = transformEP (\_ e -> shadowPath e) id S.empty
+    shadowExprs = \case
+      TBind n ps g b -> TBind n ps (map (mapGuardE tp) g) (tp b)
+      TEval e -> TEval (tp e)
+      TStruct n sigs fs -> TStruct n sigs [(x, tp e) | (x, e) <- fs]
+      other -> other
+    shadowTop t
+      | S.null shadowed || not (isRoot t) = t
+      | otherwise = case shadowExprs (renameNamesBy shadowName t) of
+          TType n l ps cs -> TType (shadowName n) l ps cs
+          TShape n fs -> TShape (shadowName n) fs
+          other -> other
     everything = prel ++ prog
-    defined = S.fromList (topNames everything)
+    -- the root's shadowing names (`Main.Option`) are its own definitions
+    defined = S.union (S.fromList (topNames everything)) (S.map ("Main." ++) shadowed)
     prelName n
       | n == "None" = "Cmd.None"
       | otherwise = n

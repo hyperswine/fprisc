@@ -28,5 +28,5 @@ main u = root = H.root Unit; work = tempDir "fpr-fmath";
   _ = unwrap (Proc.runNow (ProcessSpec ["sh","-c","\"$1\" sol \"$2\" > \"$3\"","sh","{root}/fpr","{root}/tests/fmath/strings.sol","{work}/strings-sol.out"] "" env "" 300000));
   ProcessResult cc co ce = H.call ["cmp","{work}/strings-native.out","{work}/strings-sol.out"] [] 5000;
   _ = (if cc != 0 then error "strings: native and Sol bytes differ\n{co}{ce}" else Unit);
-  print "fmath parity: 12 float functions x 2001 inputs, 345 bit-operation rows and byte-indexed strings, native and Sol identical PASS".
+  print "fmath parity: 16 float columns x 2001 inputs, 345 bit-operation rows and byte-indexed strings, native and Sol identical PASS".
 >! main Unit.

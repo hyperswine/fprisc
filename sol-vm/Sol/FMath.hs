@@ -79,17 +79,118 @@ fexp x
             + r * (1.0 / 479001600 + r * (1.0 / 6227020800.0)))))))))))))
        in if k >= -1021 then s * pow2 (k + 1023) else s * pow2 (k + 1023 + 64) * pow2 (1023 - 64)
 
+-- pow in double-double (runtime.c fpow_ and its helpers, op for op): error-free
+-- sums, Dekker products (no FMA), binary powering for an integral exponent
+-- below 2^40, and exp/log carried as hi+lo pairs otherwise.
+twoSum :: Double -> Double -> (Double, Double)
+twoSum a b = let x = a + b; bv = x - a; av = x - bv in (x, (a - av) + (b - bv))
+
+fastTwoSum :: Double -> Double -> (Double, Double)
+fastTwoSum a b = let x = a + b in (x, b - (x - a))
+
+-- operands below 2^996 in magnitude
+twoProd :: Double -> Double -> (Double, Double)
+twoProd a b =
+  let x = a * b
+      ca = 134217729.0 * a; ah = ca - (ca - a); al = a - ah
+      cb = 134217729.0 * b; bh = cb - (cb - b); bl = b - bh
+   in (x, ((ah * bh - x) + ah * bl + al * bh) + al * bl)
+
+ddMul :: (Double, Double) -> (Double, Double) -> (Double, Double)
+ddMul (ah, al) (bh, bl) = let (p, e) = twoProd ah bh in fastTwoSum p (e + (ah * bl + al * bh))
+
+lowBound, highBound :: Double
+lowBound = encodeFloat 1 (-969)
+highBound = encodeFloat 1 996
+
+-- x^n for 0 < n < 2^40; Nothing when an intermediate leaves [2^-969, 2^996]
+powIntDD :: Double -> Word64 -> Maybe (Double, Double)
+powIntDD x = go (1.0, 0.0) (x, 0.0)
+  where
+    inRange a = a >= lowBound && a < highBound
+    go r b n =
+      let r' = if n .&. 1 /= 0 then ddMul r b else r
+          okR = n .&. 1 == 0 || inRange (abs (fst r'))
+          n' = n `shiftR` 1
+       in if not okR then Nothing
+          else if n' == 0 then Just r'
+          else let b' = ddMul b b in if inRange (fst b') then go r' b' n' else Nothing
+
+-- ln x as (hi, lo), x positive and finite
+logDD :: Double -> (Double, Double)
+logDD x0 =
+  let u0 = castDoubleToWord64 x0
+      (x1, e0) = if u0 < (1 `shiftL` 52) then (x0 * 9007199254740992.0, -53) else (x0, 0)
+      u = castDoubleToWord64 x1
+      e1 = e0 + fromIntegral ((u `shiftR` 52) .&. 0x7ff) - 1023 :: Int
+      m0 = castWord64ToDouble ((u .&. 0xfffffffffffff) .|. (1023 `shiftL` 52))
+      (m, e) = if m0 > 1.4142135623730951 then (m0 * 0.5, e1 + 1) else (m0, e1)
+      f = m - 1.0
+      (d, dl) = twoSum m 1.0
+      t = f / d
+      (p, pe) = twoProd t d
+      tl = (((f - p) - pe) - t * dl) / d
+      t2 = t * t
+      r = 2.0 * (t * t2 * (1.0 / 3 + t2 * (1.0 / 5 + t2 * (1.0 / 7 + t2 * (1.0 / 9
+            + t2 * (1.0 / 11 + t2 * (1.0 / 13 + t2 * (1.0 / 15 + t2 * (1.0 / 17
+            + t2 * (1.0 / 19 + t2 * (1.0 / 21 + t2 * (1.0 / 23))))))))))))
+      ed = fromIntegral e :: Double
+      (s, se) = twoSum (ed * ln2hi) (2.0 * t)
+   in fastTwoSum s (se + (ed * ln2lo + (2.0 * tl + r)))
+
+-- exp (hi + lo), lo below an ulp of hi
+expDD :: Double -> Double -> Double
+expDD x lo
+  | x > 709.782712893384 = inf
+  | x < -745.133219101941 = 0
+  | otherwise =
+      let kd = x * invln2
+          k = truncL (kd + (if kd >= 0 then 0.5 else -0.5))
+          kf = fromIntegral k :: Double
+          r = ((x - kf * ln2hi) + lo) - kf * ln2lo
+          s = 1.0 + r * (1.0 + r * (1.0 / 2 + r * (1.0 / 6 + r * (1.0 / 24
+            + r * (1.0 / 120 + r * (1.0 / 720 + r * (1.0 / 5040 + r * (1.0 / 40320
+            + r * (1.0 / 362880 + r * (1.0 / 3628800 + r * (1.0 / 39916800
+            + r * (1.0 / 479001600 + r * (1.0 / 6227020800.0)))))))))))))
+       in if k >= -1021 then s * pow2 (k + 1023) else s * pow2 (k + 1023 + 64) * pow2 (1023 - 64)
+
+-- |x|^y for positive finite x /= 1 and finite y
+powPos :: Double -> Double -> Double
+powPos x y =
+  let (hi, lo) = logDD x
+      ph = y * hi
+   in if not (ph < 800.0 && ph > -800.0) then fexp ph
+      else let (p, pe) = twoProd y hi in expDD p (pe + y * lo)
+
 fpow :: Double -> Double -> Double
 fpow x y
   | y == 0 = 1
   | isNaN x || isNaN y = nan
   | x == 1 = 1
   | x == 0 = if y > 0 then 0 else inf
-  | x < 0 =
-      let yi = fromIntegral (truncL y) :: Double
-       in if yi /= y then nan
-            else let r = fexp (y * flog (negate x)) in if odd (truncL y) then negate r else r
-  | otherwise = fexp (y * flog x)
+  | fspec x || fspec y = fexp (y * flog (abs x))
+  | otherwise =
+      let ay = abs y
+          big = ay >= 9007199254740992.0
+          integral = big || fromIntegral (truncL y) == y
+          odd' = not big && integral && odd (truncL y)
+          viaInt =
+            if integral && ay < encodeFloat 1 40
+              then case powIntDD x (fromIntegral (truncL ay)) of
+                Just (h, l)
+                  | y > 0 -> Just (h + l)
+                  | otherwise ->
+                      let q = 1.0 / h
+                          (p, pe) = twoProd h q
+                          rm = ((1.0 - p) - pe) - l * q
+                       in Just (q + rm * q)
+                Nothing -> Nothing
+              else Nothing
+       in case viaInt of
+            Just v -> v
+            Nothing
+              | x < 0 -> if not integral then nan else let r = powPos (negate x) y in if odd' then negate r else r
+              | otherwise -> powPos x y
 
 -- two-word Cody-Waite pi/2 reduction: (quadrant, r), or Nothing past the v1 range
 rempio2 :: Double -> Maybe (Int64, Double)

@@ -14,8 +14,8 @@ entry spec = case List.rev (Str.split 58 spec) of
 main : unsafe Unit -> Unit .
 >! parsed = unwrap (CLI.parse (List.map (fn k -> CLI.Option k "" CLI.One) ["image","manifest","target","report","stack-entries"]) (args Unit));
   opt k = CLI.valueOr "" k parsed;
-  bytes = F.readBytes (opt "image");
-  physical = T.admit bytes (F.readBytes (opt "manifest")) (opt "target");
+  bytes = F.readFileBytes (opt "image");
+  physical = T.admit bytes (F.readFileBytes (opt "manifest")) (opt "target");
   img = RV.image bytes;
   entries = List.map entry (Str.words (Str.replace "," " " (opt "stack-entries")));
   names = List.map (fn p -> (name,_) = p; name) entries;

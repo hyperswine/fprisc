@@ -6,5 +6,8 @@ b x = I64.str (I64.ofF64Bits x).
 row i =
   x = F64.ofInt i * 0.0137;
   u = F64.ofInt i * 0.00049;
-  print "{b (F64.sin x)} {b (F64.cos x)} {b (F64.tan x)} {b (F64.atan x)} {b (F64.atan2 x 0.7)} {b (F64.asin u)} {b (F64.acos u)} {b (F64.exp (x * 0.05))} {b (F64.log (x + 30.5))} {b (F64.log2 (x + 30.5))} {b (F64.pow (x + 30.5) 1.7)} {b (F64.sin (x * 1000.0))}".
+  # pow: integral exponents -30..30 (exact binary powering), a wide base,
+  # y near 1e9 on a base near 1, and integral y beyond 2^40
+  k = F64.ofInt (i % 61 - 30);
+  print "{b (F64.sin x)} {b (F64.cos x)} {b (F64.tan x)} {b (F64.atan x)} {b (F64.atan2 x 0.7)} {b (F64.asin u)} {b (F64.acos u)} {b (F64.exp (x * 0.05))} {b (F64.log (x + 30.5))} {b (F64.log2 (x + 30.5))} {b (F64.pow (x + 30.5) 1.7)} {b (F64.sin (x * 1000.0))} {b (F64.pow (x * 0.1) k)} {b (F64.pow (F64.exp (x * 50.0)) (0.9 + u * 0.1))} {b (F64.pow (1.0 + x * 0.0000001) (F64.ofInt i * 1000003.0 + 0.5))} {b (F64.pow (x * 0.1) (F64.ofInt i * 10000000000.0))}".
 main = L.fold (fn acc i -> row i) Unit (L.range (0 - 1000) 1000).

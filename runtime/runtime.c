@@ -6024,9 +6024,9 @@ V fpr_prim_fn_F32_x2eofInt(V a) { return bitsf(bi_to_float(a)); }
 /* ---- transcendentals: freestanding, double path -----------------------
  * No libm in any of these links, so log/exp/pow/sin/cos are here whole:
  * classic Cody-Waite reductions + Taylor/atanh polynomials, ~1 ulp on
- * the primary ranges.  v1 honesty: pow is exp(y*ln x) (error grows
- * with |y ln x|), and sin/cos reduce with a two-word pi/2, exact to
- * |x| ~ 2^30 and degrading beyond (no Payne-Hanek).  F32 variants
+ * the primary ranges (pow too, through double-double: see fpow_);
+ * sin/cos reduce with a two-word pi/2, exact to |x| ~ 2^30 and
+ * degrading beyond (no Payne-Hanek).  F32 variants
  * compute in double and round once, like F32.sqrt above. */
 static const double LN2HI_ = 6.93147180369123816490e-01,
                     LN2LO_ = 1.90821492927058770002e-10,
@@ -6078,18 +6078,130 @@ static double fexp_(double x) {
   if (k >= -1021) return s * draw2d_((uint64_t)(k + 1023) << 52);
   return s * draw2d_((uint64_t)(k + 1023 + 64) << 52) * draw2d_((uint64_t)(1023 - 64) << 52);
 }
+/* ---- pow: double-double, ~1 ulp everywhere -------------------------
+ * exp(y*ln x) in plain doubles loses |y ln x| * 2^-53 absolutely in the
+ * exponent (2.5^2 came out 6.24999999999999).  Here ln x and y*ln x are
+ * carried as hi+lo pairs (error-free sums and Dekker products: no FMA,
+ * so every target and Sol's port in sol-vm/Sol/FMath.hs agree bit for
+ * bit), and the exp reduction takes the low word in.  An integral
+ * exponent below 2^40 is binary powering in double-double instead: its
+ * accumulated error is under n*2^-104 < 2^-64, so the one rounding at the
+ * end is the only one, and an exactly representable power is exact. */
+static void two_sum_(double a, double b, double *s, double *e) {
+  double x = a + b, bv = x - a, av = x - bv;
+  *s = x; *e = (a - av) + (b - bv);
+}
+static void fast_two_sum_(double a, double b, double *s, double *e) {
+  double x = a + b;
+  *s = x; *e = b - (x - a);
+}
+/* operands below 2^996 in magnitude (the split constant must not overflow) */
+static void two_prod_(double a, double b, double *p, double *e) {
+  double x = a * b;
+  double ca = 134217729.0 * a, ah = ca - (ca - a), al = a - ah;
+  double cb = 134217729.0 * b, bh = cb - (cb - b), bl = b - bh;
+  *p = x; *e = ((ah * bh - x) + ah * bl + al * bh) + al * bl;
+}
+static void dd_mul_(double ah, double al, double bh, double bl, double *h, double *l) {
+  double p, e;
+  two_prod_(ah, bh, &p, &e);
+  e = e + (ah * bl + al * bh);
+  fast_two_sum_(p, e, h, l);
+}
+/* x^n for 0 < n < 2^40; 0 when an intermediate leaves [2^-969, 2^996],
+ * where the low word would be subnormal or the split would overflow */
+static int pow_int_dd_(double x, uint64_t n, double *h, double *l) {
+  double rh = 1.0, rl = 0.0, bh = x, bl = 0.0;
+  for (;;) {
+    if (n & 1) {
+      dd_mul_(rh, rl, bh, bl, &rh, &rl);
+      double a = rh < 0.0 ? -rh : rh;
+      if (!(a >= 0x1p-969 && a < 0x1p996)) return 0;
+    }
+    n >>= 1;
+    if (!n) break;
+    dd_mul_(bh, bl, bh, bl, &bh, &bl);
+    if (!(bh >= 0x1p-969 && bh < 0x1p996)) return 0;
+  }
+  *h = rh; *l = rl;
+  return 1;
+}
+/* ln x as hi+lo, x positive and finite */
+static double logdd_(double x, double *lo) {
+  uint64_t u = draw_(x);
+  int e = 0;
+  if (u < (1ull << 52)) { x *= 9007199254740992.0; u = draw_(x); e -= 53; }
+  e += (int)((u >> 52) & 0x7ff) - 1023;
+  double m = draw2d_((u & 0xfffffffffffffull) | (1023ull << 52));
+  if (m > 1.4142135623730951) { m *= 0.5; e += 1; }
+  double f = m - 1.0, d, dl, p, pe;
+  two_sum_(m, 1.0, &d, &dl);
+  double t = f / d;
+  two_prod_(t, d, &p, &pe);
+  double tl = (((f - p) - pe) - t * dl) / d;
+  double t2 = t * t;
+  double r = 2.0 * (t * t2 * (1.0 / 3 + t2 * (1.0 / 5 + t2 * (1.0 / 7 + t2 * (1.0 / 9
+           + t2 * (1.0 / 11 + t2 * (1.0 / 13 + t2 * (1.0 / 15 + t2 * (1.0 / 17
+           + t2 * (1.0 / 19 + t2 * (1.0 / 21 + t2 * (1.0 / 23))))))))))));
+  double ed = (double)e, s, se, h, l;
+  two_sum_(ed * LN2HI_, 2.0 * t, &s, &se);
+  fast_two_sum_(s, se + (ed * LN2LO_ + (2.0 * tl + r)), &h, &l);
+  *lo = l;
+  return h;
+}
+/* exp(hi + lo), lo below an ulp of hi */
+static double expdd_(double x, double lo) {
+  if (x > 709.782712893384) return 1.0 / 0.0;
+  if (x < -745.133219101941) return 0.0;
+  double kd = x * INVLN2_;
+  int k = (int)(kd + (kd >= 0.0 ? 0.5 : -0.5));
+  double r = ((x - (double)k * LN2HI_) + lo) - (double)k * LN2LO_;
+  double s = 1.0 + r * (1.0 + r * (1.0 / 2 + r * (1.0 / 6 + r * (1.0 / 24
+           + r * (1.0 / 120 + r * (1.0 / 720 + r * (1.0 / 5040 + r * (1.0 / 40320
+           + r * (1.0 / 362880 + r * (1.0 / 3628800 + r * (1.0 / 39916800
+           + r * (1.0 / 479001600 + r * (1.0 / 6227020800.0)))))))))))));
+  if (k >= -1021) return s * draw2d_((uint64_t)(k + 1023) << 52);
+  return s * draw2d_((uint64_t)(k + 1023 + 64) << 52) * draw2d_((uint64_t)(1023 - 64) << 52);
+}
+/* |x|^y for positive finite |x| /= 1 and finite y */
+static double pow_pos_(double x, double y) {
+  double lo, hi = logdd_(x, &lo);
+  double ph = y * hi;
+  /* far outside exp's range: also keeps a huge y away from the split */
+  if (!(ph < 800.0 && ph > -800.0)) return fexp_(ph);
+  double p, pe;
+  two_prod_(y, hi, &p, &pe);
+  return expdd_(p, pe + y * lo);
+}
 static double fpow_(double x, double y) {
   if (y == 0.0) return 1.0;
   if (x != x || y != y) return 0.0 / 0.0;
   if (x == 1.0) return 1.0;
   if (x == 0.0) return y > 0.0 ? 0.0 : 1.0 / 0.0;
-  if (x < 0.0) {
-    double yi = (double)(long long)y;
-    if (yi != y) return 0.0 / 0.0; /* v1: no complex results */
-    double r = fexp_(y * flog_(-x));
-    return (((long long)y) & 1) ? -r : r;
+  if (fspec_(x) || fspec_(y)) {
+    if (x < 0.0) x = -x; /* an infinite y is even */
+    return fexp_(y * flog_(x));
   }
-  return fexp_(y * flog_(x));
+  double ay = y < 0.0 ? -y : y;
+  /* every double at or above 2^53 is an even integer */
+  int integral = ay >= 9007199254740992.0 || (double)(long long)y == y;
+  int odd = ay < 9007199254740992.0 && integral && (((long long)y) & 1);
+  if (integral && ay < 0x1p40) {
+    double h, l;
+    if (pow_int_dd_(x, (uint64_t)(long long)ay, &h, &l)) {
+      if (y > 0.0) return h + l;
+      double q = 1.0 / h, p, pe;
+      two_prod_(h, q, &p, &pe);
+      double rem = ((1.0 - p) - pe) - l * q;
+      return q + rem * q;
+    }
+  }
+  if (x < 0.0) {
+    if (!integral) return 0.0 / 0.0; /* v1: no complex results */
+    double r = pow_pos_(-x, y);
+    return odd ? -r : r;
+  }
+  return pow_pos_(x, y);
 }
 /* two-word Cody-Waite pi/2 reduction -> r in [-pi/4, pi/4], quadrant */
 static int rempio2_(double x, double *rp, int *okp) {

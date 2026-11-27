@@ -12,7 +12,7 @@ children dir =
 safeComponent s = s != "" and s != "." and s != ".." and not (Str.contains "/" s) and not (Str.contains (Str.fromCode 0) s).
 docGroup docs label section =
   dir = "{docs}/{section}/{label}";
-  List.map (fn name -> (name,F.readBytes (F.canonical "{dir}/{name}"))) (List.filter (fn n -> Str.startsWith "LICENSE" n) (children dir)).
+  List.map (fn name -> (name,F.readFileBytes (F.canonical "{dir}/{name}"))) (List.filter (fn n -> Str.startsWith "LICENSE" n) (children dir)).
 documentNotices docs label = List.concat (List.map (docGroup docs label) (children docs)).
 # bsdtar selects notice members and streams them into a newc archive. Reading
 # its length-delimited records retains tar order and repeated basenames without
@@ -39,7 +39,7 @@ archiveNotices source =
     patterns = ["[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*","[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*"];
     options = List.concat (List.map (fn p -> ["--include",p,"--include","*/" + p]) patterns);
     _ = B.command (List.concat [["bsdtar","-cf",filtered,"--format=newc"],options,["@" + source]]);
-    members (F.readBytes filtered) 0.
+    members (F.readFileBytes filtered) 0.
 writeNotice output label index pair =
   (filename,bytes) = pair;
   relative = "{label}/{index}-{filename}";

@@ -10,7 +10,7 @@ import Data.Char ( isUpper )
 import Data.List ( intercalate, nub )
 import Frontend.Syntax
     ( Ty(TCon, TTup),
-      STop(TStruct, TShape, TType, TBind),
+      STop(TStruct, TShape, TType, TBind, TEval),
       SGuard(GPat, GBool),
       SPat(PWild, PStr, PCon, PTup, PVar),
       SStmt(SBindPat, SBind),
@@ -33,29 +33,47 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
   where
     top (TBind n ps gs b) = TBind n ps (map (mapGuardE goE) gs) (goE b)
     top (TStruct n as fs) = TStruct n as [(f, goE e) | (f, e) <- fs]
+    -- a script statement (`> ...`, Sol) holds expressions like any binding
+    top (TEval e) = TEval (goE e)
     top t = t
     errsTop (TBind _ _ gs b) = concatMap errsG gs ++ errsE b
       where errsG (GBool e) = errsE e
             errsG (GPat _ e) = errsE e
     errsTop (TStruct _ _ fs) = concatMap (errsE . snd) fs
+    errsTop (TEval e) = errsE e
     errsTop _ = []
 
     splitDots s = case break (== '.') s of
       (a, []) -> [a]
       (a, _ : r) -> a : splitDots r
 
+    -- The literal's root is the longest dotted prefix that names a declared
+    -- shape: a shape from a `use`d module is declared under its qualified
+    -- name (`T.Model`), and the module's own `@Model.hp` is qualified to
+    -- match (Modules.reSelf), so the root is not always the first segment.
+    -- The root's last segment is a type name (upper case); sol file-path
+    -- literals (lower-case or '/' roots) never match and pass through.
     pathTarget e = case e of
       SApp (SVar "Path") (SStrI [SegStr p])
-        | (root@(rc : _) : fields) <- splitDots p,
-          isUpper rc,
-          Just fs <- M.lookup root tbl ->
+        | segs <- splitDots p,
+          (root, fields, fs) : _ <-
+            [ (root, drop k segs, fs)
+            | k <- reverse [1 .. length segs],
+              let root = intercalate "." (take k segs),
+              typeName (last (take k segs)),
+              Just fs <- [M.lookup root tbl]
+            ] ->
             Just (p, root, fields, fs)
       _ -> Nothing
 
-    -- `@Msg` where Msg is a declared SUM type: its wire codec (codecFor)
+    typeName (c : _) = isUpper c
+    typeName [] = False
+
+    -- `@Msg` where Msg is a declared SUM type: its wire codec (codecFor);
+    -- qualified (`T.Msg`) when the type comes from a `use`d module
     codecTarget e = case e of
-      SApp (SVar "Path") (SStrI [SegStr p@(pc : _)])
-        | isUpper pc, '.' `notElem` p,
+      SApp (SVar "Path") (SStrI [SegStr p@(_ : _)])
+        | typeName (last (splitDots p)),
           M.notMember p tbl, Just cs <- M.lookup p ttbl -> Just (p, cs)
       _ -> Nothing
 

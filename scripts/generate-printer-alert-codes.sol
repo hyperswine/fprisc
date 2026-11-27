@@ -33,7 +33,7 @@ walk codes value = case value of
 catalog : unsafe String -> (Map.Map String (List String),List J.Json) -> String -> (Map.Map String (List String),List J.Json) .
 catalog dir state name =
   (codes,sources) = state;
-  raw = F.readBytes (F.canonical "{dir}/{name}");
+  raw = F.readFileBytes (F.canonical "{dir}/{name}");
   json = unwrap (J.parse (unwrap (Utf8.decode raw)));
   version = case J.get "ver" json of Ok v -> v | Err _ -> J.JNull;
   source = J.JObj [("file",J.JStr name),("sha256",J.JStr (Hex.encode (Sha256.bytes raw))),("version",version)];

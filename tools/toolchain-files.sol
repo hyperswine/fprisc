@@ -4,12 +4,12 @@ canonical path =
   if status == 0 and Str.endsWith "\n" out then substr out 0 (Str.len out - 1) else error "cannot resolve {path}: {err}".
 # SDKs, GHC documentation and package caches can all be read-only. Streams
 # leave no transaction lock alongside an input.
-readBytes path =
+readFileBytes path =
   reader = unwrap (Stream.openRead path 65536);
   (result,next) = Stream.foldChunks (fn acc b -> b :: acc) [] reader;
   _ = unwrap (Stream.closeRead next);
   Bytes.concat (List.rev (unwrap result)).
-readText path = unwrap (Utf8.decode (readBytes (canonical path))).
+readText path = unwrap (Utf8.decode (readFileBytes (canonical path))).
 key path = Hex.encode (unwrap (Utf8.encode (Str.replace "/" (Str.fromCode 0) path))).
 fromKey text = Str.replace (Str.fromCode 0) "/" (unwrap (Utf8.decode (unwrap (Hex.decode text)))).
 ordered names =

@@ -30,5 +30,18 @@ main u = root = H.root Unit; work = tempDir "fpr-sol-surface";
   # two halves of a character joined back compare equal to it
   (d6, c6, o6, e6) = runCase root work "byte-strings" "J = use \"std/jsondoc\".\n> v = unwrap (J.parse \"\\\{\\\"a\\\":\\\"caf\\\\u00e9 \\\\ud83d\\\\ude00\\\"\\\}\");\n  a = unwrap (J.text (unwrap (J.get \"a\" v)));\n  print (a == \"café 😀\", strlen a, strlen \"é\", strcat (substr \"é\" 0 1) (substr \"é\" 1 1) == \"é\").\n";
   _ = must "byte-indexed strings and JSON unicode" (c6 == 0 and o6 == "(True, 10, 2, True)\n") "{o6}{e6}";
-  print "sol-surface: keyword-prefixed names, prelude names refused, missing-path reads, strings in interpolation, builtin shadowing, byte-indexed strings PASS".
+  # a script's own type named like a builtin or preamble type is its own (the two used to merge)
+  (d7, c7, o7, e7) = runCase root work "type-shadow" "Option = Type (Option String Int).\nCmd = Type (Go Int).\nf o = case o of Option s n -> n.\ng c = case c of Go n -> n.\n> print (f (Option \"a\" 2), g (Go 4), Some 3).\n";
+  _ = must "a script type may shadow Option and Cmd" (c7 == 0 and o7 == "(2, 4, Some 3)\n") "{o7}{e7}";
+  # @Shape.field literals in a statement, and inside a used module (qualified shape names)
+  (d8, c8, o8, e8) = runCase root work "path-statement" "Model = \{hp : Int, name : String\}.\n> p = @Model.hp; m = p.set 5 \{hp = 1, name = \"a\"\}; print m.hp.\n";
+  _ = must "a path literal in a statement" (c8 == 0 and o8 == "5\n") "{o8}{e8}";
+  _ = unwrap (Proc.runNow (ProcessSpec ["mkdir","-p","{work}/path-module"] "" [] "" 10000));
+  _ = H.write "{work}/path-module/m.fpr" (unwrap (Utf8.encode "Model = \{hp : Int, name : String\}.\nmain =\n  p = @Model.hp;\n  m = p.set 7 \{hp = 1, name = \"a\"\};\n  m.hp.\n"));
+  (d9, c9, o9, e9) = runCase root work "path-module" "T = use \"m.fpr\".\n> print T.main.\n";
+  _ = must "a path literal inside a used module" (c9 == 0 and o9 == "7\n") "{o9}{e9}";
+  # F64 ^ is exact when the power is representable (double-double, runtime.c fpow_)
+  (d10, c10, o10, e10) = runCase root work "pow-exact" "> print (F64.str (2.5 ^ 2.0), F64.str ((0.0 - 1.5) ^ 3.0), F64.str (2.0 ^ (0.0 - 2.0))).\n";
+  _ = must "exact powers" (c10 == 0 and o10 == "(6.25, -3.375, 0.25)\n") "{o10}{e10}";
+  print "sol-surface: keyword-prefixed names, prelude names refused, missing-path reads, strings in interpolation, builtin shadowing, byte-indexed strings, type shadowing, path literals, exact powers PASS".
 >! main Unit.

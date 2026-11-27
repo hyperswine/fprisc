@@ -157,7 +157,7 @@ build _ =
   contract = Contract.verify root contractPath;
   sourceHash = hash source; compilerHash = hash "{root}/fpr";
   manifestPath = "{root}/machine/builtin/targets/virt.json";
-  manifest = F.readBytes manifestPath;
+  manifest = F.readFileBytes manifestPath;
   target = "builtin-rv64-virt-128m";
   selected = Target.target manifest target;
   _ = require (selected.width == 64 and selected.origin == 2147483648 and selected.ram == 134217728) "manifest geometry differs from controlled startup";
@@ -188,7 +188,7 @@ build _ =
   linked = runTool "static-arena-link.sol" [if isSequence then "sequence" else "single"];
   _ = require (Contract.verify root contractPath == contract) "runtime contract changed during admission";
   _ = require (hash source == sourceHash and hash "{root}/fpr" == compilerHash) "source/compiler changed during admission";
-  bytes = F.readBytes "{out}/image.elf";
+  bytes = F.readFileBytes "{out}/image.elf";
   physical = Target.admit bytes manifest target;
   img = RV.image bytes;
   regions = placement img heapBytes stackBytes;
@@ -220,7 +220,7 @@ build _ =
     line = case values of [one] -> one | _ -> error "execution did not return guarded activation result";
     J.set "execution" (J.JObj [("status",J.JStr "RV64-QEMU-PASS"),("result_bits",J.JNum (Str.parse (substr line 25 (Str.len line - 25)))),("output",J.JStr output)]) bounded
     else bounded;
-  _ = require (F.readBytes "{out}/image.elf" == bytes) "linked image changed during admission";
+  _ = require (F.readFileBytes "{out}/image.elf" == bytes) "linked image changed during admission";
   _ = writeStreamed "{out}/receipt.json" (J.pretty executed+"\n");
   _ = need (Fs.copyPublishNow "{out}/receipt.json" "{imagePath}.admission.json" 65536 True);
   _ = need (Fs.copyPublishNow "{out}/image.elf" imagePath 65536 True);

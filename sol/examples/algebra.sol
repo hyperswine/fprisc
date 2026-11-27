@@ -12,18 +12,11 @@ expect what got want = case got == want of
     True -> print "ok  {what}"
   | False -> error "FAIL {what}: got {got}, wanted {want}".
 
-# floats compare by their text or within a tolerance: == does not reach a
-# float inside a structure, and F64 ^ is exp(y log x) as native has it
-fabs : F64 -> F64 .
-fabs v = if v < 0.0 then 0.0 - v else v.
-near what got want = case fabs (got - want) < 0.000000000001 of
-    True -> print "ok  {what}"
-  | False -> error "FAIL {what}: got {got}, wanted {want}".
-
+# floats compare by their text: == does not reach a float inside a structure
 # ---- numbers: % is floored modulo (Int only), ^ is exact on Int ----
 > expect "% ints"            (7 % 3, -7 % 3, 10 % 5) (1, 2, 0).
 > expect "^ exact"           (2 ^ 10, 3 ^ 3, 10 ^ 0, (-2) ^ 3) (1024, 27, 1, -8).
-> near   "^ on F64"          (2.5 ^ 2.0) 6.25.
+> expect "^ on F64"          (F64.str (2.5 ^ 2.0), F64.str (2.0 ^ (0.0 - 2.0)), F64.str ((0.0 - 1.5) ^ 3.0)) ("6.25", "0.25", "-3.375").
 > expect "F64 arithmetic"    (F64.str (7.5 - 2.0 * 3.0), F64.str (F64.ofInt 7 / 2.0)) ("1.5", "3.5").
 > expect "precedence"        (2 + 7 % 4 * 2, 3 * 2 ^ 2, 2 ^ 3 ^ 2, 10 % 3 % 2) (8, 12, 512, 1).
 > expect "% in a pipeline"   (List.range 1 10 |> List.filter (fn x -> x % 3 == 0)) [3, 6, 9].
