@@ -3,6 +3,7 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -24,11 +25,25 @@ MODES = {
 }
 
 
-def audit(source, mode, prefix):
+def audit(source, mode, prefix, rom_reference):
     lock = json.loads(Path(__file__).with_name("archives.json").read_text())
     for name, expected in lock["sha256"].items():
         if sha256((source / name).read_bytes()).hexdigest() != expected:
             raise ValueError(f"SHA-256 mismatch for {name}")
+
+    rom = []
+    if rom_reference is not None:
+        revision = subprocess.check_output(
+            ["git", "-C", rom_reference, "rev-parse", "HEAD"], text=True
+        ).strip()
+        if revision != lock["esp_radio_reference"]:
+            raise ValueError(f"ROM reference revision mismatch: {revision}")
+        directory = rom_reference / "esp-rom-sys" / "ld" / "esp32c3"
+        includes = (directory / "rom-functions.x").read_text()
+        includes = re.sub(r"/\*.*?\*/", "", includes, flags=re.DOTALL)
+        for name in re.findall(r'^INCLUDE "([^"]+)"', includes, flags=re.MULTILINE):
+            if name != "rom/additional.ld":
+                rom.extend(("-T", directory / name))
 
     archives, roots = MODES[mode]
     symbols = [argument for root in roots for argument in ("-u", root)]
@@ -36,14 +51,15 @@ def audit(source, mode, prefix):
     with tempfile.TemporaryDirectory(prefix="fpr-c3-radio-") as directory:
         obj = Path(directory) / "radio.o"
         subprocess.run([prefix + "ld", "-r", "--gc-sections", "-o", obj, *symbols,
-                        "--start-group", *inputs, "--end-group"], check=True)
+                        *rom, "--start-group", *inputs, "--end-group"], check=True)
         output = subprocess.check_output([prefix + "nm", "-g", "-P", obj], text=True)
     entries = [line.split() for line in output.splitlines() if line.strip()]
     defined = {entry[0] for entry in entries if entry[1] in ("T", "W")}
     if missing := set(roots) - defined:
         raise ValueError(f"Missing expected API exports: {', '.join(sorted(missing))}")
     imports = sorted(entry[0] for entry in entries if entry[1] in ("U", "v", "w"))
-    print(f"{mode} {lock['revision']}: {len(imports)} external symbols")
+    target = " after C3 ROM resolution" if rom else ""
+    print(f"{mode} {lock['revision']}: {len(imports)} external symbols{target}")
     print("\n".join(imports))
 
 
@@ -52,5 +68,6 @@ if __name__ == "__main__":
     parser.add_argument("source", type=Path, help="pinned esp-wifi-sys checkout")
     parser.add_argument("mode", choices=MODES)
     parser.add_argument("--prefix", default="riscv32-esp-elf-", help="RV32 GNU tool prefix")
+    parser.add_argument("--rom-reference", type=Path, help="pinned esp-hal checkout for C3 ROM exports")
     args = parser.parse_args()
-    audit(args.source, args.mode, args.prefix)
+    audit(args.source, args.mode, args.prefix, args.rom_reference)

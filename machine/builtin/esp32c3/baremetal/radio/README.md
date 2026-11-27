@@ -69,3 +69,10 @@ the timer and GPIO lines and marks callback execution as ISR context.
 The RV32 test checks the route, enable, disable, and release sequences
 with a simulated interrupt-matrix register block. RF interrupt delivery
 requires a physical controller test.
+
+Use --rom-reference with the pinned esp-hal checkout to resolve C3 ROM
+symbols during the audit. The audit reads the active ROM map includes and
+keeps additional software fallbacks in the unresolved set. The pinned
+BLE roots leave nine imports after this step. The Wi-Fi roots leave 59.
+These counts cover the root-selected link, with controller callbacks and
+runtime initialization outside the import count.
