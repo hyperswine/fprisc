@@ -176,8 +176,10 @@ runFileWith report editor as = do
   -- heal first: an earlier run of this script may have crashed mid-commit
   unless dumpAsm $ phaseIO "journal-recover" (recoverScriptJournals (dropExtension path))
   -- a panic ends the run with the clean SOL PANIC line and exit 1 — not
-  -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
-  -- exception propagates out of runTxLoop before its commit call.
+  -- the raw `fpr: user error (...)` wrapper. The panicking statement's
+  -- effects are discarded (the exception leaves runTxAttempts before its
+  -- commit call); statements that already committed stay committed, and
+  -- later statements do not run (docs/2026-11-26-SOL-PROGRESSIVE-COMMITS.md).
   unless dumpAsm $ do
     r <- try (phase "execute" $ runTxLoop retryPolicy (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
     case r of
@@ -821,7 +823,7 @@ runTxLoop :: RetryPolicy -> FilePath -> [String] -> FilePath -> FilePath -> M.Ma
 runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames _ attempt =
   forM_ topNames $ \n -> do
     let immediate = isImmediateStatement n
-    rt <- if immediate then newQuietRtCounts else newRtCounts
+    rt <- if immediate then newQuietRtCounts else newStrictRtCounts
     runTxAttempts TxAttemptConfig
       { txCfgRetryPolicy = retryPolicy,
         txCfgMaxAttempts = if immediate then 1 else maxRetries,
@@ -1160,7 +1162,9 @@ immediateOperations = S.fromList (realtimeNames ++
   , "Proc.runNow", "Proc.streamNow", "Proc.inheritNow", "Proc.pipeline", "Proc.start"
   , "NativeGit.push", "NativeGit.commitNow"
   , "Serial.open", "Serial.write", "Serial.read", "Serial.expect", "Serial.close"
-  , "Child.open", "Child.write", "Child.read", "Child.expect", "Child.wait", "Child.kill" ])
+  , "Child.open", "Child.write", "Child.read", "Child.expect", "Child.wait", "Child.kill"
+  -- the IO constructors behind the Now wrappers: `write p (NowSet s)` is writeNow
+  , "Now", "NowSet", "NowAdd", "NowSh", "NowLine" ])
 
 -- For each transactional statement (and a zero-arg `main` run as one), the
 -- immediate operations it can reach through top-level references. A

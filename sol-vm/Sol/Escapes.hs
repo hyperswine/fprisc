@@ -265,10 +265,21 @@ quietKey = "$quiet"
 rtQuiet :: RtCounts -> IO Bool
 rtQuiet ref = M.member quietKey <$> readIORef ref
 
+-- the counts of a transactional (`>`) statement: an escape reaching it at run
+-- time (a closure carried in a statement result, an IO constructor written
+-- directly) slipped past the compile-time check, so it panics before acting
+newStrictRtCounts :: IO RtCounts
+newStrictRtCounts = newIORef (M.singleton strictKey 0)
+
+strictKey :: String
+strictKey = "$transactional"
+
 -- bump, and on FIRST use of a kind explain what was given up
 noteEscape :: RtCounts -> String -> String -> IO ()
 noteEscape ref kind why = do
   m <- readIORef ref
+  when (M.member strictKey m) $
+    ioError (userError ("*** SOL PANIC: " ++ kind ++ " is an immediate operation inside a transactional `>` statement; write the statement `>!` ***"))
   when (not (M.member kind m) && not (M.member quietKey m)) $
     hPutStrLn stderr ("[sol] REALTIME: " ++ kind ++ " — " ++ why)
   atomicModifyIORef' ref (\mm -> (M.insertWith (+) kind 1 mm, ()))
@@ -279,7 +290,7 @@ rtTotal ref = sum . M.elems <$> readIORef ref
 rtReport :: RtCounts -> IO [String]
 rtReport ref = do
   m <- readIORef ref
-  pure [k ++ " x" ++ show n | (k, n) <- M.toList m, k /= quietKey]
+  pure [k ++ " x" ++ show n | (k, n) <- M.toList m, k /= quietKey, k /= strictKey]
 
 -- A realtime write steps outside the transaction for that path, so the
 -- transaction must stop making claims about it: drop any snapshot we took.
