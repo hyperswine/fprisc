@@ -2,6 +2,7 @@
 import argparse
 from contextlib import contextmanager
 from hashlib import md5
+from ipaddress import IPv4Address
 from pathlib import Path
 import re
 import sys
@@ -15,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ota_slot import SECTOR, expected_table, image_size, operate, program, selection
 
 from check_ble import check as check_ble
-from check_station import Console
+from check_coex import check as check_coex
+from check_station import Console, check as check_station
 
 FLASH_BYTES = 0x400000
 TABLE = 0x8000
@@ -145,8 +147,13 @@ def run(args):
                 stage(stub, revision, args.reference, backup, args.image)
         if args.profile == "ble":
             check_ble(args.port, args.observer, args.restarts)
+        elif args.profile == "wifi":
+            check_scan(args.port, args.ssid.encode())
+        elif args.profile == "wifi-sta":
+            check_station(args.port, args.address, args.ssid, args.open, args.reconnect)
         else:
-            check_scan(args.port, args.ssid)
+            check_coex(args.port, args.address, args.ssid, args.observer, args.open,
+                       args.reconnect, args.seconds)
     finally:
         if needs_restore:
             with attached_stub(args.port, args.mac) as (stub, revision):
@@ -156,24 +163,33 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port")
-    parser.add_argument("profile", choices=("ble", "wifi"))
+    parser.add_argument("profile", choices=("ble", "wifi", "wifi-sta", "coex"))
     parser.add_argument("image", type=Path)
     parser.add_argument("--mac", required=True, help="12 hex digits for the C3 being tested")
     parser.add_argument("--reference", required=True, type=Path, help="verified full-flash backup")
-    parser.add_argument("--observer", type=Path, help="compiled CoreBluetooth observer for BLE")
+    parser.add_argument("--observer", type=Path, help="compiled CoreBluetooth observer for BLE and coex")
     parser.add_argument("--restarts", type=int, default=3)
-    parser.add_argument("--ssid", default="", help="optional visible test SSID for passive scan")
+    parser.add_argument("--ssid", default="", help="visible AP for scan, or test AP for station/coex")
+    parser.add_argument("--address", type=IPv4Address, help="unused station address on the test subnet")
+    parser.add_argument("--open", action="store_true", help="use an open test AP")
+    parser.add_argument("--reconnect", action="store_true", help="also verify recovery after an AP restart")
+    parser.add_argument("--seconds", type=int, default=1800, help="minimum coexistence test duration")
     args = parser.parse_args()
     args.mac = args.mac.lower()
     if not re.fullmatch(r"[0-9a-f]{12}", args.mac):
         parser.error("Expected a 12-digit MAC")
-    if args.profile == "ble" and not args.observer:
-        parser.error("--observer is required for BLE")
+    if args.profile in ("ble", "coex") and not args.observer:
+        parser.error("--observer is required for BLE and coex")
     if args.observer:
         args.observer = args.observer.resolve()
-    args.ssid = args.ssid.encode()
-    if len(args.ssid) > 32 or b"\0" in args.ssid:
+        if not args.observer.is_file():
+            parser.error("--observer must be a file")
+    if args.profile in ("wifi-sta", "coex") and (not args.ssid or args.address is None):
+        parser.error("--ssid and --address are required for station and coex")
+    if len(args.ssid.encode()) > 32 or "\0" in args.ssid:
         parser.error("The SSID must have at most 32 bytes with no NUL")
     if args.restarts < 0:
         parser.error("--restarts must be nonnegative")
+    if args.seconds <= 0:
+        parser.error("--seconds must be positive")
     run(args)

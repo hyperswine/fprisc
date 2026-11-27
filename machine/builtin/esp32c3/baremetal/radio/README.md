@@ -208,6 +208,11 @@ selection, and verifies the journal digest from just before the test.
 
     python3 radio_ota.py PORT ble BLE_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --observer MAC_OBSERVER
     python3 radio_ota.py PORT wifi WIFI_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --ssid TEST_SSID
+    python3 radio_ota.py PORT wifi-sta STATION_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --ssid TEST_SSID --address STATION_IPV4 --reconnect
+    python3 radio_ota.py PORT coex COEX_IMAGE --mac BOARD_MAC --reference FULL_BACKUP --ssid TEST_SSID --address STATION_IPV4 --observer MAC_OBSERVER --reconnect
+
+For station and coexistence, connect the Mac to the test AP first. Enter
+the passphrase at the local prompt or pass --open for an open network.
 
 The scan verifier checks shutdown and the AP count. With an SSID
 argument it also checks for that access point without printing the
