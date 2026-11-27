@@ -26,7 +26,7 @@ def boot(port, image):
         chip._port.close()
 
 
-def replay(serial):
+def replay(serial, *, return_health=False):
     serial.write(b"L")
     records = []
     while True:
@@ -39,7 +39,12 @@ def replay(serial):
         if len(record) != length[0]:
             raise RuntimeError("Incomplete replay")
         records.append(record)
-    if receive(serial, 1) != b"\x06":
+    status = receive(serial, 1)
+    if status not in (b"\x06", b"\x15"):
+        raise RuntimeError(f"Invalid journal status {status!r}")
+    if return_health:
+        return records, status == b"\x06"
+    if status != b"\x06":
         raise RuntimeError("Journal reports damaged suffix")
     return records
 

@@ -141,3 +141,15 @@ selector sector stays available across that update. Selection verifies the
 destination application before switching. Keep backups locally.
 
 See [C3 qualification](QUALIFICATION.md) for measured results and test scope.
+
+### Check a physical power interruption
+
+With the multi-command journal installed and running from an OTA slot, run
+`python check_power.py arm PORT WITNESS`. Use a fresh local witness path.
+The host fingerprints the existing journal and records each send and ACK.
+After the first ACK, remove power from the C3 while appends continue, then
+restore power. Run `python check_power.py verify PORT WITNESS` against the
+rebooted journal. The checker compares the original prefix, every confirmed
+append and the one possible unacknowledged record. If a partial final record
+is present it checks the prefix before issuing R and verifying replay again.
+The arm phase issues at most 3,000 short records, approximately ten per second.
