@@ -1,21 +1,16 @@
 #include "ble_hw.h"
 #include "alloc.h"
+#include "radio_phy.h"
 
 #define REG(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
 enum {
     WIFI_CLOCKS = 0x60026014, RADIO_COMMON_CLOCKS = 0x0078078f,
     RADIO_POWER = 0x60008088, RADIO_ISOLATION = 0x6000808c,
     BT_FORCE_PD = 1u << 11, BT_FORCE_ISO = 1u << 22,
-    EFUSE_MAC_LOW = 0x60008844, EFUSE_MAC_HIGH = 0x60008848,
-    RNG_DATA = 0x600260b0, MIE = 8, XTAL_MHZ = 40,
+    XTAL_MHZ = 40,
 };
 static unsigned critical_depth;
 static uint32_t saved_irq;
-static _Alignas(4) uint8_t calibration[1904];
-
-extern const uint8_t c3_phy_init_data[128];
-extern int register_chipv7_phy(const void *init, void *scratch, unsigned mode);
-extern void phy_bbpll_en_usb(bool enabled);
 extern bool btdm_lpclk_select_src(uint32_t source);
 extern bool btdm_lpclk_set_div(uint32_t divider);
 extern int btdm_controller_rom_data_init(void);
@@ -24,16 +19,6 @@ extern void ble_base_funcs_reset(void), ble_42_adv_funcs_reset(void);
 extern void ble_ext_adv_funcs_reset(void), ble_dtm_funcs_reset(void);
 extern void ble_scan_funcs_reset(void), ble_ext_scan_funcs_reset(void);
 extern void ble_enc_funcs_reset(void), ble_init_funcs_reset(void), ble_con_funcs_reset(void);
-
-uint32_t phy_enter_critical(void) {
-    uint32_t state;
-    __asm__ volatile("csrrci %0, mstatus, 8" : "=r"(state) :: "memory");
-    return state & MIE;
-}
-
-void phy_exit_critical(uint32_t state) {
-    if (state & MIE) __asm__ volatile("csrsi mstatus, 8" ::: "memory");
-}
 
 static void disable_irq(void) {
     uint32_t prior = phy_enter_critical();
@@ -56,17 +41,11 @@ static void power_off(void) {
 }
 
 static int32_t read_ble_mac(const void *output) {
-    uint8_t *mac = (uint8_t *)output;
-    uint32_t hi = REG(EFUSE_MAC_HIGH), lo = REG(EFUSE_MAC_LOW);
-    mac[0] = (uint8_t)(hi >> 8);
-    mac[1] = (uint8_t)hi;
-    for (unsigned i = 0; i < 4; ++i) mac[2 + i] = (uint8_t)(lo >> (24 - 8 * i));
-    mac[5] += 2; /* C3 four-universal-address layout, BLE follows Wi-Fi and SoftAP. */
-    return 0;
+    return c3_radio_read_mac((uint8_t *)output, 2);
 }
 
 static void seed(uint32_t ignored) { (void)ignored; }
-static int32_t random_word(void) { return (int32_t)(REG(RNG_DATA) & INT32_MAX); }
+static int32_t random_word(void) { return (int32_t)(c3_radio_random() & INT32_MAX); }
 static uint32_t cycles_to_half_us(uint32_t cycles, uint32_t correction) {
     (void)correction; /* The selected 1 MHz clock has no fractional correction. */
     return cycles * 2;
@@ -92,8 +71,7 @@ int c3_ble_power_up(void) {
 }
 
 int c3_ble_calibrate(void) {
-    phy_bbpll_en_usb(true);
-    return register_chipv7_phy(c3_phy_init_data, calibration, 2); /* full calibration */
+    return c3_radio_phy_acquire();
 }
 
 static void *allocate(uint32_t bytes) { return c3_radio_alloc(bytes); }

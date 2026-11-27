@@ -4,6 +4,11 @@
 #include "wifi_hw.h"
 #include "wifi_irq.h"
 #include "wifi_services.h"
+#ifdef C3_COEX
+#include "alloc.h"
+#include "ble.h"
+#include "coex.h"
+#endif
 #ifdef C3_WIFI_STATION
 #include "station_config.h"
 #include "wifi_probe.h"
@@ -92,6 +97,10 @@ static void start_controller(void) {
     c3_wifi_install_interrupts(&g_wifi_osi_funcs);
     c3_wifi_install_platform(&g_wifi_osi_funcs);
     c3_wifi_install_single_radio(&g_wifi_osi_funcs);
+#ifdef C3_COEX
+    check(c3_coex_prepare(), "Radio coexistence adapter");
+    c3_coex_install_wifi(&g_wifi_osi_funcs);
+#endif
     g_wifi_osi_funcs._event_post = esp_event_post;
     config.wpa_crypto_funcs = g_wifi_default_wpa_crypto_funcs;
     c3_console_text("Wi-Fi controller init\n");
@@ -185,10 +194,30 @@ static bool serve_link(const struct c3_probe_address *address, unsigned generati
     c3_console_unsigned(generation);
     c3_console_text("\n");
     uint32_t reported = 0;
+#ifdef C3_COEX
+    uint64_t next_report = c3_tasks_now_us() + 1000000;
+#endif
     bool quit = false;
     while (link == LINK_CONNECTED && !(quit = quit_requested())) {
         c3_wifi_probe_poll(c3_tasks_now_us() + POLL_US);
         struct c3_probe_stats stats = c3_wifi_probe_stats();
+#ifdef C3_COEX
+        uint64_t now = c3_tasks_now_us();
+        if (now >= next_report) {
+            c3_console_text("FPR COEX ms=");
+            c3_console_unsigned(now / 1000u);
+            c3_console_text(" heap=");
+            c3_console_unsigned(c3_radio_allocated());
+            c3_console_text(" peak=");
+            c3_console_unsigned(c3_radio_peak());
+            c3_console_text(" rx-drop=");
+            c3_console_unsigned(stats.dropped);
+            c3_console_text(" tx-error=");
+            c3_console_unsigned(stats.tx_errors);
+            c3_console_text("\n");
+            next_report = now + 1000000;
+        }
+#endif
         if (stats.echo_replies != reported) {
             reported = stats.echo_replies;
             c3_console_text("FPR WIFI ECHO ");
@@ -212,6 +241,9 @@ static V run_station(V unit) {
     c3_station_clear_password(&config);
     check(configured, "Wi-Fi station config");
     check(esp_wifi_get_mac(WIFI_IF_STA, address.mac), "Wi-Fi station address");
+#ifdef C3_COEX
+    c3_ble_start_advertising();
+#endif
     unsigned generation = 0;
     while (!quit_requested()) {
         if (associate() && !serve_link(&address, ++generation)) break;
@@ -219,6 +251,9 @@ static V run_station(V unit) {
         c3_console_text("FPR WIFI RETRY\n");
         if (!wait_until(c3_tasks_now_us() + RETRY_US)) break;
     }
+#ifdef C3_COEX
+    c3_ble_stop_advertising();
+#endif
     stop_controller();
     return V_UNIT;
 }

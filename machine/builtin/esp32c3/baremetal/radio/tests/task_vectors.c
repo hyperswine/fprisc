@@ -3,6 +3,8 @@
 #include "event_group.h"
 #ifdef C3_TEST_WIFI
 #include "alloc.h"
+#include "coex.h"
+#include "radio_phy.h"
 #include "wifi_services.h"
 #include "wifi_irq.h"
 #endif
@@ -217,6 +219,52 @@ static void event_vectors(void) {
 }
 
 #ifdef C3_TEST_WIFI
+const uint8_t c3_phy_init_data[128] = {0};
+static unsigned calibrations, closed, usb_pll;
+void phy_bbpll_en_usb(bool enabled) { CHECK(enabled); ++usb_pll; }
+
+int register_chipv7_phy(const void *params, void *scratch, unsigned mode) {
+    CHECK(params == c3_phy_init_data && scratch && mode == 2);
+    ++calibrations;
+    return 0;
+}
+
+void phy_close_rf(void) { ++closed; }
+
+static unsigned registered, preinit_calls;
+int esp_coex_adapter_register(coex_adapter_funcs_t *table) {
+    CHECK(table->_version == COEX_ADAPTER_VERSION &&
+          (uint32_t)table->_magic == COEX_ADAPTER_MAGIC);
+    CHECK(table->_xtal_freq_get() == 40 && table->_env_is_chip());
+    CHECK(table->_esp_timer_get_time() == (int64_t)now);
+    void *sem = table->_semphr_create(1, 0);
+    CHECK(sem && !table->_semphr_take(sem, 0));
+    CHECK(table->_semphr_give(sem) && table->_semphr_take(sem, 0));
+    table->_semphr_delete(sem);
+    ++registered;
+    return 0;
+}
+
+int coex_pre_init(void) {
+    ++preinit_calls;
+    return preinit_calls == 1 ? -1 : 0;
+}
+
+static void shared_radio_vectors(void) {
+    CHECK(c3_radio_phy_acquire() == 0 && c3_radio_phy_acquire() == 0);
+    CHECK(calibrations == 1 && usb_pll == 1);
+    c3_radio_phy_release();
+    CHECK(closed == 0);
+    c3_radio_phy_release();
+    CHECK(closed == 1);
+    CHECK(c3_radio_phy_acquire() == 0 && calibrations == 2);
+    c3_radio_phy_release();
+    CHECK(closed == 2);
+    CHECK(c3_coex_prepare() == -1);
+    CHECK(c3_coex_prepare() == 0 && c3_coex_prepare() == 0);
+    CHECK(registered == 2 && preinit_calls == 2);
+}
+
 static wifi_osi_funcs_t wifi;
 static unsigned timer_calls;
 static void timer_expired(void *arg) { ++*(unsigned *)arg; }
@@ -320,6 +368,7 @@ void main(void) {
     interrupt_vectors();
 #ifdef C3_TEST_WIFI
     wifi_vectors();
+    shared_radio_vectors();
 #endif
     for (const char *s = "RV32 task services PASS\n"; *s; ++s) UART = (uint8_t)*s;
     FINISH = 0x5555;

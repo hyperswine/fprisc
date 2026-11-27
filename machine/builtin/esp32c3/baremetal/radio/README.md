@@ -167,3 +167,19 @@ The verifier requires a Mac ping reply and a matching rise in the
 device's ICMP echo count. With --reconnect it waits for link loss and a
 second association after restarting the test AP. Entering Q over USB
 stops the station and releases the Wi-Fi controller.
+
+## Combined BLE and Wi-Fi image
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-coex coex flash
+
+The combined station image registers the vendor coexistence adapter,
+then starts BLE advertising and the Wi-Fi station from the same Builtin
+program. Both controllers share an SRAM allocator, task services, and a
+reference-counted PHY. Each has its own interrupt routes. The firmware
+reports device time, radio heap residency and peak, dropped RX frames,
+and TX errors while the station is connected. The app releases BLE and
+then Wi-Fi when it receives Q over USB.
+
+RV32 emulator vectors exercise shared PHY acquisition and release and
+retry of arbiter pre-initialization through mocked vendor entry points.
+Use the Mac BLE observer and station echo checker for on-air verification.

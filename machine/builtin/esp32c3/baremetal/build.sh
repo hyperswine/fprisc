@@ -9,10 +9,10 @@ case "$example" in
     journal|journal-cut) source="$root/machine/builtin/esp32c3/examples/journal.fpr" ;;
     endurance) source="$root/machine/builtin/esp32c3/examples/endurance.fpr" ;;
     wifi) source="$here/radio/wifi.fpr" ;;
-    wifi-sta) source="$here/radio/wifi_sta.fpr" ;;
+    wifi-sta|coex) source="$here/radio/wifi_sta.fpr" ;;
     ble) source="$here/radio/ble.fpr" ;;
     button) source="$here/button.fpr" ;;
-    *) echo "Expected selfcheck, button, journal, journal-cut, endurance, ble, wifi, or wifi-sta" >&2; exit 2 ;;
+    *) echo "Expected selfcheck, button, journal, journal-cut, endurance, ble, wifi, wifi-sta, or coex" >&2; exit 2 ;;
 esac
 mode=${3:-ram}
 case "$mode" in
@@ -21,11 +21,11 @@ case "$mode" in
     *) echo "Expected ram or flash" >&2; exit 2 ;;
 esac
 case "$example:$mode" in
-    journal:ram|journal-cut:ram|endurance:ram|ble:ram|wifi:ram|wifi-sta:ram)
+    journal:ram|journal-cut:ram|endurance:ram|ble:ram|wifi:ram|wifi-sta:ram|coex:ram)
         echo "The selected application requires flash boot." >&2
         exit 2 ;;
 esac
-if [ "$example" = ble ] || [ "$example" = wifi ] || [ "$example" = wifi-sta ]; then
+if [ "$example" = ble ] || [ "$example" = wifi ] || [ "$example" = wifi-sta ] || [ "$example" = coex ]; then
     radio_package=$(cd "${C3_RADIO_SYS:?Set C3_RADIO_SYS to the pinned esp-wifi-sys checkout}" && pwd)
     radio_reference=$(cd "${C3_RADIO_REF:?Set C3_RADIO_REF to the pinned esp-hal checkout}" && pwd)
 fi
@@ -69,36 +69,46 @@ journal|journal-cut|endurance)
 ble)
     link_layout="$here/radio/ble.ld"
     python3 "$here/radio/generate_bt.py" "$radio_package" "$radio_reference" > ble_config.h
-    for src in ble ble_hw alloc lib_support hci task os_queue task_clock btdm_services btdm_irq
+    printf '#define C3_PHY_INIT_DATA_IMPLEMENTATION\n#include "ble_config.h"\n' > phy_data.c
+    compile "$PWD/phy_data.c" phy_data.o
+    for src in ble ble_hw radio_phy alloc lib_support hci task os_queue task_clock btdm_services btdm_irq
     do
         compile "$here/radio/$src.c" "$src.o" -I"$PWD"
         set -- "$@" "$src.o"
     done
     compile "$here/radio/task_switch.S" task_switch.o
-    set -- "$@" task_switch.o -T ble_rom.ld -Wl,--start-group
+    set -- "$@" phy_data.o task_switch.o -T ble_rom.ld -Wl,--start-group
     for library in btdm_app btbb phy coexist printf; do
         set -- "$@" "$radio_package/esp-wifi-sys-esp32c3/libs/lib$library.a"
     done
     set -- "$@" -lm -lc -Wl,--end-group ;;
-wifi|wifi-sta)
+wifi|wifi-sta|coex)
     link_layout="$here/radio/wifi.ld"
     python3 "$here/radio/generate_bt.py" "$radio_package" "$radio_reference" > ble_config.h
-    printf '#include "ble_config.h"\n' > phy_data.c
+    printf '#define C3_PHY_INIT_DATA_IMPLEMENTATION\n#include "ble_config.h"\n' > phy_data.c
     compile "$PWD/phy_data.c" phy_data.o
     python3 "$here/radio/generate_ftm.py" "$radio_reference" > wifi_ftm.c
     compile "$PWD/wifi_ftm.c" wifi_ftm.o
     python3 "$here/radio/generate_wifi.py" "$radio_package" > wifi_config.h
-    for src in wifi_hw wifi_single wifi_services wifi_irq wifi_lib lib_support task os_queue task_clock btdm_services event_group os_timer
+    for src in wifi_hw radio_phy wifi_single wifi_services wifi_irq wifi_lib lib_support task os_queue task_clock btdm_services event_group os_timer
     do
         compile "$here/radio/$src.c" "$src.o" -I"$PWD"
         set -- "$@" "$src.o"
     done
-    if [ "$example" = wifi-sta ]; then
+    if [ "$example" != wifi ]; then
         for src in net_probe wifi_probe station_config station_lib; do
             compile "$here/radio/$src.c" "$src.o" -I"$PWD"
             set -- "$@" "$src.o"
         done
-        compile "$here/radio/wifi.c" wifi.o -I"$PWD" -DC3_WIFI_STATION
+        if [ "$example" = coex ]; then
+            for src in ble ble_hw hci btdm_irq coex; do
+                compile "$here/radio/$src.c" "$src.o" -I"$PWD" -DC3_COEX
+                set -- "$@" "$src.o"
+            done
+            compile "$here/radio/wifi.c" wifi.o -I"$PWD" -DC3_WIFI_STATION -DC3_COEX
+        else
+            compile "$here/radio/wifi.c" wifi.o -I"$PWD" -DC3_WIFI_STATION
+        fi
     else
         compile "$here/radio/wifi.c" wifi.o -I"$PWD"
     fi
@@ -109,8 +119,13 @@ wifi|wifi-sta)
     for library in core espnow mesh net80211 pp wpa_supplicant phy coexist printf regulatory; do
         set -- "$@" "$radio_package/esp-wifi-sys-esp32c3/libs/lib$library.a"
     done
+    if [ "$example" = coex ]; then
+        for library in btdm_app btbb; do
+            set -- "$@" "$radio_package/esp-wifi-sys-esp32c3/libs/lib$library.a"
+        done
+    fi
     set -- "$@" -lm -lc
-    if [ "$example" = wifi-sta ]; then
+    if [ "$example" != wifi ]; then
         set -- "$@" -lnosys
     fi
     set -- "$@" -Wl,--end-group ;;
@@ -128,7 +143,7 @@ compile "$root/machine/virt/memshim.c" memshim.o
     -Wl,--gc-sections,--no-relax,-Map="$output.map" \
     start.o console.o gpio.o clock.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o "$output.elf"
 set --
-if [ "$example" = wifi ] || [ "$example" = wifi-sta ] || [ "$example" = ble ]; then
+if [ "$example" = wifi ] || [ "$example" = wifi-sta ] || [ "$example" = ble ] || [ "$example" = coex ]; then
     set -- --flash_mode dio --flash_size 4MB
 fi
 "${ESPTOOL:-esptool.py}" --chip esp32c3 elf2image "$@" -o "$output.bin" "$output.elf"

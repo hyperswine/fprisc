@@ -11,9 +11,10 @@ STRUCTS = (
     "wifi_scan_config_t", "wifi_country_t", "wifi_pmf_config_t",
     "wifi_scan_threshold_t", "wifi_bss_max_idle_config_t", "wifi_ap_config_t",
     "wifi_sta_config_t", "wifi_nan_sync_config_t", "wifi_config_t",
+    "coex_adapter_funcs_t",
 )
 CONSTANTS = ("ESP_WIFI_OS_ADAPTER_VERSION", "ESP_WIFI_OS_ADAPTER_MAGIC",
-             "WIFI_INIT_CONFIG_MAGIC")
+             "WIFI_INIT_CONFIG_MAGIC", "COEX_ADAPTER_VERSION", "COEX_ADAPTER_MAGIC")
 OPTION = "::core::option::Option<"
 FUNCTION = 'unsafe extern "C" fn('
 PRIMITIVES = {

@@ -2,6 +2,11 @@
 #include "builtin.h"
 #include "alloc.h"
 #include "ble_hw.h"
+#include "ble.h"
+#include "radio_phy.h"
+#ifdef C3_COEX
+#include "coex.h"
+#endif
 #include "btdm_irq.h"
 #include "btdm_services.h"
 #include "hci.h"
@@ -21,6 +26,8 @@ static bool in_flight;
 
 extern int btdm_controller_init(struct c3_btdm_config *config);
 extern int btdm_controller_enable(unsigned mode);
+extern void btdm_controller_disable(void);
+extern void btdm_controller_deinit(void);
 extern void coex_pti_v2(void);
 extern void c3_console_text(const char *message);
 
@@ -62,8 +69,7 @@ static int advertise(void) {
     return 0;
 }
 
-static V run_ble(V unit) {
-    (void)unit;
+void c3_ble_start_advertising(void) {
     static struct c3_btdm_config config = {
         .magic = 0x5a5aa5a5, .version = 0x02509280,
         .controller_task_stack_size = 8192, .controller_task_prio = 3,
@@ -78,20 +84,49 @@ static V run_ble(V unit) {
     c3_btdm_install_services(&callbacks, 1);
     c3_btdm_install_interrupts(&callbacks);
     c3_ble_install_platform(&callbacks);
+#ifdef C3_COEX
+    c3_coex_install_ble(&callbacks);
+#endif
     c3_console_text("BLE power\n");
     if (c3_ble_power_up()) fpr_cpanic("BLE clock or ROM data init");
+#ifdef C3_COEX
+    coex_update_lpclk_interval();
+#endif
     c3_console_text("BLE OSI\n");
     if (btdm_osi_funcs_register(&callbacks)) fpr_cpanic("BLE OSI registration");
+#ifdef C3_COEX
+    if (coex_init()) fpr_cpanic("BLE coexistence init");
+#endif
     c3_console_text("BLE controller init\n");
     if (btdm_controller_init(&config)) fpr_cpanic("BLE controller init");
+#ifdef C3_COEX
+    if (coex_enable()) fpr_cpanic("BLE coexistence enable");
+#endif
     c3_console_text("BLE PHY calibration\n");
     if (c3_ble_calibrate()) fpr_cpanic("BLE PHY calibration");
     coex_pti_v2();
     c3_console_text("BLE controller enable\n");
     if (btdm_controller_enable(BLE_MODE)) fpr_cpanic("BLE controller enable");
     if (API_vhci_host_register_callback(&host)) fpr_cpanic("BLE VHCI registration");
+    pending_step = C3_HCI_ADV_STEPS;
+    pending_result = 0;
+    in_flight = false;
     if (advertise()) fpr_cpanic("BLE advertising HCI");
     c3_console_text("FPR BLE ADVERTISING 43AA9E7E-1EA0-4AB4-A7C2-1A280B18B13C\n");
+}
+
+void c3_ble_stop_advertising(void) {
+    uint64_t deadline = c3_tasks_now_us() + COMMAND_TIMEOUT_US;
+    while (in_flight && c3_tasks_now_us() < deadline) c3_task_park(&pending_step, deadline);
+    if (in_flight) fpr_cpanic("BLE transmit drain");
+    btdm_controller_disable();
+    btdm_controller_deinit();
+    c3_radio_phy_release();
+}
+
+static V run_ble(V unit) {
+    (void)unit;
+    c3_ble_start_advertising();
     for (;;) c3_task_park(&pending_step, C3_WAIT_FOREVER);
 }
 FPR_FN(fpr_g_EspBLE_x2eadvertise, run_ble, 1);

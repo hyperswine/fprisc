@@ -33,7 +33,9 @@ data = re.sub(r"limit\(CONFIG_ESP32_PHY_MAX_TX_POWER \* 4, (0|0x\w+), (0|0x\w+)\
 values = [int(x, 0) for x in data.split(",") if x.strip()]
 if len(values) != 128:
     raise ValueError(f"Expected 128 PHY initialization bytes, got {len(values)}")
+print("#ifdef C3_PHY_INIT_DATA_IMPLEMENTATION")
 print("const uint8_t c3_phy_init_data[128] __attribute__((aligned(4))) = {")
 for i in range(0, 128, 16):
     print("    " + ", ".join(f"0x{x:02x}" for x in values[i:i+16]) + ",")
 print("};")
+print("#endif")
