@@ -23,3 +23,20 @@ Verified on the physical C3 with GCC 13.2.0 and esptool 4.9.0:
 
     C3 BARE METAL integer self-check: 827204 [PASS]
     FPR DONE
+
+## BOOT button on the SuperMini
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-button button
+    python machine/builtin/esp32c3/baremetal/check.py --button PORT build/c3-button/button.bin
+
+Start with BOOT released. When the checker reports GPIO9 high, hold BOOT
+briefly and release it. The FP-RISC program imports the board definition and
+the same GPIO library used by the IDF examples. It samples 128 matching
+reads per state and sends the electrical levels over USB. The checker
+requires high, low, high and a return from main. GPIO8 stays untouched.
+
+The polling GPIO backend programs the C3 IO MUX and GPIO Matrix directly.
+It implements input with optional pull-up, level reads, push-pull and
+open-drain output, and level writes on the same header pins as the IDF
+backend. An invalid pin or operation for the configured direction returns
+-EINVAL. This hardware check exercises the input path.

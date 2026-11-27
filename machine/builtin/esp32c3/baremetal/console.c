@@ -1,3 +1,4 @@
+#include <errno.h>
 #include "builtin.h"
 #include "i32.h"
 
@@ -46,6 +47,14 @@ static V serial_result(V value, V passed) {
     return V_UNIT;
 }
 FPR_FN(fpr_g_Serial_x2eresult, serial_result, 2);
+
+static V write_byte(V byte) {
+    if (!ISINT(byte) || UNTAG(byte) < 0 || UNTAG(byte) > 255) return TAG(-EINVAL);
+    char value = (char)UNTAG(byte);
+    write_bytes(&value, 1);
+    return TAG(1);
+}
+FPR_FN(fpr_g_EspIO_x2ewriteByte, write_byte, 1);
 
 extern V fpr_fn_main(void);
 void c3_main(void) {

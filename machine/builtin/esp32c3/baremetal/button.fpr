@@ -1,0 +1,20 @@
+profile builtin.
+Board = use "../boards/supermini".
+GPIO = use "../lib/gpio".
+
+EspIO.writeByte : Int -> Int .
+
+# Emit the sampled electrical level as ASCII after each stable transition.
+waitLevel pressed count =
+  level = GPIO.read Board.button;
+  if level < 0 then level else
+    if ((level == 0) == Board.buttonActiveLow) != pressed then waitLevel pressed 0 else
+      if count < 127 then waitLevel pressed (count + 1) else EspIO.writeByte (48 + level).
+
+main =
+  rc = GPIO.input Board.button True;
+  if rc != 0 then rc else
+    released = waitLevel False 0;
+    if released < 0 then released else
+      pressed = waitLevel True 0;
+      if pressed < 0 then pressed else waitLevel False 0.
