@@ -4,6 +4,7 @@ import time
 from types import SimpleNamespace
 
 from esptool import detect_chip, load_ram
+from serial import Serial, SerialException
 
 
 def receive(serial, size, timeout):
@@ -49,6 +50,32 @@ def check_button(serial):
     print("BOOT press/release PASS", flush=True)
 
 
+def check_flash(port, button):
+    # Opening the port after USB re-enumerates preserves normal flash boot.
+    marker = b"FPR C3 FLASH " + (b"button" if button else b"selfcheck") + b"\n"
+    with Serial(port=None, baudrate=115200, timeout=0.2) as serial:
+        serial.port = port
+        serial.dtr = serial.rts = False
+        deadline = time.monotonic() + 30
+        while not serial.is_open:
+            try:
+                serial.open()
+            except SerialException:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
+        serial.write(b"?")
+        buffered = bytearray()
+        while not buffered.endswith(marker) and time.monotonic() < deadline:
+            buffered.extend(serial.read(1))
+        if not buffered.endswith(marker):
+            raise RuntimeError(f"Missing flash startup marker: {buffered[-1024:]!r}")
+        print(marker.decode().strip(), flush=True)
+        if button:
+            check_button(serial)
+        else:
+            check_selftest(serial)
+
 def check(port, image, button=False):
     chip = detect_chip(port=port, baud=115200)
     try:
@@ -59,22 +86,32 @@ def check(port, image, button=False):
         serial.timeout = 0.2
         if button:
             return check_button(serial)
-        output = bytearray()
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            output.extend(serial.read(256))
-            if b"C3 BARE METAL integer self-check: 827204 [PASS]\nFPR DONE\n" in output:
-                print(output.decode(errors="replace").strip())
-                return
-        raise RuntimeError(f"Missing self-check result. Received {output[:1800]!r}")
+        check_selftest(serial)
     finally:
         chip._port.close()
+
+
+def check_selftest(serial):
+    output = bytearray()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        output.extend(serial.read(256))
+        if b"C3 BARE METAL integer self-check: 827204 [PASS]\nFPR DONE\n" in output:
+            print(output.decode(errors="replace").strip())
+            return
+    raise RuntimeError(f"Missing self-check result. Received {output[:1800]!r}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port")
-    parser.add_argument("image")
+    parser.add_argument("image", nargs="?")
+    parser.add_argument("--flash", action="store_true", help="attach to a normally booted flash app")
     parser.add_argument("--button", action="store_true", help="verify a physical BOOT press and release")
     args = parser.parse_args()
-    check(args.port, args.image, args.button)
+    if args.flash == bool(args.image):
+        parser.error("Specify a RAM image or --flash")
+    if args.flash:
+        check_flash(args.port, args.button)
+    else:
+        check(args.port, args.image, args.button)

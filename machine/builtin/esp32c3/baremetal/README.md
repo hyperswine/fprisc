@@ -58,3 +58,22 @@ On the physical C3, the alarm test measured 1,000 ms on both the device
 and the Mac. The GPIO interrupt test reported initial high at 1,204 ms,
 low at 38,638 ms, and high at 39,710 ms. A temporary breakpoint after
 interrupt setup reported cause 3 and PC 0x40380040 over USB.
+
+## Flash boot with the existing C3 bootloader
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-flash button flash
+    python machine/builtin/esp32c3/baremetal/check.py --flash --button PORT
+
+The flash build produces button-flash.bin, an ESP32-C3 application image for
+the existing second-stage bootloader. Its descriptor is mapped from flash.
+The bootloader loads executable code and data into SRAM. The application
+enables the USB and SYSTIMER clocks, enables the USB pad, and disables the
+bootloader RTC watchdog. It waits for the checker to query its identity
+over USB, then runs the timed BOOT check. The checker attaches without
+resetting the board so the same command works after a cold boot.
+
+Use the adjacent ota_slot.py utility to inspect the live selection, back up
+the inactive slot, install button-flash.bin into that slot, and select the
+previous slot to roll back. The utility uses the ESP-IDF partition-table
+parser on the host. The flash application links the FP-RISC runtime and
+compiler support, and uses the bootloader already installed on the board.

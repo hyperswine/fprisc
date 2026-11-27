@@ -12,6 +12,9 @@ _start:
 2:  la t0, c3_vectors
     ori t0, t0, 1
     csrw mtvec, t0
+#ifdef C3_FLASH_BOOT
+    call c3_flash_init
+#endif
     call c3_irq_init
     call c3_main
 3:  wfi

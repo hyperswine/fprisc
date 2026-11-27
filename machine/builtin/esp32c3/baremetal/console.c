@@ -77,6 +77,13 @@ void c3_main(void) {
     static unsigned char heap[8192] __attribute__((aligned(16)));
     fpr_set_tp(&fpr_harts[0]);
     fpr_builtin_heap_init(heap, heap + sizeof(heap));
+#ifdef C3_FLASH_BOOT
+    /* The host queries the image after USB re-enumeration on cold boot. */
+    for (;;) {
+        if ((*config & (1u << 2)) && (uint8_t)*fifo == '?') break;
+    }
+    puts_usb("FPR C3 FLASH " C3_EXAMPLE "\n");
+#endif
     fpr_fn_main();
     puts_usb("FPR DONE\n");
 }
