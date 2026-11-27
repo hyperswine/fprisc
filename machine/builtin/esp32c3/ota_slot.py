@@ -94,6 +94,18 @@ def provision(stub, revision, backup):
     print("Reserved 64 KiB. All bytes outside the partition table match the backup.")
 
 
+def read_slot(stub, part, reference):
+    # A device-side digest avoids a slow USB transfer when an exact backup
+    # is available. A different or truncated backup is never trusted.
+    if reference:
+        with reference.open("rb") as src:
+            src.seek(part.offset)
+            cached = src.read(part.size)
+        if len(cached) == part.size and stub.flash_md5sum(part.offset, part.size) == hashlib.md5(cached).hexdigest():
+            return cached
+    return stub.read_flash(part.offset, part.size)
+
+
 def operate(stub, revision, args):
     if args.command == "provision-journal":
         provision(stub, revision, args.backup)
@@ -115,7 +127,7 @@ def operate(stub, revision, args):
         return
     target = args.slot
     part = parts[f"app{target}"]
-    old = stub.read_flash(part.offset, part.size)
+    old = read_slot(stub, part, args.reference)
     if args.command == "backup":
         with args.output.open("xb") as out:
             out.write(old)
@@ -131,7 +143,7 @@ def operate(stub, revision, args):
             raise ValueError("Install requires the inactive OTA slot")
         # IDF may fall back from a damaged selected image to the other slot.
         previous = parts[f"app{active}"]
-        image_size(stub.read_flash(previous.offset, previous.size), revision)
+        image_size(read_slot(stub, previous, args.reference), revision)
         data = args.image.read_bytes()
         if len(data) > part.size or image_size(data, revision) != len(data):
             raise ValueError("App size does not match its checksummed image length or slot capacity")
@@ -156,6 +168,7 @@ def operate(stub, revision, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port")
+    parser.add_argument("--reference", type=Path, help="use matching slot bytes from this full flash backup after device-side verification")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     migrate = commands.add_parser("provision-journal", help="reserve the erased 64 KiB tail of slot 1")

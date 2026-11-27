@@ -91,3 +91,28 @@ The linked Builtin arena occupied 8,192 bytes. The IDF main task had a
 
 The two-hour test requires consecutive checkpoint records, stable live
 memory occupancy and a host monotonic duration of at least 7,200 seconds.
+
+
+## Dedicated journal provisioning
+
+Before migrating the physical C3, the host read all 4,194,304 flash bytes
+and independently matched their device-side digest. The original app in
+slot 0 occupied 890,368 bytes. The installed FP-RISC logger in slot 1
+occupied 218,608 bytes. Both image integrity checks passed and all 65,536
+bytes proposed for the journal were erased. The full-device backup is
+private to the board owner.
+
+After writing the table, the host read back that sector and compared device
+digests for every other flash byte with the pre-migration copy. The
+flash-booted logger reopened the original SPIFFS file and returned 1,028
+bytes with SHA-256
+`848a039cf625b031dd86e6ec8804e0202a8f664e590a40528934d2a6f9049270`.
+Selecting the original slot 0 advanced the OTA selector from sequence 2
+to 3. Its firmware cycled native USB after boot, which can require BOOT
+and RESET to re-enter the ROM downloader.
+
+The dedicated format passed the host simulator at 129 signature-program
+boundaries and 1,025 record-program boundaries. Every reboot preserved
+previously acknowledged records and allowed a subsequent append. A full
+volume rejected the next append and a corrupt committed record failed
+mount. The same tests passed with address and undefined-behavior sanitizers.
