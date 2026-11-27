@@ -69,7 +69,7 @@ rawRows ls = case ls of
 main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-layout-raw-i64";
   src = "{work}/i64.fpr"; asm = "{work}/i64.s"; exe = "{work}/i64";
-  _ = H.write src (unwrap (Utf8.encode prog));
+  _ = H.writeFile src (unwrap (Utf8.encode prog));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache")];
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix","--prelude={root}/core/prelude.fpr",src,asm] env 240000;
   _ = (if code == 0 then Unit else error "compile exit {code}\n{out}{err}");

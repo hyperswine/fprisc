@@ -13,7 +13,7 @@ runTool root argv =
   if code != 0 then error "controlled build/execution failed:\n{out}{err}" else out + err.
 link root out sequence =
   asm = "{out}/callback.s";
-  units = if B.exists "-f" "{asm}.units" then Str.lines (F.readText "{asm}.units") else [];
+  units = if B.testPath "-f" "{asm}.units" then Str.lines (F.readText "{asm}.units") else [];
   inputs = List.concat [["{out}/start.S",asm],units,["{out}/caller.c"],List.map (fn p -> "{root}/{p}") runtime];
   before = inventory inputs;
   # The sequence dispatcher must remain visible to the direct-call stack proof.

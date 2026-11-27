@@ -67,7 +67,7 @@ main u = root = H.root Unit; work = tempDir "fpr-cost"; dir = "{root}/tests/case
   _ = has (cost root work "{dir}/bound_ok.fpr") "count: declared work <= 5·max(0, n) + 5   derived 5·(max(0, n) + 1)   PROVEN";
   _ = has (cost root work "{dir}/bound_pipeline.fpr") "total: declared work <= 23·len xs + 27   derived 9·len xs + 14·(len xs + 1) + 13   PROVEN";
   old = "{work}/bound-pipeline-19.fpr";
-  _ = H.write old (unwrap (Utf8.encode (Str.replace "23 * len xs + 27" "19 * len xs + 27" (readPath "{dir}/bound_pipeline.fpr"))));
+  _ = H.writeFile old (unwrap (Utf8.encode (Str.replace "23 * len xs + 27" "19 * len xs + 27" (readPath "{dir}/bound_pipeline.fpr"))));
   _ = outcome root work ["{root}/fpr","build",old,"-o","{work}/probe"] False ["OVER (len xs: derived 23, declared 19)"];
   r5 = cost root work "{dir}/bound_pipeline_direct.fpr";
   _ = expect "total work" (workOf r5 "total") "16·(len xs + 1) + 6";
@@ -79,7 +79,7 @@ main u = root = H.root Unit; work = tempDir "fpr-cost"; dir = "{root}/tests/case
   _ = judged root work "bound_coef.fpr" "host.fprt" True ["count: declared work <= 5·max(0, n) + 5   derived 5·(max(0, n) + 1)   PROVEN"];
   _ = judged root work "bound_coef.fpr" "host-omega4.fprt" False ["OVER (max(0, n): derived 5, declared 4)"];
   bad = "{work}/bad-manifest.fprt";
-  _ = H.write bad (unwrap (Utf8.encode "name x\nns_per_op fast\n"));
+  _ = H.writeFile bad (unwrap (Utf8.encode "name x\nns_per_op fast\n"));
   _ = outcome root work ["{root}/fpr","build","{dir}/bound_ok.fpr","--manifest={bad}","-o","{work}/probe"] False ["not a number: fast"];
   r6 = cost root work "{dir}/live_bounds.fpr";
   _ = has r6 "build: declared live <= 24·max(0, n) + 24   derived 24·(max(0, n) + 1)   PROVEN";

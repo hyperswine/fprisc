@@ -21,7 +21,7 @@ field key text = lead = "(\"{key}\", \""; i = Str.indexOf lead text;
     Str.slice rest 0 (Str.find 34 rest).
 environment root = ProcessResult code out err = H.call ["{root}/fpr","+RTS","--info","-RTS"] [] 60000;
   if code != 0 then error "fpr +RTS --info: {err}" else "ghc-{field "GHC version" out} {field "Host platform" out}".
-inline work name text = p = "{work}/{name}.fpr"; _ = H.write p (unwrap (Utf8.encode text)); p.
+inline work name text = p = "{work}/{name}.fpr"; _ = H.writeFile p (unwrap (Utf8.encode text)); p.
 job root work (name, text, file) =
   source = if file != "" then file else inline work name text;
   (name, ["{root}/fpr","compile","--system=posix",source,"{work}/{name}.s","+RTS","-t{work}/{name}.rts","--machine-readable","-RTS"],

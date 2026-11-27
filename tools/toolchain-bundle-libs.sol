@@ -15,7 +15,7 @@ notices keg =
   if status != 0 then error "listing license notices in {keg}: {err}" else
     names = List.map (fn p -> M.base p) (List.filter (fn p -> p != "") (Str.split 0 out));
     F.ordered (List.filter (fn n -> List.any (fn pre -> Str.startsWith pre (Str.upper n)) ["LICENSE","LICENCE","COPYING","NOTICE"]
-                               and B.exists "-f" "{keg}/{n}") names).
+                               and B.testPath "-f" "{keg}/{n}") names).
 collectDependency sdk image state dep = case state of State queue aliases libraries ->
   if M.systemLibrary dep or List.any (fn pair -> (path,_) = pair; path == dep) aliases then state else
     if not (Str.startsWith "/" dep) then error "{image} loads {dep}; build with absolute install names" else

@@ -8,4 +8,4 @@ runWith env argv = inDirectory "" env argv.
 command argv = runWith [] argv.
 query argv = ProcessResult status out err = unwrap (Proc.runNow (ProcessSpec argv "" [] "" 0));
   if status == 0 then Str.trim out else error "{argv}: {err}".
-exists flag path = ProcessResult code _ _ = unwrap (Proc.runNow (ProcessSpec ["test",flag,path] "" [] "" 0)); code == 0.
+testPath flag path = ProcessResult code _ _ = unwrap (Proc.runNow (ProcessSpec ["test",flag,path] "" [] "" 0)); code == 0.

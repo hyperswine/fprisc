@@ -91,7 +91,7 @@ shape secs want = (name, needle, others) = want;
 main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-str-interp-pieces";
   src = "{work}/pieces.fpr"; asm = "{work}/pieces.s"; exe = "{work}/pieces";
-  _ = H.write src (unwrap (Utf8.encode prog));
+  _ = H.writeFile src (unwrap (Utf8.encode prog));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache")];
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix",src,asm] (List.append env [("FPR_TYPED_IR","dump")]) 240000;
   _ = (if code == 0 then Unit else error "compile exit {code}\n{out}{err}");

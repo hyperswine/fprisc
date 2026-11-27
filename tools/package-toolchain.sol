@@ -23,7 +23,7 @@ versionCore version =
 require ok why = if ok then Unit else error why.
 libraryNotices sdk lib =
   paths = unwrap (J.items (field lib "notices"));
-  require (paths != [] and List.all (fn value -> B.exists "-f" (sdk + "/" + unwrap (J.text value))) paths)
+  require (paths != [] and List.all (fn value -> B.testPath "-f" (sdk + "/" + unwrap (J.text value))) paths)
     ("missing bundled library notices for " + textField lib "file").
 releaseFiles sdk =
   ProcessResult status out err = unwrap (Proc.runNow (ProcessSpec ["find",".","(","-name",".git","-o","-name","dist-newstyle",
@@ -54,7 +54,7 @@ verify root prefix core notices meta =
     "staged toolchain inventory mismatch";
   _ = (if textField host "system" == "Darwin" then require ((Str.split 46 (textField meta "minimumMacOS") ! 0) == "27") "review the formula macOS requirement before packaging" else Unit);
   _ = releaseFiles sdk;
-  _ = require (B.exists "-f" "{sdk}/LICENSE") "the stage must include the FP-RISC license";
+  _ = require (B.testPath "-f" "{sdk}/LICENSE") "the stage must include the FP-RISC license";
   _ = List.map (libraryNotices sdk) (unwrap (J.items (field meta "bundledLibraries")));
   plan = field meta "cabalPlan";
   _ = require (field plan "recorded" == J.JBool True) "the stage has no Cabal plan for its compiler";

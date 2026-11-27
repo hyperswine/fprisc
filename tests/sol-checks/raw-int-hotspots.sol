@@ -59,7 +59,7 @@ count needle ls = List.len (List.filter (fn l -> Str.contains needle l) ls).
 check : unsafe Str -> Str -> Str -> Str -> Str -> List (Str, Int) -> Int.
 check root work label prog want needles =
   src = "{work}/{label}.fpr"; asm = "{work}/{label}.s"; exe = "{work}/{label}";
-  _ = H.write src (unwrap (Utf8.encode prog));
+  _ = H.writeFile src (unwrap (Utf8.encode prog));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache-{label}")];
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix",src,asm] (List.append env [("FPR_TYPED_IR","dump")]) 240000;
   _ = (if code == 0 then Unit else error "{label}: compile exit {code}\n{out}{err}");

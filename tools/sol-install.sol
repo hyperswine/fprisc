@@ -14,11 +14,11 @@ prepare prefix =
   versions = "{prefix}/libexec/sol";
   target = "{prefix}/bin/sol";
   _ = B.command ["mkdir","-p",versions,"{prefix}/bin"];
-  _ = (if B.exists "-L" target then
+  _ = (if B.testPath "-L" target then
     resolved = B.query ["realpath",target];
     owner = B.query ["dirname",B.query ["dirname",resolved]];
     if owner == B.query ["realpath",versions] then Unit else error "refusing to replace unmanaged {target}"
-    else if B.exists "-e" target then error "refusing to replace unmanaged {target}" else Unit);
+    else if B.testPath "-e" target then error "refusing to replace unmanaged {target}" else Unit);
   versions.
 install root binary prefix output =
   _ = (if and (prefix == "") (output == "") then error usage else Unit);

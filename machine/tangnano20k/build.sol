@@ -26,7 +26,7 @@ sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/ta
   _ = B.runWith [("FPR_NO_F64_INLINE","1")] ["./fprc","--system=bare-metal","--profile=base","--target=rv{width}","--prelude=core/prelude.fpr",prog,assembly];
   soft = B.setting "FPR_SOFTFLOAT_ROOT" "{B.query ["pwd","-P"]}/build/tangnano20k-softfloat";
   archive = "{soft}/build/Linux-RISCV{width}-GCC/softfloat.a";
-  _ = (if B.exists "-f" archive then Unit else error "SoftFloat missing: run FPR_XLEN={width} sol machine/tangnano20k/build-softfloat.sol");
+  _ = (if B.testPath "-f" archive then Unit else error "SoftFloat missing: run FPR_XLEN={width} sol machine/tangnano20k/build-softfloat.sol");
   units = List.filter (fn p -> p != "") (Str.lines (readPath "{assembly}.units"));
   support = if width == "32" then ["-lgcc"] else [];
   _ = B.command (List.concat [["riscv64-unknown-elf-gcc","-march=rv{width}{isa}_zicsr_zifencei","-mabi={abi}","-mcmodel=medany","-ffixed-x27","-Os"],Board.libc Unit,

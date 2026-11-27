@@ -16,7 +16,7 @@ build compiler bin opt name =
   B.command [compiler,"build","-o","bin-fpr/{name}","{name}.fpr"].
 fastaInput bin n =
   path = "data/fasta-{n}.txt";
-  if B.exists "-s" path then Unit else
+  if B.testPath "-s" path then Unit else
     B.command ["sh","-c","\"$0\" \"$1\" > \"$2\".tmp && mv \"$2\".tmp \"$2\"","{bin}/fasta.c","{n}",path].
 inputs bin = _ = fastaInput bin 1000000; fastaInput bin 2500000.
 >! names = (case args Unit of [] -> all | selected -> selected);

@@ -68,7 +68,7 @@ checkLinkage : String -> String -> Unit .
 checkLinkage system prefix =
   sdk = "{prefix}/libexec/fprisc";
   lib = "{sdk}/lib";
-  extra = if B.exists "-d" lib
+  extra = if B.testPath "-d" lib
           then List.filter (fn p -> not (Str.contains "/licenses/" p)) (listFiles lib)
           else [];
   _ = inspectImage system True "{sdk}/fpr";
@@ -77,7 +77,7 @@ checkLinkage system prefix =
 incDirs = ["runtime","machine/posix","machine/unix","core","std","sol/lib",".fpr"].
 listInc : String -> List String .
 listInc root =
-  dirs = List.filter (fn dir -> B.exists "-d" "{root}/{dir}") incDirs;
+  dirs = List.filter (fn dir -> B.testPath "-d" "{root}/{dir}") incDirs;
   case dirs of
     [] -> []
   | _ ->
@@ -89,10 +89,10 @@ requireIncludes : String -> String -> Unit .
 requireIncludes root sdk =
   incs = listInc root;
   _ = require (incs != []) "expected at least one .inc under the staged source directories";
-  _ = require (B.exists "-f" "{sdk}/LICENSE") "staged toolchain is missing LICENSE";
-  _ = require (B.exists "-f" "{sdk}/runtime/bigint.inc")
+  _ = require (B.testPath "-f" "{sdk}/LICENSE") "staged toolchain is missing LICENSE";
+  _ = require (B.testPath "-f" "{sdk}/runtime/bigint.inc")
         "staged toolchain is missing runtime/bigint.inc (the 0.15.0 packaging hole)";
-  _ = List.map (fn rel -> require (B.exists "-f" "{sdk}/{rel}") "staged toolchain is missing {rel}") incs;
+  _ = List.map (fn rel -> require (B.testPath "-f" "{sdk}/{rel}") "staged toolchain is missing {rel}") incs;
   Unit.
 # writePath is deferred until commit; the next Proc.runNow must see the file.
 writeFile : String -> String -> Unit .
@@ -120,12 +120,12 @@ smoke root binary work version =
   sdk = "{prefix}/libexec/fprisc";
   _ = print "archive-smoke: packing {archive}";
   _ = B.runWith [("COPYFILE_DISABLE","1")] ["tar","-czf",archive,"-C",bundleParent,name];
-  _ = require (B.exists "-f" archive) "archive was not created: {archive}";
+  _ = require (B.testPath "-f" archive) "archive was not created: {archive}";
   _ = print "archive-smoke: extracting to {extractParent}";
   _ = B.command ["mkdir","-p",extractParent];
   _ = B.runWith [("COPYFILE_DISABLE","1")] ["tar","-xzf",archive,"-C",extractParent];
-  _ = require (B.exists "-x" "{prefix}/bin/fpr") "extracted archive is missing bin/fpr";
-  _ = require (B.exists "-x" "{prefix}/bin/sol") "extracted archive is missing bin/sol";
+  _ = require (B.testPath "-x" "{prefix}/bin/fpr") "extracted archive is missing bin/fpr";
+  _ = require (B.testPath "-x" "{prefix}/bin/sol") "extracted archive is missing bin/sol";
   _ = requireIncludes root sdk;
   _ = print "archive-smoke: fpr --version / sol --version";
   _ = mustContain prefix tmp project ["fpr","--version"] "fpr ";
@@ -159,7 +159,7 @@ main Unit =
     binary = CLI.valueOr "{root}/fpr" "binary" parsed;
     explicitWork = CLI.valueOr "" "work" parsed;
     work = if explicitWork == "" then tempDir "fprisc-archive-smoke" else absolute explicitWork;
-    _ = require (B.exists "-x" binary) "compiler is not executable: {binary}";
+    _ = require (B.testPath "-x" binary) "compiler is not executable: {binary}";
     _ = B.command ["mkdir","-p",work];
     version = compilerVersion (B.query [binary,"--version"]);
     smoke root (absolute binary) work version.

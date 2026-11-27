@@ -39,7 +39,7 @@ describe (n, k, d, e, s) = print "DRIFT {k} {n}: declared <= {d}, derived {e} ({
   _ = (if mods == [] then error "std contracts: no std module declares a bound ({gerr})" else Unit);
   imports = List.map importLine (List.zip (List.range 0 (List.len mods)) mods);
   src = "{work}/contracts.fpr";
-  _ = H.write src (unwrap (Utf8.encode (Str.join "" imports + "main = print 0.\n")));
+  _ = H.writeFile src (unwrap (Utf8.encode (Str.join "" imports + "main = print 0.\n")));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache")];
   ProcessResult code out err = H.call ["{root}/fpr","build","--cost",src,"-o","{work}/contracts"] env 900000;
   report = out + err;

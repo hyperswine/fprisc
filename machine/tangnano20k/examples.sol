@@ -275,7 +275,7 @@ main u =
   parsed = unwrap (CLI.parse specs (args Unit));
   _ = (if CLI.operands parsed == [] then Unit else error "unexpected arguments: {CLI.operands parsed}");
   root = B.query ["pwd","-P"];
-  _ = (if B.exists "-f" "machine/tangnano20k/examples.sol" then Unit else error "run from the FP-RISC repository root");
+  _ = (if B.testPath "-f" "machine/tangnano20k/examples.sol" then Unit else error "run from the FP-RISC repository root");
   target = CLI.valueOr "qemu" "target" parsed;
   _ = (if List.has target ["qemu","board"] then Unit else error "--target must be qemu or board");
   preset = CLI.valueOr "fprisc-48" "preset" parsed;
@@ -321,7 +321,7 @@ main u =
   skipCompiler = CLI.flag "skip-compiler-build" parsed;
   _ = (if skipCompiler then Unit else _ = print "building the compiler (make fpr)"; _ = must out2 rep2 (runLogged env ["make","fpr"] "{out2}/compiler-build.log" 1800); Unit);
   soft = B.setting "FPR_SOFTFLOAT_ROOT" "{root}/build/tangnano20k-softfloat";
-  _ = (if B.exists "-f" "{soft}/build/Linux-RISCV32-GCC/softfloat.a" then Unit
+  _ = (if B.testPath "-f" "{soft}/build/Linux-RISCV32-GCC/softfloat.a" then Unit
        else _ = must out2 rep2 (runLogged env (List.append sol ["machine/tangnano20k/build-softfloat.sol"]) "{out2}/softfloat-build.log" 600); Unit);
   helper = List.append sol ["{root}/machine/tangnano20k/board-host.sol"];
   o = {target = target, preset = preset, mhz = mhz, memMhz = presetMemMhz preset, compressed = compressed,

@@ -13,7 +13,7 @@ M = use "toolchain-macho".
 systemNames = ["libc.so.6","libm.so.6","libpthread.so.0","libdl.so.2","librt.so.1","libresolv.so.2",
   "libutil.so.1","libgcc_s.so.1","ld-linux-x86-64.so.2","ld-linux-aarch64.so.1","linux-vdso.so.1"].
 systemLibrary name = List.has (M.base name) systemNames.
-isElf path = B.exists "-f" path and Str.words (B.query ["od","-An","-tx1","-N4",path]) == ["7f","45","4c","46"].
+isElf path = B.testPath "-f" path and Str.words (B.query ["od","-An","-tx1","-N4",path]) == ["7f","45","4c","46"].
 # entries of `readelf -d` of one kind: NEEDED, RUNPATH or RPATH
 dynamic kind image =
   marker = "({kind})";
@@ -36,7 +36,7 @@ packageOf path = out = B.query ["sh","-c","b=$(basename \"$(readlink -f \"$1\")\
 prefixNotices sdk real =
   prefix = M.parent (M.parent real);
   src = "{prefix}/share/licenses";
-  if not (B.exists "-d" src) then error "no licence notice for {real}: not a Debian package and no {src}" else
+  if not (B.testPath "-d" src) then error "no licence notice for {real}: not a Debian package and no {src}" else
     dir = "lib/licenses/{M.base prefix}";
     _ = B.command ["mkdir","-p","{sdk}/{dir}"];
     _ = B.command ["cp","-pRL",src + "/.","{sdk}/{dir}"];
@@ -44,7 +44,7 @@ prefixNotices sdk real =
 noticesFor sdk pkg =
   base = Str.trim ((Str.split 58 pkg) ! 0);
   src = "/usr/share/doc/{base}/copyright";
-  if not (B.exists "-f" src) then error "no licence notice for {pkg} ({src})" else
+  if not (B.testPath "-f" src) then error "no licence notice for {pkg} ({src})" else
     dir = "lib/licenses/{base}";
     _ = B.command ["mkdir","-p","{sdk}/{dir}"];
     _ = B.command ["cp","-pL",src,"{sdk}/{dir}/copyright"];
@@ -74,8 +74,8 @@ inside root target = target == root or Str.startsWith "{root}/" target.
 problems root relative =
   image = "{root}/{relative}";
   dirs = List.map (expand image) (runpaths image);
-  bad = List.filter (fn d -> not (inside root (F.canonical d))) (List.filter (fn d -> B.exists "-d" d) dirs);
-  missing = List.filter (fn n -> not (systemLibrary n) and not (List.any (fn d -> B.exists "-f" "{d}/{n}") dirs)) (needed image);
+  bad = List.filter (fn d -> not (inside root (F.canonical d))) (List.filter (fn d -> B.testPath "-d" d) dirs);
+  missing = List.filter (fn n -> not (systemLibrary n) and not (List.any (fn d -> B.testPath "-f" "{d}/{n}") dirs)) (needed image);
   List.append (List.map (fn d -> "{relative}: runpath {d} is outside the toolchain") bad)
               (List.map (fn n -> "{relative} loads {n}: not a system library and not inside the toolchain") missing).
 # every ELF image in the prefix loads only system libraries or toolchain ones

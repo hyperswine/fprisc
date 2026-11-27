@@ -36,9 +36,9 @@ buildJob root work name = (name, ["{root}/fpr","build","{root}/tests/std/{name}.
 mkdir path = _ = unwrap (Proc.runNow (ProcessSpec ["mkdir","-p",path] "" [] "" 10000)); path.
 # The posix program walks a small tree in its working directory.
 posixTree dir = _ = mkdir "{dir}/tree/sub/deep";
-  _ = H.write "{dir}/tree/a.txt" (unwrap (Utf8.encode "hello\n"));
-  _ = H.write "{dir}/tree/sub/b.fpr" (unwrap (Utf8.encode "fn main\n"));
-  _ = H.write "{dir}/tree/sub/deep/c d.fpr" (unwrap (Utf8.encode "x\n")); Unit.
+  _ = H.writeFile "{dir}/tree/a.txt" (unwrap (Utf8.encode "hello\n"));
+  _ = H.writeFile "{dir}/tree/sub/b.fpr" (unwrap (Utf8.encode "fn main\n"));
+  _ = H.writeFile "{dir}/tree/sub/deep/c d.fpr" (unwrap (Utf8.encode "x\n")); Unit.
 tail n s = if Str.len s > n then Str.slice s (Str.len s - n) (Str.len s) else s.
 verdict label ok code out err = if ok then _ = print "PASS {label}"; []
   else _ = print "FAIL {label}: exit {code}\n--- stdout (tail)\n{tail 1500 out}\n--- stderr (tail)\n{tail 1500 err}"; [label].

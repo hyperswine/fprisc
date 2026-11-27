@@ -14,7 +14,7 @@ checkBuild r = (name, code, out, err) = r;
   if List.has name ["measure","pipeline","todo","transitions"] then
     must "ideal {name}: bounds not all PROVEN" (Str.contains "PROVEN" (judged out) and not (Str.contains "UNPROVED" (judged out))) out
   else Unit.
-writeSrc work name text = path = "{work}/{name}.fpr"; _ = H.write path (unwrap (Utf8.encode text)); path.
+writeSrc work name text = path = "{work}/{name}.fpr"; _ = H.writeFile path (unwrap (Utf8.encode text)); path.
 # (name, source text, needle that must appear when the build fails)
 refusedBuild root work env spec = (name, text, needle) = spec;
   src = writeSrc work name text;

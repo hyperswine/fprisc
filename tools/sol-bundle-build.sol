@@ -9,7 +9,7 @@ publish tool work id prefix output =
     final = "{versions}/{id}";
     # Move into the versions parent. A concurrent install of the same ID
     # can win the rename, in which case validate the winner before use.
-    moved = if B.exists "-e" final then False else check ["mv",staged,versions];
+    moved = if B.testPath "-e" final then False else check ["mv",staged,versions];
     _ = (if moved then Unit else
       if not (check (tool "stage" ["verify",final,staged])) then error "existing bundle is corrupt: {final}" else
       if not (check (tool "hashes" ["verify",final,"{work}/paths","{work}/digests"])) then error "existing bundle is corrupt: {final}" else Unit);

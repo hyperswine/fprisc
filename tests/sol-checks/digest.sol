@@ -5,7 +5,7 @@ verify exe fixture env expected harts =
   else error "digest on {harts} harts: exit {code}, stdout={out}, stderr={err}".
 >! work = tempDir "fpr-digest"; root = H.root Unit; exe = "{work}/check"; fixture = "{work}/bytes.bin";
   bytes = unwrap (Bytes.fromList (List.map (fn i -> (i * 37 + 11) % 256) (List.range 0 65536)));
-  _ = H.write fixture bytes;
+  _ = H.writeFile fixture bytes;
   env = [("FPR_HOME",root),("FPR_PATH",root)];
   ProcessResult code out err = H.call ["{root}/fpr","build","tests/sol-checks/digest.fpr","--harts","4","-o",exe] env 180000;
   _ = (if code == 0 then Unit else error "digest build: {out}{err}");

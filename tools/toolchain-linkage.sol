@@ -10,13 +10,13 @@ expand image exe entry =
   else if marker "@executable_path" entry then M.parent exe + Str.slice entry 16 (Str.len entry)
   else entry.
 inside root target = target == root or Str.startsWith (if root == "/" then "/" else "{root}/") target.
-fileInside root path = B.exists "-f" path and inside root (F.canonical path).
+fileInside root path = B.testPath "-f" path and inside root (F.canonical path).
 # A search directory may be absent. Check its canonical location, including
 # symlinks in the existing prefix, before admitting the directory.
 resolved : unsafe String -> Int -> String .
 resolved path links =
-  if B.exists "-e" path then F.canonical path else
-    if B.exists "-L" path then
+  if B.testPath "-e" path then F.canonical path else
+    if B.testPath "-L" path then
       if links == 0 then error "symlink loop resolving {path}" else
         ProcessResult status out err = unwrap (Proc.runNow (ProcessSpec ["readlink",path] "" [] "" 0));
         if status != 0 then error "cannot read {path}: {err}" else

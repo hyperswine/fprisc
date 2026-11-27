@@ -11,7 +11,7 @@ programs root = [
 check work compiler (name, body, expected) =
   path = "{work}/{name}.sol";
   base = "Token 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token value = owner; value.\n";
-  _ = H.write path (unwrap (Utf8.encode (base + body)));
+  _ = H.writeFile path (unwrap (Utf8.encode (base + body)));
   env = [("SOL_GPU","0"),("SOL_JIT","0"),("SOL_CACHE","0"),("SOL_CACHE_DIR","{work}/cache")];
   ProcessResult code out err = H.call [compiler,"sol",path] env 30000;
   ok = if expected == "" then and (code == 1) (and (out == "") (Str.contains "LINEARITY" err))

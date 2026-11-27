@@ -6,7 +6,7 @@ H = use "helpers".
 diag = "[ERR] boom\n\n*** FPRISC PANIC [actor 0]: boom ***\n".
 >! root = H.root Unit; work = tempDir "fpr-panic-stderr"; src = "{work}/p.fpr"; exe = "{work}/p";
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache"),("FPR_DIAG_STDOUT","")];
-  _ = H.write src (unwrap (Utf8.encode "unsafe base. main = _ = print \"data\"; error \"boom\".\n"));
+  _ = H.writeFile src (unwrap (Utf8.encode "unsafe base. main = _ = print \"data\"; error \"boom\".\n"));
   ProcessResult bc bo be = H.call ["{root}/fpr","build",src,"-o",exe] env 300000;
   _ = (if bc == 0 then Unit else error "build: {bo}{be}");
   ProcessResult c1 o1 e1 = H.call [exe] env 60000;

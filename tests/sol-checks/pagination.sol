@@ -28,7 +28,7 @@ callLine g = (ss, ns, rs) = g; "  _ = group {sequence ss} {sequence ns} {sequenc
 wantLines g = (ss, ns, rs) = g;
   List.concat (List.map (fn s -> List.concat (List.map (fn n -> List.map (fn r -> refLine s n r) rs) ns)) ss).
 build root work env name body cost = src = "{work}/{name}.fpr"; exe = "{work}/{name}";
-  _ = H.write src (unwrap (Utf8.encode ("profile base.\nP = use \"{root}/examples/lib/pagination\".\n" + body)));
+  _ = H.writeFile src (unwrap (Utf8.encode ("profile base.\nP = use \"{root}/examples/lib/pagination\".\n" + body)));
   ProcessResult code out err = H.call (List.concat [["{root}/fpr","build",src], (if cost then ["--cost"] else []), ["-o",exe]]) env 240000;
   (exe, code, out + err).
 must what ok detail = if ok then Unit else error "{what}\n{detail}".

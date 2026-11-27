@@ -295,9 +295,9 @@ fetchText url =
     | Err why -> Err "GET {url}: {showHttp why}".
 
 existsFile : String -> Bool .
-existsFile path = B.exists "-f" path.
+existsFile path = B.testPath "-f" path.
 existsDir : String -> Bool .
-existsDir path = B.exists "-d" path.
+existsDir path = B.testPath "-d" path.
 
 ensureDir : String -> Unit .
 ensureDir path = B.command ["mkdir", "-p", path].
@@ -400,7 +400,7 @@ assetCandidates root component version =
     (List.append (List.map (fn name -> "{root}/{name}") (aliasDirs component version)) [root]).
 
 hasReleaseFiles : String -> Bool .
-hasReleaseFiles dir = B.exists "-f" "{dir}/SHA256SUMS" and B.exists "-f" "{dir}/release.json".
+hasReleaseFiles dir = B.testPath "-f" "{dir}/SHA256SUMS" and B.testPath "-f" "{dir}/release.json".
 
 findAssetDir : String -> String -> String -> String .
 findAssetDir root component version =

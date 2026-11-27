@@ -6,12 +6,12 @@ query argv = ProcessResult code out err = unwrap (Proc.runNow (ProcessSpec argv 
 # the same eight programs across languages (tests/bench/clbg/SPEC.md).
 measured path = Str.startsWith "tests/bench/clbg/python/" path.
 legacy path = (Str.endsWith ".py" path or Str.endsWith ".sh" path) and not (measured path).
-script path = if not (B.exists "-f" path) then False else
+script path = if not (B.testPath "-f" path) then False else
   first = case Str.lines (readPath path) of line :: _ -> line | [] -> "";
   not (measured path) and Str.startsWith "#!" first and List.any (fn word -> Str.contains word first) ["/sh","bash","python"].
 main : unsafe Unit -> Unit .
 main Unit =
-  tracked = List.filter (fn p -> p != "" and B.exists "-f" p) (Str.lines (query ["git","ls-files","--cached","--others","--exclude-standard","--","*.py","*.sh"]));
+  tracked = List.filter (fn p -> p != "" and B.testPath "-f" p) (Str.lines (query ["git","ls-files","--cached","--others","--exclude-standard","--","*.py","*.sh"]));
   candidates = List.filter (fn p -> p != "") (Str.lines (query ["git","grep","--untracked","-I","-l","-E","^#!.*(bash|/sh|python)","--"]));
   bad = List.append (List.filter legacy tracked) (List.filter script candidates);
   if bad == [] then print "Sol-only script policy: passed" else error "retired script files: {bad}".

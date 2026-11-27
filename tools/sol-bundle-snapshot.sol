@@ -12,12 +12,12 @@ checkout root destination =
   PipelineResult status codes bytes _ = must (Proc.pipeline (PipelineSpec [git,sort] (PipeBytes (Bytes.empty Unit)) (PipeCapture 16777216) PipeOutputInherit 0 PipeFail));
   if status != 0 then error "listing source files failed: {codes}" else
     paths = Str.split 0 (unwrap (Utf8.decode bytes));
-    files = List.filter (fn path -> if path == "" then False else B.exists "-f" "{root}/{path}") paths;
+    files = List.filter (fn path -> if path == "" then False else B.testPath "-f" "{root}/{path}") paths;
     writePath destination (Str.join "" (List.map (fn path -> path + Str.fromCode 0) files)).
 main : unsafe Unit -> Unit .
 >! case args Unit of [root,destination] ->
     manifest = "{root}/bundle-source.json";
-    if B.exists "-f" manifest then
+    if B.testPath "-f" manifest then
       value = unwrap (J.parse (readPath manifest) |>? J.get "files");
       case value of
         J.JArr entries ->

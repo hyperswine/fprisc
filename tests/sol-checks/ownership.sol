@@ -36,7 +36,7 @@ verdict argv env = ProcessResult code out err = H.call argv env 120000;
   if code == 0 then "ACCEPTED" else if Str.contains "LINEARITY" (out + err) then "refused" else "broken (exit {code}): {err}".
 probe root work env (name, body) =
   path = "{work}/{name}.fpr";
-  _ = H.write path (unwrap (Utf8.encode (base + body + "\n")));
+  _ = H.writeFile path (unwrap (Utf8.encode (base + body + "\n")));
   native = verdict ["{root}/fprc","--system=posix","--check-only",path,"/dev/null"] env;
   sol = verdict ["{root}/fpr","sol",path] env;
   _ = print "{name}: native={native}, Sol={sol}";

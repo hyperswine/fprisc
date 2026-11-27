@@ -15,7 +15,7 @@ compilerRow : unsafe List J.Json -> List J.Json .
 compilerRow rows = case rows of [] -> [] | row :: rest -> if isCompiler row then [row] else compilerRow rest.
 plan : unsafe String -> String -> J.Json .
 plan path binary =
-  if not (B.exists "-f" path) then absent "no Cabal plan at {path}" else
+  if not (B.testPath "-f" path) then absent "no Cabal plan at {path}" else
     parsed = unwrap (J.parse (F.readText path));
     rows = unwrap (J.get "install-plan" parsed |>? J.items);
     mismatch = absent "{binary} is not the exe:fpr that {path} built";
@@ -24,7 +24,7 @@ plan path binary =
     | exe :: _ ->
         built = optional exe "bin-file" J.JNull;
         case built of
-          J.JStr file -> if not (B.exists "-f" file) then mismatch else
+          J.JStr file -> if not (B.testPath "-f" file) then mismatch else
             if digest file != digest binary then mismatch else
               included = List.filter (fn row -> name row != "fp-risc" or row == exe) rows;
               J.JObj [("recorded",J.JBool True),("compiler",unwrap (J.get "compiler-id" parsed)),

@@ -17,7 +17,7 @@ must what ok detail = if ok then Unit else error "{what}\n{detail}".
 envFor root work probe = List.append [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache"),("FPR_NO_CALL_REGIONS","1"),("FPR_NO_LOOP_REGIONS","1")]
   (if probe then [("FPR_COST_PROBE","1"),("FPR_COST_REPORT","1")] else []).
 build root work name source probe = src = "{work}/{name}.fpr"; exe = "{work}/{name}";
-  _ = H.write src (unwrap (Utf8.encode source));
+  _ = H.writeFile src (unwrap (Utf8.encode source));
   ProcessResult code out err = H.call ["{root}/fpr","build","--cost",src,"--harts","4","-o",exe] (envFor root work probe) 240000;
   (code, out, err, exe).
 costProbe err = case List.filter (fn l -> Str.contains "[fpr cost] " l) (Str.lines err) of

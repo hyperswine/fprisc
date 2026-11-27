@@ -6,7 +6,7 @@ M = use "toolchain-macho".
 F = use "toolchain-files".
 textField row k = unwrap (J.get k row |>? J.text).
 children dir =
-  if not (B.exists "-d" dir) then [] else
+  if not (B.testPath "-d" dir) then [] else
     ProcessResult status out err = unwrap (Proc.runNow (ProcessSpec ["find",".","-mindepth","1","-maxdepth","1","-print0"] dir [] "" 0));
     if status != 0 then error "listing {dir} failed: {err}" else F.ordered (List.map M.base (List.filter (fn s -> s != "") (Str.split 0 out))).
 safeComponent s = s != "" and s != "." and s != ".." and not (Str.contains "/" s) and not (Str.contains (Str.fromCode 0) s).
@@ -33,7 +33,7 @@ members data pos =
       if mode / 4096 == 8 then (M.base name,unwrap (Bytes.slice start size data)) :: rest else rest.
 archiveNotices : unsafe String -> List (String,Bytes) .
 archiveNotices source =
-  if not (B.exists "-f" source) then [] else
+  if not (B.testPath "-f" source) then [] else
     work = tempDir "fpr-licenses";
     filtered = "{work}/notices.cpio";
     patterns = ["[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*","[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*"];

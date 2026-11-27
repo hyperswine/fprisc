@@ -46,7 +46,7 @@ want =
 main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-i64-raw-locals";
   src = "{work}/t.fpr"; asm = "{work}/t.s"; exe = "{work}/t";
-  _ = H.write src (unwrap (Utf8.encode prog));
+  _ = H.writeFile src (unwrap (Utf8.encode prog));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache")];
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix",src,asm] env 240000;
   _ = (if code == 0 then Unit else error "compile exit {code}\n{out}{err}");

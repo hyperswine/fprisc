@@ -9,7 +9,7 @@ must what ok detail = if ok then Unit else error "sol-surface: {what}\n{detail}"
 runCase root work name text =
   dir = "{work}/{name}";
   _ = unwrap (Proc.runNow (ProcessSpec ["mkdir","-p",dir] "" [] "" 10000));
-  _ = H.write "{dir}/s.sol" (unwrap (Utf8.encode text));
+  _ = H.writeFile "{dir}/s.sol" (unwrap (Utf8.encode text));
   ProcessResult code out err = unwrap (Proc.runNow (ProcessSpec ["{root}/fpr","sol","{dir}/s.sol"] dir [("FPR_HOME",root)] "" 120000));
   (dir, code, out, err).
 absent dir p = ProcessResult c _ _ = H.call ["test","-e","{dir}/{p}"] [] 5000; c != 0.
@@ -37,7 +37,7 @@ main u = root = H.root Unit; work = tempDir "fpr-sol-surface";
   (d8, c8, o8, e8) = runCase root work "path-statement" "Model = \{hp : Int, name : String\}.\n> p = @Model.hp; m = p.set 5 \{hp = 1, name = \"a\"\}; print m.hp.\n";
   _ = must "a path literal in a statement" (c8 == 0 and o8 == "5\n") "{o8}{e8}";
   _ = unwrap (Proc.runNow (ProcessSpec ["mkdir","-p","{work}/path-module"] "" [] "" 10000));
-  _ = H.write "{work}/path-module/m.fpr" (unwrap (Utf8.encode "Model = \{hp : Int, name : String\}.\nmain =\n  p = @Model.hp;\n  m = p.set 7 \{hp = 1, name = \"a\"\};\n  m.hp.\n"));
+  _ = H.writeFile "{work}/path-module/m.fpr" (unwrap (Utf8.encode "Model = \{hp : Int, name : String\}.\nmain =\n  p = @Model.hp;\n  m = p.set 7 \{hp = 1, name = \"a\"\};\n  m.hp.\n"));
   (d9, c9, o9, e9) = runCase root work "path-module" "T = use \"m.fpr\".\n> print T.main.\n";
   _ = must "a path literal inside a used module" (c9 == 0 and o9 == "7\n") "{o9}{e9}";
   # F64 ^ is exact when the power is representable (double-double, runtime.c fpow_)

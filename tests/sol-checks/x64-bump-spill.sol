@@ -27,7 +27,7 @@ borrowed ls = case ls of
 main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-bump-spill";
   src = "{work}/bump-spill.fpr"; asm = "{work}/bump-spill.s";
-  _ = H.write src (unwrap (Utf8.encode (fixture 16)));
+  _ = H.writeFile src (unwrap (Utf8.encode (fixture 16)));
   env = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache"),("FPR_NO_FIELD_WORKERS","1")];
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix","--target=x64","--prelude={root}/core/prelude.fpr",src,asm] env 240000;
   _ = (if code == 0 then Unit else error "compile exit {code}\n{out}{err}");

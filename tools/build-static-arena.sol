@@ -132,7 +132,7 @@ build _ =
   source = case CLI.operands parsed of [path] -> F.canonical path | _ -> error "expected SOURCE --entry NAME or --sequence JSON --heap-bytes N --stack-bytes N --image ELF";
   root = F.canonical (CLI.valueOr "." "root" parsed);
   imageName = getOpt "image";
-  imagePath = if B.exists "-e" imageName then F.canonical imageName else F.canonical (B.query ["dirname",imageName]) + "/" + B.query ["basename",imageName];
+  imagePath = if B.testPath "-e" imageName then F.canonical imageName else F.canonical (B.query ["dirname",imageName]) + "/" + B.query ["basename",imageName];
   heapBytes = Str.parse (getOpt "heap-bytes"); stackBytes = Str.parse (getOpt "stack-bytes");
   _ = require (heapBytes == 0 or (heapBytes >= 112 and heapBytes < 2^64 and heapBytes `remainder` 16 == 0)) "heap bytes must be zero or a 16-byte multiple of at least 112";
   _ = require (stackBytes > 0 and stackBytes < 2^64 and stackBytes `remainder` 16 == 0) "stack bytes must be positive 16-byte multiple";
@@ -152,7 +152,7 @@ build _ =
   symbols = List.map (fn i -> (names ! i,if isSequence then "fpr_static_callback_{i}" else "fpr_static_callback")) (Target.indices (List.len names));
   outputs = [imagePath,"{imagePath}.admission.json"];
   _ = require (not (List.has source outputs) and (not isSequence or not (List.has (F.canonical (getOpt "sequence")) outputs))) "output would replace source/sequence";
-  _ = require (not (B.exists "-e" imagePath) or B.exists "-f" imagePath) "output image is not a file";
+  _ = require (not (B.testPath "-e" imagePath) or B.testPath "-f" imagePath) "output image is not a file";
   contractPath = "{root}/machine/builtin/contracts/rv64-c-heap-v1.json";
   contract = Contract.verify root contractPath;
   sourceHash = hash source; compilerHash = hash "{root}/fpr";

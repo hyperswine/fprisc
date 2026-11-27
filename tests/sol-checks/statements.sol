@@ -6,7 +6,7 @@
 H = use "helpers".
 must what ok detail = if ok then Unit else error "statements: {what}\n{detail}".
 fresh work name = dir = "{work}/{name}"; _ = unwrap (Proc.runNow (ProcessSpec ["mkdir","-p",dir] "" [] "" 10000)); dir.
-put dir file text = H.write "{dir}/{file}" (unwrap (Utf8.encode text)).
+put dir file text = H.writeFile "{dir}/{file}" (unwrap (Utf8.encode text)).
 # relative paths in a script resolve against its working directory: the case directory
 sol root dir file env = unwrap (Proc.runNow (ProcessSpec ["{root}/fpr","sol","{dir}/{file}"] dir (List.append [("FPR_HOME",root)] env) "" 120000)).
 count needle text = List.len (Str.split 10 text |> List.filter (fn l -> Str.contains needle l)).
@@ -14,7 +14,7 @@ main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-statements";
   # 1. a panic discards its own statement only; later statements never run
   a = fresh work "abort";
-  _ = H.write "{a}/txnabort.sol" (unwrap (Utf8.encode (readPath "{root}/tests/txnabort.sol")));
+  _ = H.writeFile "{a}/txnabort.sol" (unwrap (Utf8.encode (readPath "{root}/tests/txnabort.sol")));
   ProcessResult ac ao ae = sol root a "txnabort.sol" [];
   _ = must "abort: exit should be nonzero" (ac != 0) ae;
   _ = must "abort: statement one committed" (H.isFile "{a}/one.txt") ae;

@@ -6,5 +6,5 @@ show label result = case result of
 
 > r = Git.repo "/tmp/sol-git-wrap";
   u1 = show "status" (Git.status r);
-  u2 = show "log" (Git.log 1 r);
+  u2 = show "log" (Git.history 1 r);
   show "head" (Git.head r).

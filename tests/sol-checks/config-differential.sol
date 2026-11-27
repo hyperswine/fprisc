@@ -22,7 +22,7 @@ subset = ["list","string","map","json","foundation","codec","ifelse","pagination
 expectedStem p = if Str.endsWith ".expected" p then [Str.slice p 0 (Str.len p - 9)] else [].
 programs root = if not (H.full Unit) then subset else
   stems = List.concat (List.map expectedStem (ls "{root}/tests/std"));
-  List.filter (fn s -> not (List.has s needsHarness) and B.exists "-f" "{root}/tests/std/{s}.fpr") stems.
+  List.filter (fn s -> not (List.has s needsHarness) and B.testPath "-f" "{root}/tests/std/{s}.fpr") stems.
 B = use "../../sol/lib/build".
 baseEnv root work cfg = [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache-{cfg}")].
 buildJob root work progs (cfg, extra) = List.map (fn name ->
