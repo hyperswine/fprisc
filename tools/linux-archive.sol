@@ -19,7 +19,7 @@ B = use "../sol/lib/build".
 CLI = use "../sol/lib/cli".
 buildSteps = Str.join " && " [
   "git config --global --add safe.directory /src", "git config --global --add safe.directory /src/.git",
-  "if [ -d /build/fprisc/.git ]; then cd /build/fprisc && git fetch -q /src && git checkout -q -f \"$REV\"; else git clone -q /src /build/fprisc && cd /build/fprisc && git checkout -q \"$REV\"; fi",
+  "if [ -d /build/fprisc/.git ]; then cd /build/fprisc && git fetch -q /src '+refs/heads/*:refs/remotes/src/*' && git checkout -q -f \"$REV\"; else git clone -q /src /build/fprisc && cd /build/fprisc && git fetch -q /src '+refs/heads/*:refs/remotes/src/*' && git checkout -q \"$REV\"; fi",
   "([ -f /root/.cabal/packages/hackage.haskell.org/01-index.tar ] || cabal update >/dev/null)",
   "make fpr", "./fpr --version", "rm -rf /tmp/work",
   "./fpr sol tools/archive-smoke.sol --work /tmp/work", "cp /tmp/work/fprisc-*.tar.gz /out/"].
