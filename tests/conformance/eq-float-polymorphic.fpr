@@ -1,6 +1,7 @@
-# clause: v1.0 semantics §5 (equality). A polymorphic `==` instantiated at a
-# float must not crash. Today it does (exit 139): a type variable cannot be
-# refused at its definition, and the runtime cannot recognise raw float bits.
+# clause: v1.0 semantics §5 (equality; decided 27 Nov 2026). A polymorphic `==`
+# instantiated at a float-holding type is refused at the call that fixes the
+# type, as `==` at that type written directly is: the runtime compares
+# structure by tag, and a float there is raw bits (it used to crash, exit 139).
 eq : a -> a -> Bool.
 eq x y = x == y.
 main = print "{eq (1, 1.5) (1, 1.5)}".

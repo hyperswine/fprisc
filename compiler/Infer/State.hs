@@ -38,6 +38,12 @@ data IEnv = IEnv
     iSiteExpressions :: IM.IntMap ExprId,
     iSiteMarks :: IM.IntMap (Maybe SourceOffset), -- retain their diagnostic anchors
     iSiteOwners :: IM.IntMap (Maybe Name),
+    -- polymorphic `==` (v1.0 semantics §5): sites whose operand type still
+    -- holds type variables, by owner, and every instantiation of a global,
+    -- so a call that fixes such a variable to a float-holding type is
+    -- refused where it is made
+    iEqNeeds :: [(Name, Type)],
+    iEqInstances :: M.Map Name [(Maybe Name, Type, Maybe SourceOffset)],
     iCarriers :: IM.IntMap Carrier, -- carrier var -> (param, sig)
     iOperatorScopes :: IM.IntMap OperatorScope,
     iCarrierChoices :: IM.IntMap Carrier,
@@ -101,7 +107,7 @@ initialIEnv capture = IEnv
   { iFresh=0, iSub=IM.empty, iRSub=IM.empty, iErrs=[], iNotes=[],
     iHoles=[], iHolesP=[], iHoledCons=S.empty, iNextSite=0,
     iSites=IM.empty, iPendingNumeric=IS.empty, iDefaultWork=0, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
-    iHere=Nothing, iCurrentOwner=Nothing, iSiteOwners=IM.empty, iPairs=IM.empty, iVecPlans=M.empty,
+    iHere=Nothing, iCurrentOwner=Nothing, iSiteOwners=IM.empty, iEqNeeds=[], iEqInstances=M.empty, iPairs=IM.empty, iVecPlans=M.empty,
     iVecRefs=IM.empty, iVecOwners=IM.empty, iDefTypes=M.empty,
     iLocalLayoutSchemes=M.empty, iLocalLayoutBindings=M.empty, iLayoutContracts=M.empty,
     iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,

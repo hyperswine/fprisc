@@ -1,3 +1,2 @@
 # Checks that fail on main for a recorded reason: name<TAB>reason.
 # tests/run.sol still runs them; it fails if one of them starts passing.
-conformance:eq-float-polymorphic	a polymorphic == instantiated at a float-holding type segfaults (v1.0 semantics §5); concrete types are refused since 26 Nov, type variables are not

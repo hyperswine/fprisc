@@ -1204,7 +1204,16 @@ inferERaw ctx e0 = case e0 of
   SVar n -> do
     (t, e') <-
       case M.lookup n (icEnv ctx) of
-        Just sc -> (,SVar n) <$> instantiate sc
+        Just sc -> do
+          t <- instantiate sc
+          -- remembered for the polymorphic-equality check (checkEqInstances)
+          case sc of
+            Forall (_ : _) _ _ | not (S.member n (icBound ctx)) -> do
+              owner <- gets iCurrentOwner
+              here <- gets iHere
+              modify (\st -> st {iEqInstances = M.insertWith (++) n [(owner, t, here)] (iEqInstances st)})
+            _ -> pure ()
+          pure (t, SVar n)
         Nothing -> case M.lookup n (icCons ctx) of
           Just sc -> (,SVar n) <$> instantiate sc
           Nothing -> do
@@ -1496,6 +1505,72 @@ ambiguousOp op at gs =
   "(" ++ op ++ ") is ambiguous for " ++ at ++ ": " ++ Data.List.intercalate ", " gs
     ++ " all implement it -- keep one in scope or call the one you mean by name"
 
+-- A polymorphic `==` instantiated at a float-holding type (v1.0 semantics
+-- §5): the runtime's structural equality follows a raw float as a pointer.
+-- `==` at a known type is refused where it is written; at a type variable it
+-- cannot be, so the requirement travels with the function's type. Each site
+-- whose operand type holds variables marks those variables' positions in its
+-- owner's type; a call of that owner whose instantiation puts a float-holding
+-- type at such a position is refused at the call, and one that puts another
+-- variable there passes the requirement to the caller (decided 27 Nov 2026).
+checkEqInstances :: I ()
+checkEqInstances = do
+  needs0 <- gets iEqNeeds
+  insts <- gets iEqInstances
+  -- each definition's own body type, in the same variables as its sites
+  types <- gets iDefTypes >>= traverse zonk
+  byType <- gets iTypeConstructors
+  needs <- mapM (\(o, t) -> (,) o <$> zonk t) needs0
+  let varsOf t = S.toList (fst (ftv t))
+      paths v ty = go [] ty
+        where
+          go p = \case
+            TV w | w == v -> [reverse p]
+            TAp a b -> go (0 : p) a ++ go (1 : p) b
+            TFn a b -> go (0 : p) a ++ go (1 : p) b
+            TTupT ts -> concat [go (i : p) u | (i, u) <- zip [0 ..] ts]
+            TLayout u -> go (0 : p) u
+            TRec r -> rowGo p (0 :: Int) r
+            _ -> []
+          rowGo p i = \case
+            RExt _ u r -> go (i : p) u ++ rowGo p (i + 1) r
+            _ -> []
+      at ty [] = Just ty
+      at ty (i : rest) = case (ty, i) of
+        (TAp a _, 0) -> at a rest
+        (TAp _ b, 1) -> at b rest
+        (TFn a _, 0) -> at a rest
+        (TFn _ b, 1) -> at b rest
+        (TTupT ts, _) | i < length ts -> at (ts !! i) rest
+        (TLayout u, 0) -> at u rest
+        (TRec r, _) -> case drop i (rowList r) of (u : _) -> at u rest; [] -> Nothing
+        _ -> Nothing
+      rowList = \case RExt _ u r -> u : rowList r; _ -> []
+      -- (function, path in its type) pairs that must not hold a float
+      start = S.fromList [(o, p) | (o, t) <- needs, Just ft <- [M.lookup o types], v <- varsOf t, p <- paths v ft]
+      -- one report per call, however many positions of its type reach `==`
+      loop _ _ [] = pure ()
+      loop seen reported ((f, p) : rest) = do
+        (extra, reported') <- foldM (\(acc, rep) (owner, it0, here) -> do
+          it <- zonk it0
+          case at it p of
+            Nothing -> pure (acc, rep)
+            Just held
+              | mentionsFloat held || floatOutsideRawField byType held ->
+                  if S.member (f, owner, here) rep then pure (acc, rep) else do
+                    pt <- prettyT held
+                    old <- gets iHere
+                    oldOwner <- gets iCurrentOwner
+                    modify (\st -> st {iHere = here, iCurrentOwner = owner})
+                    report ("(==) in " ++ f ++ " reaches " ++ pt ++ " here: structural equality is tid-directed and floats are raw bits -- compare the float fields individually with F64.==/F32.== (v1)")
+                    modify (\st -> st {iHere = old, iCurrentOwner = oldOwner})
+                    pure (acc, S.insert (f, owner, here) rep)
+              | otherwise -> pure (acc ++ [(g, q) | Just g <- [owner], Just gt <- [M.lookup g types], v <- varsOf held, q <- paths v gt], rep))
+          ([], reported) (M.findWithDefault [] f insts)
+        let new = [x | x <- extra, not (S.member x seen)]
+        loop (foldr S.insert seen new) reported' (new ++ rest)
+  loop start S.empty (S.toList start)
+
 -- decide every site once the substitution is final
 resolveSites :: IProf -> Sigs -> TEnv -> I (IM.IntMap OpTarget)
 resolveSites prof sigs env = do
@@ -1596,7 +1671,13 @@ resolveSites prof sigs env = do
                   then do
                     p <- prettyT t
                     OpPrim op <$ report ("(" ++ op ++ ") on " ++ p ++ ": structural equality is tid-directed and floats are raw bits -- compare the float fields individually with F64.==/F32.== (v1)")
-                  else pure (OpPrim op)
+                  else do
+                    -- a type variable here is decided by the callers: remember it
+                    owner <- gets iCurrentOwner
+                    case owner of
+                      Just o | not (S.null (fst (ftv t))) -> modify (\st -> st {iEqNeeds = (o, t) : iEqNeeds st})
+                      _ -> pure ()
+                    pure (OpPrim op)
       else if op == "keyedfold!"
         then pure $ case t of
           TC "Int" -> OpPrim "mutmapInts"
@@ -1992,6 +2073,7 @@ inferTopsSession session previous capture prof sigs structs tops =
       -- resolve operator sites against the final substitution, then
       -- rebuild the top list with markers rewritten, in original order
       tgts <- resolveSites prof sigs env
+      checkEqInstances
       -- Operator/member resolution can add constraints after an early written
       -- signature check. Revalidate successful programs against the final
       -- solution in an isolated state; keep existing error ordering and the
