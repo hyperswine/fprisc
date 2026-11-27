@@ -60,8 +60,11 @@ count xs = case xs of [] -> 0 | x :: rest -> 1 + count rest.
 - `List.range a b` includes `b`.
 - Strings are UTF-8 bytes on both sides: `strlen`, `charAt`, `substr`,
   `Str.indexOf` and `Str.slice` count bytes; `chr` makes one byte.
-- Sol has one numeric type: an inexact number is an `Int` to the type checker
-  (`1.0 * n` converts). `==` at a float-holding type is refused.
+- Floats are `F64`, as native (since 27 Nov 2026): `Int` and `F64` do not mix;
+  convert with `F64.ofInt n`, `F64.toInt x`, `Num.floor`/`Num.round x`. Until
+  step 2 a script that mixes still runs, with `=== F64: WARNINGS ===`;
+  `SOL_F64=strict` makes them errors. `==` and printing do not reach a float
+  inside a structure: compare or print it with `F64.==`/`F64.str`.
 - Defining a prelude name (`run`, `write`, `close`, `print`, ...) is an error or
   a confusing type error: pick another name.
 

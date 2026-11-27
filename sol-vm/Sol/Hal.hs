@@ -341,6 +341,12 @@ mkHal cons scriptArgs tx preempts rt =
       ("Num.div", (2, \[a, b] -> numDivH a b)),
       ("Num.sqrt", (1, \[a] -> numSqrtH a)),
       ("Num.floor", (1, \[a] -> pure (VInt (floor (toD a))))),
+      -- the prelude's % and ^ on any number (Int.mod, Int.trunc): typed Int in
+      -- both tables, so Int.mod type-checks at Int under F64 typing too
+      ("Num.floorDiv", (2, \[a, b] -> case (a, b) of
+          (VInt x, VInt y) | y /= 0 -> pure (VInt (x `div` y))
+          _ -> let y = toD b in if y == 0 then vmPanic "(%): division by zero" else pure (VInt (floor (toD a / y))))),
+      ("Num.trunc", (1, \[a] -> case a of VInt x -> pure (VInt x); _ -> pure (VInt (truncate (toD a))))),
       ("Num.round", (1, \[a] -> pure (VInt (round (toD a))))),
       ("Num.sin", (1, \[a] -> pure (VNum (FMath.fsin (toD a))))),
       ("Num.cos", (1, \[a] -> pure (VNum (FMath.fcos (toD a))))),
@@ -363,6 +369,46 @@ mkHal cons scriptArgs tx preempts rt =
       ("BITSHIFTL", (2, \[VInt v, VInt k] -> VInt <$> bitWith "BITSHIFTL" (\x n -> x * 2 ^ n) v k)),
       ("BITSHIFTR", (2, \[VInt v, VInt k] -> VInt <$> bitWith "BITSHIFTR" (\x n -> x `div` 2 ^ n) v k)),
       ("Num.bits", (1, \[a] -> pure (VInt (fromIntegral (fromIntegral (castDoubleToWord64 (toD a)) :: Int64))))),
+      -- F64/F32 as native names them (docs/2026-11-27-SOL-F64.md): the
+      -- same kernels as Num.* (Sol.FMath, bit for bit with runtime.c);
+      -- F32 rounds each result to single precision, as the runtime does
+      ("F64.sqrt", (1, \[a] -> pure (VNum (sqrt (toD a))))),
+      ("F64.sin", (1, \[a] -> pure (VNum (FMath.fsin (toD a))))),
+      ("F64.cos", (1, \[a] -> pure (VNum (FMath.fcos (toD a))))),
+      ("F64.tan", (1, \[a] -> pure (VNum (FMath.ftan (toD a))))),
+      ("F64.asin", (1, \[a] -> pure (VNum (FMath.fasin (toD a))))),
+      ("F64.acos", (1, \[a] -> pure (VNum (FMath.facos (toD a))))),
+      ("F64.atan", (1, \[a] -> pure (VNum (FMath.fatan (toD a))))),
+      ("F64.exp", (1, \[a] -> pure (VNum (FMath.fexp (toD a))))),
+      ("F64.log", (1, \[a] -> pure (VNum (FMath.flog (toD a))))),
+      ("F64.log2", (1, \[a] -> pure (VNum (FMath.flog2 (toD a))))),
+      ("F64.pow", (2, \[a, b] -> pure (VNum (FMath.fpow (toD a) (toD b))))),
+      ("F64.atan2", (2, \[a, b] -> pure (VNum (FMath.fatan2 (toD a) (toD b))))),
+      ("F64.ofInt", (1, \[a] -> pure (VNum (toD a)))),
+      ("F64.toInt", (1, \[a] -> floatToInt (toD a))),
+      ("F64.ofF32", (1, \[a] -> pure (VNum (toD a)))),
+      ("F64.str", (1, \[a] -> pure (VStr (FMath.dtoa (toD a) 15)))),
+      ("F32.sqrt", (1, \[a] -> pure (VNum (f32 (sqrt (toD a)))))),
+      ("F32.sin", (1, \[a] -> pure (VNum (f32 (FMath.fsin (toD a)))))),
+      ("F32.cos", (1, \[a] -> pure (VNum (f32 (FMath.fcos (toD a)))))),
+      ("F32.tan", (1, \[a] -> pure (VNum (f32 (FMath.ftan (toD a)))))),
+      ("F32.asin", (1, \[a] -> pure (VNum (f32 (FMath.fasin (toD a)))))),
+      ("F32.acos", (1, \[a] -> pure (VNum (f32 (FMath.facos (toD a)))))),
+      ("F32.atan", (1, \[a] -> pure (VNum (f32 (FMath.fatan (toD a)))))),
+      ("F32.exp", (1, \[a] -> pure (VNum (f32 (FMath.fexp (toD a)))))),
+      ("F32.log", (1, \[a] -> pure (VNum (f32 (FMath.flog (toD a)))))),
+      ("F32.log2", (1, \[a] -> pure (VNum (f32 (FMath.flog2 (toD a)))))),
+      ("F32.pow", (2, \[a, b] -> pure (VNum (f32 (FMath.fpow (toD a) (toD b)))))),
+      ("F32.atan2", (2, \[a, b] -> pure (VNum (f32 (FMath.fatan2 (toD a) (toD b)))))),
+      ("F32.ofInt", (1, \[a] -> pure (VNum (f32 (toD a))))),
+      ("F32.toInt", (1, \[a] -> floatToInt (toD a))),
+      ("F32.ofF64", (1, \[a] -> pure (VNum (f32 (toD a))))),
+      ("F32.str", (1, \[a] -> pure (VStr (FMath.dtoa (toD a) 7)))),
+      ("Try.parseF64", (1, \[v] -> do
+          t <- vsStr v
+          pure (case reads (normalizeNum t) :: [(Double, String)] of
+            [(d, "")] -> vOk (VNum d)
+            _ -> vErr ("not a number: " ++ show t)))),
       ("!", (2, indexH)),
       ("open", (1, openH)),
       ("readAll", (1, readH)),
@@ -701,6 +747,16 @@ mkHal cons scriptArgs tx preempts rt =
     numDivH a b =
       let (x, y) = (toD a, toD b)
        in if y == 0 then vmPanic "Num.div: division by zero" else pure (VNum (x / y))
+    f32 :: Double -> Double
+    f32 d = realToFrac (realToFrac d :: Float)
+    -- runtime.c float_toInt: truncation, refused outside the Int range
+    floatToInt d
+      | isNaN d || isInfinite d = vmPanic "float.toInt: does not fit an Int"
+      | otherwise = pure (VInt (truncate d))
+    normalizeNum t = case t of
+      ('.' : _) -> '0' : t
+      ('-' : '.' : r) -> "-0." ++ r
+      _ -> t
     numSqrtH a =
       let x = toD a
        in if x < 0 then vmPanic "Num.sqrt: negative" else pure (VNum (sqrt x))

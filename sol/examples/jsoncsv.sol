@@ -12,7 +12,7 @@
 J = use "std/jsondoc".
 C = use "../lib/csv".
 # A number with a fraction parses as J.JReal with its text; `number` reads either kind.
-number j = J.real j |>? Try.parseNum.
+number j = J.real j |>? Try.parseF64.
 JNull = J.JNull.  JBool = J.JBool.  JNum = J.JNum.  JStr = J.JStr.  JArr = J.JArr.  JObj = J.JObj.
 
 expect what got want = case got == want of
@@ -34,7 +34,7 @@ customers = "\{
 
 > doc = unwrap (J.parse customers);
   _ = expect "path into nested objects" (J.path ["customers"] doc |>? J.at 1 |>? J.get "name" |>? J.text) (Ok "Bo \"the\" Bold");
-  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 0 |>? J.get "credit" |>? number) (Ok 120.5);
+  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 0 |>? J.get "credit" |>? number |> mapOk F64.str) (Ok "120.5");
   _ = expect "null is a value"          (J.path ["customers"] doc |>? J.at 0 |>? J.path ["address", "zip"]) (Ok JNull);
   _ = expect "a missing key derails"    (J.path ["customers", "nope"] doc) (Err "json: not an object");
   expect "index out of range"       (J.path ["customers"] doc |>? J.at 9) (Err "json: index 9 out of range").
@@ -42,7 +42,7 @@ customers = "\{
 # ---- 2. reshape: filter, compute, rename, drop -- then JSON out ---------------
 
 # active customers only, a tier computed from credit, address flattened to city
-tier c = case c >= 100 of True -> "gold" | False -> "basic".
+tier c = case c >= 100.0 of True -> "gold" | False -> "basic".
 reshape cust =
   credit = unwrap (J.get "credit" cust |>? number);
   city = unwrap (J.path ["address", "city"] cust |>? J.text);
@@ -82,7 +82,7 @@ orders = "order,customer,amount,note
 orderRows = unwrap (C.parse orders) |> List.filter (fn row -> row != [""]).
 
 trim rec = List.map (fn p -> (k, v) = p; (k, Str.trim v)) rec.
-amount rec = C.col "amount" rec |>? Try.parseNum.
+amount rec = C.col "amount" rec |>? Try.parseF64.
 
 > rows = orderRows;
   recs = List.map trim (C.records rows);
@@ -93,13 +93,14 @@ amount rec = C.col "amount" rec |>? Try.parseNum.
   bad = List.filter (fn r -> not (isOk (amount r))) recs;
   _ = expect "one row fails to clean" (List.map (fn r -> okOr "" (C.col "order" r)) bad) ["1003"];
   totals = List.groupby (fn r -> unwrap (C.col "customer" r)) good
-    |> List.map (fn g -> (cust, rs) = g; (cust, List.sum (List.map (fn r -> unwrap (amount r)) rs)));
-  _ = expect "totals per customer, in first-seen order" totals [("1", 20), ("2", 5), ("3", 100.01)];
+    |> List.map (fn g -> (cust, rs) = g; (cust, List.fold (fn a r -> a + unwrap (amount r)) 0.0 rs));
+  # floats compare by their text: == does not reach a float inside a structure
+  _ = expect "totals per customer, in first-seen order" (List.map (fn t -> (c, v) = t; (c, F64.str v)) totals) [("1", "20"), ("2", "5"), ("3", "100.01")];
 
   # JSON out: one object per customer, average computed with plain arithmetic
   summary = JArr (List.map (fn t -> (cust, total) = t;
       n = List.len (List.filter (fn r -> C.col "customer" r == Ok cust) good);
-      JObj [("customer", JStr cust), ("orders", JNum n), ("total", JNum total), ("avg", JNum (Numeric.div total n))]) totals);
+      JObj [("customer", JStr cust), ("orders", JNum n), ("total", J.JReal (F64.str total)), ("avg", J.JReal (F64.str (total / F64.ofInt n)))]) totals);
   u1 = writePath "{dir}/totals.json" (J.pretty summary);
   _ = expect "summary JSON" (J.render summary)
     "[\{\"customer\":\"1\",\"orders\":2,\"total\":20,\"avg\":10\},\{\"customer\":\"2\",\"orders\":1,\"total\":5,\"avg\":5\},\{\"customer\":\"3\",\"orders\":1,\"total\":100.01,\"avg\":100.01\}]";

@@ -4,7 +4,7 @@
 -- (core spec Q6). The runtime compiles with FP contraction off, and GHC
 -- never fuses, so the same sequence of IEEE operations gives the same bits.
 -- Keep the two in step: a change to one kernel changes the other.
-module Sol.FMath (flog, flog2, fexp, fpow, fsin, fcos, ftan, fatan, fatan2, fasin, facos) where
+module Sol.FMath (flog, flog2, fexp, fpow, fsin, fcos, ftan, fatan, fatan2, fasin, facos, dtoa) where
 
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Int (Int64)
@@ -176,3 +176,40 @@ fasin x
 facos x
   | isNaN x || x > 1 || x < -1 = nan
   | otherwise = fatan2 (sqrt ((1.0 - x) * (1.0 + x))) x
+
+-- runtime.c's dtoa, step for step (F64.str with 15 significant digits, F32.str
+-- with 7): sign, NaN and Inf, zero; fixed point for 1e-4 <= |x| < 9.2e18,
+-- exponent form outside; trailing zeros trimmed. Not shortest round trip.
+dtoa :: Double -> Int -> String
+dtoa x0 sig0
+  | isNaN x0 = "NaN"
+  | otherwise =
+      let neg = x0 < 0 || (x0 == 0 && isNegativeZero x0)
+          x1 = if neg then negate x0 else x0
+          sign = if neg then "-" else ""
+       in if x1 > 1.7e308 then sign ++ "Inf"
+          else if x1 == 0 then sign ++ "0"
+          else
+            let (x, e10) = if x1 >= 9.2e18 || x1 < 1e-4 then norm x1 0 else (x1, 0 :: Int)
+                ip = truncate x :: Integer
+                fr0 = x - fromIntegral ip
+                intDigits = show ip
+                digs = if ip == 0 then 0 else length intDigits
+                sig = sig0 - min digs sig0
+                fracDigits = if fr0 > 0 && sig > 0 then frac fr0 sig else ""
+                trimmed = reverse (dropWhile (== '0') (reverse fracDigits))
+                body = intDigits ++ (if null trimmed then "" else '.' : trimmed)
+             in sign ++ body ++ (if e10 /= 0 then 'e' : show e10 else "")
+  where
+    norm v e
+      | v >= 10.0 = norm (v / 10.0) (e + 1)
+      | v < 1.0 = norm (v * 10.0) (e - 1)
+      | otherwise = (v, e)
+    frac :: Double -> Int -> String
+    frac fr k
+      | k <= 0 = ""
+      | otherwise =
+          let f = fr * 10.0
+              d = min 9 (truncate f :: Int)
+              rest = f - fromIntegral d
+           in toEnum (fromEnum '0' + d) : (if rest <= 0 then "" else frac rest (k - 1))

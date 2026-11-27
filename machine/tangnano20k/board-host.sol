@@ -386,7 +386,7 @@ cmdQemu argv =
 # Num.log2 as the independent entropy (not the guest's 48-step log2).
 lcg seed count = List.rev (List.fold (fn acc i -> (s, xs) = acc;
     s2 = (1103515245 * s + 12345) % 2147483648;
-    (s2, (1.0 * s2) / 2147483648.0 :: xs)) (seed, []) (upto count) |> (fn p -> (s, xs) = p; xs)).
+    (s2, F64.ofInt s2 / 2147483648.0 :: xs)) (seed, []) (upto count) |> (fn p -> (s, xs) = p; xs)).
 # n rows of (x, z, y): y is x and z of different signs, flipped by 5% noise
 dataset seed n =
   v = lcg seed (3 * n);
@@ -398,11 +398,10 @@ dataset seed n =
 
 entropy c0 c1 =
   n = c0 + c1;
-  term c = if c == 0 then 0.0 else ((1.0 * c) / (1.0 * n)) * Num.log2 ((1.0 * c) / (1.0 * n));
+  term c = if c == 0 then 0.0 else (F64.ofInt c / F64.ofInt n) * Num.log2 (F64.ofInt c / F64.ofInt n);
   if n == 0 then 0.0 else 0.0 - (term c0 + term c1).
 
-# Sol numbers are one Numeric type: a threshold is an inexact Int
-Tree = Type (Leaf Int | Split Int Int Tree Tree).
+Tree = Type (Leaf Int | Split Int F64 Tree Tree).
 
 # a training row as the classifier sees it: (bin code of x, bin code of z, label)
 codeOf r col = (c0, c1, y) = r; if col == 0 then c0 else c1.
@@ -417,13 +416,13 @@ bestIn bins minLeaf parent n c0 c1 rows col acc =
       nl = List.len left;
       n0 = nl - n1;
       if nl < minLeaf or n - nl < minLeaf then b else
-        gain = parent - (((1.0 * nl) / (1.0 * n)) * entropy n0 n1 + ((1.0 * (n - nl)) / (1.0 * n)) * entropy (c0 - n0) (c1 - n1));
+        gain = parent - ((F64.ofInt nl / F64.ofInt n) * entropy n0 n1 + (F64.ofInt (n - nl) / F64.ofInt n) * entropy (c0 - n0) (c1 - n1));
         case b of
           None -> Some (gain, col, t)
         | Some (g, bc, bt) -> if gain > g then Some (gain, col, t) else b)
     acc (upto (bins - 1)).
 
-build : unsafe { bins : Int, maxDepth : Int, minLeaf : Int, lo : List Int, width : List Int } -> List (Int, Int, Int) -> Int -> Tree .
+build : unsafe { bins : Int, maxDepth : Int, minLeaf : Int, lo : List F64, width : List F64 } -> List (Int, Int, Int) -> Int -> Tree .
 build c rows depth =
   n = List.len rows;
   c1 = List.sum (List.map labelOf rows);
@@ -437,14 +436,14 @@ build c rows depth =
     | Some (gain, col, thr) -> if gain < 0.001 then leaf else
         a = List.filter (fn r -> codeOf r col <= thr) rows;
         b = List.filter (fn r -> codeOf r col > thr) rows;
-        Split col ((c.lo ! col) + (1.0 * (thr + 1)) * (c.width ! col)) (build c a (depth + 1)) (build c b (depth + 1)).
+        Split col ((c.lo ! col) + F64.ofInt (thr + 1) * (c.width ! col)) (build c a (depth + 1)) (build c b (depth + 1)).
 
-predict : unsafe Tree -> Int -> Int -> Int .
+predict : unsafe Tree -> F64 -> F64 -> Int .
 predict t x z = case t of Leaf v -> v | Split col thr lo hi -> predict (if (if col == 1 then z else x) < thr then lo else hi) x z.
 shape : unsafe Tree -> (Int, Int) .
 shape t = case t of Leaf _ -> (1, 0) | Split _ _ lo hi -> (an, ad) = shape lo; (bn, bd) = shape hi; (1 + an + bn, 1 + Numeric.max ad bd).
 
-score : unsafe Tree -> List (Int, Int, Int) -> (Int, Int, String) .
+score : unsafe Tree -> List (F64, F64, Int) -> (Int, Int, String) .
 score t d =
   ps = List.map (fn r -> (x, z, y) = r; predict t x z) d;
   hits = List.sum (List.map (fn p -> (pv, r) = p; (x, z, y) = r; if pv == y then 1 else 0) (List.zip ps d));
@@ -467,7 +466,7 @@ checkRuns logText repeats want tree =
           Leaf _ -> if List.has "root: leaf" run then Unit else die 1 "classifier run {k + 1}: expected a leaf root"
         | Split col thr _ _ -> (case List.filter (Str.startsWith "root split: col ") run of
               l :: _ -> ws = Str.words l;
-                (if List.len ws >= 6 and parseInt (ws ! 3) == col and closeTo (unwrap (Try.parseNum (ws ! 5))) thr then Unit
+                (if List.len ws >= 6 and parseInt (ws ! 3) == col and closeTo (unwrap (Try.parseF64 (ws ! 5))) thr then Unit
                  else die 1 "classifier run {k + 1}: root split differs from the reference")
             | [] -> die 1 "classifier run {k + 1}: root split differs from the reference"));
       (case List.filter (Str.startsWith "DTREE elapsed_us=") run of
@@ -491,7 +490,7 @@ heapSample line = "\{" + strJoin "," (List.concat (List.map (fn w ->
 colStats bins vs =
   lo = List.fold (fn a v -> if v < a then v else a) (vs ! 0) vs;
   hi = List.fold (fn a v -> if v > a then v else a) (vs ! 0) vs;
-  w0 = (hi - lo) / (1.0 * bins);
+  w0 = (hi - lo) / F64.ofInt bins;
   width = (if w0 == 0.0 then 1.0 else w0);
   codes = List.map (fn v -> k = Num.floor ((v - lo) / width); if k < bins - 1 then k else bins - 1) vs;
   (lo, width, codes).

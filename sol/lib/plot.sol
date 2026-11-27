@@ -43,7 +43,7 @@ colAt i = colors ! (i % (List.len colors)).   # i is a 0-based series number
 
 # ---- small numeric helpers -------------------------------------------------
 
-fmtN v = Num.round (v * 1000) / 1000.0.
+fmtN v = F64.ofInt (Num.round (v * 1000.0)) / 1000.0.
 
 bGo f xs a | xs == [] = a.
 bGo f xs a = x :: r = xs; bGo f r (f a x).

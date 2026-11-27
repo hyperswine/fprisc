@@ -19,11 +19,11 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferResult, inferSession, builtinNames, solBuiltins) where
+module Sol.Infer (inferResult, inferResultStrict, inferSession, builtinNames, solBuiltins, solBuiltinsStrict) where
 
 import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSession, mono, scheme, sv)
 import Infer.Session (CheckedDefinitions)
-import Type.Syntax (Type(..), tBool, tInt, tFixedMap, tList, tMutMap, tStr, tUnit, tcon)
+import Type.Syntax (Scheme(..), Type(..), tBool, tF32, tF64, tInt, tFixedMap, tList, tMutMap, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
 import Core.Syntax (Name)
 import Frontend.Syntax (STop)
@@ -44,6 +44,13 @@ solProf =
 inferResult :: Sigs -> Structs -> [STop] -> InferenceResult
 inferResult = inferTopsResult Nothing solProf
 
+-- F64 as native has it (docs/2026-11-27-SOL-F64.md, step 1): float literals
+-- are F64, Num.* takes and answers F64, and the F64.*/F32.* surface exists.
+-- Sol.Main checks with this first; a script that only type-checks the old way
+-- (Int as the one numeric type) gets these errors as warnings in step 1.
+inferResultStrict :: Sigs -> Structs -> [STop] -> InferenceResult
+inferResultStrict = inferTopsResult Nothing solProf {ipBuiltins = solBuiltinsStrict}
+
 -- Session snapshots are opt-in and only supported by this profile.
 inferSession :: Maybe CheckedDefinitions -> Sigs -> Structs -> [STop] -> (InferenceResult, Maybe CheckedDefinitions, Int)
 inferSession old = inferTopsSession True old Nothing solProf
@@ -51,10 +58,51 @@ inferSession old = inferTopsSession True old Nothing solProf
 -- names the checker types without the prelude (Sol.Slice keeps any
 -- prelude definition that would shadow one)
 builtinNames :: [Name]
-builtinNames = M.keys solBuiltins
+builtinNames = M.keys solBuiltinsStrict
+
+-- native's float types (Infer.hs's builtins), over the old table
+solBuiltinsStrict :: TEnv
+solBuiltinsStrict = M.union strict legacyTable
+  where
+    f1 = mono (TFn tF64 tF64)
+    f2 = mono (TFn tF64 (TFn tF64 tF64))
+    g1 = mono (TFn tF32 tF32)
+    g2 = mono (TFn tF32 (TFn tF32 tF32))
+    unary = ["sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "exp", "log", "log2"]
+    strict = M.fromList $
+      [ ("f64frombits", mono (TFn tInt (TFn tInt tF64))),
+        ("f32frombits", mono (TFn tInt tF32)),
+        ("Num.floor", mono (TFn tF64 tInt)),
+        ("Num.round", mono (TFn tF64 tInt)),
+        ("Num.pow", f2),
+        ("Num.atan2", f2),
+        ("Num.bits", mono (TFn tF64 tInt)),
+        ("F64.atan2", f2), ("F64.pow", f2),
+        ("F64.ofInt", mono (TFn tInt tF64)), ("F64.toInt", mono (TFn tF64 tInt)),
+        ("F64.ofF32", mono (TFn tF32 tF64)), ("F64.str", mono (TFn tF64 tStr)),
+        ("F32.atan2", g2), ("F32.pow", g2),
+        ("F32.ofInt", mono (TFn tInt tF32)), ("F32.toInt", mono (TFn tF32 tInt)),
+        ("F32.ofF64", mono (TFn tF64 tF32)), ("F32.str", mono (TFn tF32 tStr)),
+        ("Try.parseF64", mono (TFn tStr (tcon "Result" [tF64, tStr])))
+      ]
+      ++ [("Num." ++ f, f1) | f <- unary]
+      ++ [("F64." ++ f, f1) | f <- unary]
+      ++ [("F32." ++ f, g1) | f <- unary]
 
 solBuiltins :: TEnv
-solBuiltins =
+solBuiltins = M.union legacyTable (M.map eraseFloat (M.filterWithKey (\k _ -> take 4 k `elem` ["F64.", "F32."] || k == "Try.parseF64") solBuiltinsStrict))
+  where
+    eraseFloat sc = case sc of Forall a b t -> Forall a b (erase t)
+    erase t = case t of
+      TC "F64" -> tInt
+      TC "F32" -> tInt
+      TFn x y -> TFn (erase x) (erase y)
+      TAp x y -> TAp (erase x) (erase y)
+      TTupT ts -> TTupT (map erase ts)
+      o -> o
+
+legacyTable :: TEnv
+legacyTable =
   M.fromList
     [ ("str", scheme [0] (TFn (sv 0) tStr)),
       ("strcat", mono (TFn tStr (TFn tStr tStr))),
@@ -186,6 +234,8 @@ solBuiltins =
       ("Num.div", mono (TFn tInt (TFn tInt tInt))), -- tInt IS the Numeric type
       ("Num.sqrt", mono (TFn tInt tInt)),
       ("Num.floor", mono (TFn tInt tInt)),
+      ("Num.floorDiv", mono (TFn tInt (TFn tInt tInt))),
+      ("Num.trunc", mono (TFn tInt tInt)),
       ("Num.round", mono (TFn tInt tInt)),
       -- the native runtime's transcendentals, bit for bit (Sol.FMath)
       ("Num.sin", mono (TFn tInt tInt)),

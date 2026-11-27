@@ -3,14 +3,15 @@
 # arithmetic fragment), exactness (f64 column only — on a KNum column
 # `/` is IEEE double division in ALL THREE tiers), n >= SOL_GPU_MIN.
 # The checksum must be IDENTICAL whichever tier fires.
-poly x = x * x / 7 + x - 3 .
+poly x = x * x / 7.0 + x - 3.0 .
+plus : F64 -> F64 -> F64 .
 plus a b = a + b .
 fill : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fill v i lim | i > lim = v.
-fill v i lim = fill (Vec.push (Num.sqrt (i * i)) v) (i + 1) lim.
+fill v i lim = fill (Vec.push (Num.sqrt (F64.ofInt (i * i))) v) (i + 1) lim.
 
 > xs = fill (Vec.new Unit) 1 120000;
   ys = Vec.map poly xs;
-  (s, ys2) = Vec.fold plus 0 ys;
+  (s, ys2) = Vec.fold plus 0.0 ys;
   u = print "dispatch: checksum = {s}";
   Vec.free ys2 .

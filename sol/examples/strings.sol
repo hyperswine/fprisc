@@ -36,7 +36,8 @@ expect what got want = case got == want of
 > expect "Str.repeat"     (Str.repeat 3 "ab") "ababab".
 > expect "Str.parse"      (Str.parse "42") 42.
 > expect "Str.isSpace"    (Str.isSpace 32, Str.isSpace 97) (True, False).
-> expect "Try.parseNum"    (Try.parseNum "2.5", Try.parseNum "-1e3", Try.parseNum "7") (Ok 2.5, Ok -1000, Ok 7).
+# floats compare by their text here: == does not reach a float inside a structure
+> expect "Try.parseF64"    (List.map (fn r -> mapOk F64.str r) [Try.parseF64 "2.5", Try.parseF64 "-1e3"], Try.parseNum "7") ([Ok "2.5", Ok "-1000"], Ok 7).
 > expect "Try.parseNum refuses" (isOk (Try.parseNum "1.2.3"), isOk (Try.parseNum "")) (False, False).
 
 # ---- booleans (strict: both sides evaluate) ----
