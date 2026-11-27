@@ -1096,6 +1096,10 @@ static void free_block(V v,uw prefix,uw total) {
 void fpr_free(V v) { free_block(v,FPR_MANAGED_PREFIX,PREHEADER(v)); }
 void fpr_free_raw(V v) { free_block(v,FPR_RAW_PREFIX,RAW_TOTAL(v)); }
 
+#else
+/* builtin targets allocate through machine/builtin/heap.c and have no inline
+ * bump window: the window is always closed, so callers take fpr_alloc */
+static inline __attribute__((always_inline)) V alloc_window(fpr_hart_t *h, uw raw_bytes) { (void)h; (void)raw_bytes; return 0; }
 #endif
 
 
