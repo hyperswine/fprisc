@@ -129,3 +129,17 @@ scan of channels 1 through 11, reports the AP count over USB, and stops
 the controller. This image uses no network credentials. It prints
 FPR WIFI SCAN APs and FPR DONE when the scan and shutdown complete.
 The current evidence covers the flash image and linker closure.
+
+## Station packet probe
+
+The station data-path helper answers ARP and IPv4 ICMP echo on a local
+test network. It uses a caller-supplied IPv4 and MAC address. The receive
+callback queues up to four vendor RX buffers. The main task releases
+each buffer once and uses the vendor's copy-on-transmit API for replies.
+Traffic outside the supported local packet formats is ignored.
+
+From this directory, the host vectors check whole reply frames, packet
+truncation, checksum failures, and RX buffer ownership.
+
+    cc -std=c11 -Wall -Wextra -Werror -I. net_probe.c wifi_probe.c tests/net_vectors.c -o net-vectors
+    ./net-vectors
