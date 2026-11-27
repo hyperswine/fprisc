@@ -34,3 +34,21 @@ The Mac reports success only if CoreBluetooth sees the service UUID in
 an advertisement. A live Bluetooth scan can be checked independently of
 controller initialization. See the [Bluetooth Core HCI specification](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v7.0/out/en/host-controller-interface/host-controller-interface--hci--functional-specification.html)
 and [CoreBluetooth CBCentralManager documentation](https://developer.apple.com/documentation/corebluetooth/cbcentralmanager).
+
+## Controller services
+
+btdm_abi.h describes the pinned C3 BTDM and VHCI callback layouts for
+RV32. Its sizes and critical offsets are checked at compile time.
+Copyright and license for the adapted ABI declarations are in
+LICENSE-ESP-RADIO-MIT.
+
+The service layer has bounded task slots, caller-owned stacks and FIFO
+storage, priority-ordered wakeups, and deadline-aware waits. Task context
+switches occur at explicit yield or blocking points with interrupts
+masked. An ISR can make a waiter ready. The current service layer does
+not preempt a running task.
+
+Run tests/check-tasks.sh with the C3 GCC toolchain and qemu-system-riscv32.
+It exercises the actual RV32 context switch, timed and indefinite waits,
+ISR-style wakeups, full and empty queues, and semaphore limits. Clock
+and idle are test hooks in this check.
