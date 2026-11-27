@@ -6,7 +6,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-COMMON = ("libphy.a", "libcoexist.a")
+PACKAGE = Path("esp-wifi-sys-esp32c3")
+COMMON = ("libphy.a", "libcoexist.a", "libprintf.a")
 MODES = {
     "ble": (
         ("libbtdm_app.a", "libbtbb.a") + COMMON,
@@ -15,9 +16,10 @@ MODES = {
          "API_vhci_host_check_send_available", "API_vhci_host_register_callback"),
     ),
     "wifi": (
-        ("libcore.a", "libnet80211.a", "libpp.a", "libwpa_supplicant.a") + COMMON,
+        ("libcore.a", "libespnow.a", "libmesh.a", "libnet80211.a", "libpp.a",
+         "libregulatory.a", "libsmartconfig.a", "libwapi.a", "libwpa_supplicant.a") + COMMON,
         ("esp_wifi_init_internal", "esp_wifi_start", "esp_wifi_stop", "esp_wifi_scan_start",
-         "esp_wifi_set_config", "esp_wifi_connect", "esp_wifi_internal_tx"),
+         "esp_wifi_set_config", "esp_wifi_connect_internal", "esp_wifi_disconnect_internal", "esp_wifi_internal_tx"),
     ),
 }
 
@@ -30,7 +32,7 @@ def audit(source, mode, prefix):
 
     archives, roots = MODES[mode]
     symbols = [argument for root in roots for argument in ("-u", root)]
-    inputs = [source / "libs/esp32c3" / library for library in archives]
+    inputs = [source / PACKAGE / "libs" / library for library in archives]
     with tempfile.TemporaryDirectory(prefix="fpr-c3-radio-") as directory:
         obj = Path(directory) / "radio.o"
         subprocess.run([prefix + "ld", "-r", "--gc-sections", "-o", obj, *symbols,
@@ -47,7 +49,7 @@ def audit(source, mode, prefix):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=Path, help="pinned wireless driver checkout")
+    parser.add_argument("source", type=Path, help="pinned esp-wifi-sys checkout")
     parser.add_argument("mode", choices=MODES)
     parser.add_argument("--prefix", default="riscv32-esp-elf-", help="RV32 GNU tool prefix")
     args = parser.parse_args()
