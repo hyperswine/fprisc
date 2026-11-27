@@ -34,6 +34,7 @@ import System.IO.Unsafe (unsafeInterleaveIO)
 import Sol.Lang
 import Frontend.Parser (immediateMarker, statementResult)
 import qualified Frontend.Traverse as Traverse
+import qualified Sol.Serial as Serial
 import Sol.Mod (resolveModuleParsedWith, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
@@ -181,13 +182,23 @@ runFileWith report editor as = do
   -- commit call); statements that already committed stay committed, and
   -- later statements do not run (docs/2026-11-26-SOL-PROGRESSIVE-COMMITS.md).
   unless dumpAsm $ do
-    r <- try (phase "execute" $ runTxLoop retryPolicy (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
+    r <- try (phase "execute" $ endLinksOnAbort $ runTxLoop retryPolicy (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
     case r of
       Right () -> pure ()
       Left e -> do
         let msg = if isUserError e then ioeGetErrorString e else show e
         hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
         exitFailure
+
+-- Child and Serial links live outside any transaction, so a statement that
+-- aborts cannot roll them back: when the run ends any way but success, end
+-- them, so no child outlives the script. Script.exit 0 is a success.
+endLinksOnAbort :: IO a -> IO a
+endLinksOnAbort act = act `catch` \(e :: SomeException) -> do
+  case fromException e of
+    Just ExitSuccess -> pure ()
+    _ -> Serial.endAllLinks
+  throwIO e
 
 parseSolArgs :: Bool -> RetryPolicy -> [String] -> Either String (Bool, RetryPolicy, FilePath, [String])
 parseSolArgs asm policy ("--asm":rest) = parseSolArgs True policy rest

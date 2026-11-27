@@ -10,7 +10,7 @@
 -- pending bytes and `expect`, so a script talks to QEMU's serial console the
 -- way it talks to a board's.
 module Sol.Serial (openPort, writePort, readPort, expectPort, closePort,
-                   spawnChild, waitChild, killChild) where
+                   spawnChild, waitChild, killChild, endAllLinks) where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BSU
@@ -24,7 +24,7 @@ import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Marshal.Array (withArray0)
 import Foreign.Ptr (nullPtr)
 import Foreign.Storable (peek)
-import Control.Exception (bracket)
+import Control.Exception (SomeException, bracket, try)
 import Foreign.C.String (newCString)
 import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (Ptr, castPtr)
@@ -174,3 +174,18 @@ killChild k = do
   _ <- c_close (portOut p)
   _ <- c_close (portFd p)
   atomicModifyIORef' ports (\(m, n) -> ((IM.delete k m, n), ()))
+
+-- a run that ends abnormally (a panic, a refused retry, a non-zero exit) ends
+-- every link it still holds: children are killed as Child.kill does, ports
+-- closed. Without this a Child outlives the script and keeps its caller's
+-- pipes open (sol-live waited out its 300 s limit that way).
+endAllLinks :: IO ()
+endAllLinks = do
+  (m, _) <- readIORef ports
+  mapM_ end (IM.toList m)
+  where
+    end (k, p) = do
+      _ <- try (case portPid p of
+                  Just _ -> killChild k
+                  Nothing -> closePort k) :: IO (Either SomeException ())
+      pure ()
