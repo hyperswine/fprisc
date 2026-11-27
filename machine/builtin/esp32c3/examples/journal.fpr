@@ -1,0 +1,56 @@
+profile builtin.
+IO = use "../lib/io".
+File = use "../lib/file".
+EspRecord.pack : Addr -> Int -> Int .
+EspRecord.unpack : Addr -> Int .
+
+# Wire replies: 6=success, 21=error. L emits length-prefixed records then
+# zero and a status. A consumes one length and payload and returns a status.
+status rc = IO.writeByte (if rc == 0 then 6 else 21).
+finish fd rc = closed = File.close fd; if rc == 0 then closed else rc.
+
+scan fd p emit = got = File.read fd p 72;
+  if got == 0 then 0 else
+  if got != 72 then -1 else
+    n = EspRecord.unpack p;
+    if n < 1 then -1 else
+    if emit and IO.writeByte n != 1 then -1 else
+    if emit and IO.write p n != n then -1 else scan fd p emit.
+
+inspect p emit = fd = File.open "FPRJNL.BIN";
+  if fd == -2 then 0 else
+  if fd < 0 then fd else finish fd (scan fd p emit).
+
+append p n = fd = File.append "FPRJNL.BIN";
+  if fd < 0 then fd else
+    size = EspRecord.pack p n;
+    rc = (if size != 72 then -1 else
+      if File.write fd p size != size then -1 else File.flush fd);
+    finish fd rc.
+
+loop p healthy = cmd = IO.readByte Unit;
+  if cmd == 65 then
+    n = IO.readByte Unit;
+    if n < 1 or n > 64 then _ = status -1; loop p healthy else
+      got = IO.readExact p n;
+      rc = (if got != n or healthy == False then -1 else append p n);
+      _ = status rc;
+      loop p (healthy and rc == 0)
+  else if cmd == 76 then
+    rc = inspect p True;
+    _ = IO.writeByte 0;
+    _ = status rc;
+    loop p (rc == 0)
+  else if cmd == 81 then 0 else
+    _ = status -1;
+    loop p healthy.
+
+main = rc = File.mount Unit;
+  if rc != 0 then rc else
+    p = Mem.alloc 72;
+    health = inspect p False;
+    _ = status health;
+    result = loop p (health == 0);
+    _ = Mem.free p;
+    _ = Rc.release p;
+    result.

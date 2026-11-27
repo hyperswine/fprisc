@@ -2,8 +2,10 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "esp_spiffs.h"
+#include "esp_rom_crc.h"
 #include "esp_flash.h"
 #include "esp_idf_version.h"
 #include "esp_partition.h"
@@ -82,6 +84,20 @@ static V open_file(V name, int flags) {
 }
 static V open_read(V name) { return open_file(name, O_RDONLY); }
 static V create_new(V name) { return open_file(name, O_WRONLY | O_CREAT | O_EXCL); }
+static V open_append(V name) { return open_file(name, O_WRONLY | O_CREAT | O_APPEND); }
+
+static V flush_file(V fd) {
+    if (!ISINT(fd) || UNTAG(fd) < 0) return TAG(-EBADF);
+#if CONFIG_SPIFFS_CACHE_WR
+    /* IDF 5.3.2's SPIFFS VFS lacks fsync. Neither fstat nor lseek
+     * propagates a write-cache flush failure. Never acknowledge one. */
+    return TAG(-ENOTSUP);
+#else
+    /* Writes reach SPIFFS synchronously. Check the still-open descriptor. */
+    struct stat st;
+    return TAG(fstat(UNTAG(fd), &st) < 0 ? -errno : 0);
+#endif
+}
 static V file_io(V fd, V p, V count, bool writing) {
     if (!ISINT(fd) || UNTAG(fd) < 0 || !ISINT(count) || UNTAG(count) < 0) return TAG(-EINVAL);
     void *buf = buffer_ptr(p);
@@ -101,3 +117,33 @@ FPR_FN(fpr_g_EspFile_x2eopen, open_read, 1);
 FPR_FN(fpr_g_EspFile_x2eread, read_file, 3);
 FPR_FN(fpr_g_EspFile_x2ewrite, write_file, 3);
 FPR_FN(fpr_g_EspFile_x2eclose, close_file, 1);
+FPR_FN(fpr_g_EspFile_x2eappend, open_append, 1);
+FPR_FN(fpr_g_EspFile_x2eflush, flush_file, 1);
+
+/* One fixed-size record: version tag, length, padded payload, then CRC32.
+ * Encode/decode in the caller's 72-byte workspace. A partial final write
+ * cannot be mistaken for a shorter valid record. */
+static V pack_record(V addr, V length) {
+    if (!ISINT(length) || UNTAG(length) < 1 || UNTAG(length) > 64) return TAG(-EINVAL);
+    unsigned n = UNTAG(length);
+    uint8_t *b = buffer_ptr(addr);
+    memmove(b + 4, b, n);
+    b[0] = 'F'; b[1] = 'J'; b[2] = 1; b[3] = n;
+    memset(b + 4 + n, 0, 64 - n);
+    uint32_t crc = esp_rom_crc32_le(0, b, 68);
+    memcpy(b + 68, &crc, sizeof(crc));
+    return TAG(72);
+}
+
+static V unpack_record(V addr) {
+    uint8_t *b = buffer_ptr(addr);
+    uint32_t stored;
+    memcpy(&stored, b + 68, sizeof(stored));
+    unsigned n = b[3];
+    if (b[0] != 'F' || b[1] != 'J' || b[2] != 1 || n < 1 || n > 64 ||
+        stored != esp_rom_crc32_le(0, b, 68)) return TAG(-EBADMSG);
+    memmove(b, b + 4, n);
+    return TAG(n);
+}
+FPR_FN(fpr_g_EspRecord_x2epack, pack_record, 2);
+FPR_FN(fpr_g_EspRecord_x2eunpack, unpack_record, 1);

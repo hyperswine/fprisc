@@ -10,3 +10,7 @@ open name = EspFile.open name.
 read fd p n = EspFile.read fd p n.
 write fd p n = EspFile.write fd p n.
 close fd = EspFile.close fd.
+EspFile.append : String -> Int .
+EspFile.flush : Int -> Int .
+append name = EspFile.append name.
+flush fd = EspFile.flush fd.

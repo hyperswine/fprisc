@@ -47,3 +47,24 @@ The tested 4 MiB C3 has two 0x140000-byte OTA applications, followed by the SPIF
 The last command resets the chip and reads the existing test file through the installed logger. After disconnecting and reconnecting power, use `python check_board.py "$PORT" read --attach` to read from the running logger without a downloader handshake or reset. The example processes one command per boot.
 
 To select the original application on this two-slot layout, run `python "$ota" --port "$PORT" switch_ota_partition --slot 0`. Selecting slot 1 again boots the logger. Both applications share the existing flash partition table.
+
+### Multi-command journal
+
+Build `examples/journal.fpr` with the same file-enabled configuration as
+`examples/logger.fpr` and a fresh sdkconfig. The journal uses synchronous
+SPIFFS writes (`CONFIG_SPIFFS_CACHE_WR=n`) and checks close before sending
+an acknowledgement. Its data file is `FPRJNL.BIN`. With the ESP-IDF Python
+environment active, run `python check_journal.py PORT JOURNAL_RAM_IMAGE` to
+append three test records and verify replay across a reset during an incoming
+serial frame. Each invocation adds three records.
+
+The initial status byte is 6 for a healthy journal and 21 for an error.
+Send ASCII A, one length byte (1–64), and that many payload bytes to append.
+Send L to replay length-prefixed records, followed by a zero and a status.
+A short or CRC-invalid record ends replay at the preceding valid record and
+produces status 21. Appends stay disabled while that suffix exists. Q exits.
+
+On the tested generic ESP32-C3, a RAM probe sampled GPIO9 with the internal
+pull-up enabled. Pressing BOOT changed the input from high to low and
+releasing it restored high, with 140 ms between sampled edges. The PCB model
+and onboard LED wiring have yet to be identified.
