@@ -38,13 +38,13 @@ def sample(run_id, index):
     return b"C3POWER" + run_id + index.to_bytes(4, "little")
 
 
-def arm(port, path):
+def arm(port, path, max_records):
     run_id = secrets.token_bytes(8)
     with attach(port) as serial:
         initial = replay(serial)
         with path.open("x", buffering=1) as witness:
             print(json.dumps([len(initial), digest(initial), run_id.hex()]), file=witness)
-            for index in range(3000):
+            for index in range(max_records):
                 item = sample(run_id, index)
                 print("send", index, file=witness)
                 try:
@@ -61,7 +61,16 @@ def arm(port, path):
                 if index == 0:
                     print("First ACK recorded. Remove C3 power while appends continue.", flush=True)
                 time.sleep(0.1)
-    raise RuntimeError("Reached 3,000 appends without an observed disconnect")
+            # Keep a frame incomplete so a late physical power removal cannot
+            # consume the rest of a small dedicated journal.
+            serial.write(b"A\x40partial")
+            print("Append limit reached. Remove C3 power during the incomplete frame.", flush=True)
+            while True:
+                try:
+                    if serial.read(1):
+                        raise RuntimeError("Unexpected response to incomplete frame")
+                except (SerialException, OSError):
+                    return
 
 
 def verify(port, path):
@@ -100,5 +109,11 @@ if __name__ == "__main__":
     parser.add_argument("mode", choices=("arm", "verify"))
     parser.add_argument("port")
     parser.add_argument("witness", type=Path)
+    parser.add_argument("--max-records", type=int, default=128)
     args = parser.parse_args()
-    (arm if args.mode == "arm" else verify)(args.port, args.witness)
+    if args.max_records < 1:
+        parser.error("max-records must be positive")
+    if args.mode == "arm":
+        arm(args.port, args.witness, args.max_records)
+    else:
+        verify(args.port, args.witness)

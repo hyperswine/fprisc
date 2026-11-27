@@ -16,11 +16,11 @@ SECTOR = 4096
 ERASED = 0xffffffff
 
 
-def expected_table():
+def expected_table(filename="partitions-ota.csv"):
     sys.path.insert(0, str(Path(os.environ["IDF_PATH"]) / "components/partition_table"))
     from gen_esp32part import PartitionTable
 
-    return PartitionTable.from_csv(Path(__file__).with_name("partitions-ota.csv").read_text())
+    return PartitionTable.from_csv(Path(__file__).with_name(filename).read_text())
 
 
 def image_size(data, revision):
@@ -68,11 +68,44 @@ def program(stub, offset, data):
         raise RuntimeError("Flash readback digest mismatch")
 
 
+def provision(stub, revision, backup):
+    before = backup.read_bytes()
+    if len(before) != 4 * 1024 * 1024:
+        raise ValueError("Expected a full 4 MiB pre-migration backup")
+    if stub.flash_md5sum(0, len(before)) != hashlib.md5(before).hexdigest():
+        raise ValueError("Live flash differs from the supplied backup")
+    old_table = expected_table().to_binary()
+    new_table = expected_table("partitions-journal.csv").to_binary()
+    if before[0x8000:0x8000 + len(old_table)] != old_table:
+        raise ValueError("Expected the original partitions-ota.csv layout")
+    if before[0x280000:0x290000] != b"\xff" * 65536:
+        raise ValueError("The proposed journal space is occupied")
+    for start, end in [(0x10000, 0x150000), (0x150000, 0x280000)]:
+        app = before[start:end]
+        if app != b"\xff" * len(app):
+            image_size(app, revision)
+    sector = new_table + before[0x8000 + len(new_table):0x9000]
+    program(stub, 0x8000, sector)
+    if stub.read_flash(0x8000, 4096) != sector:
+        raise RuntimeError("Journal partition table verification failed")
+    for start, end in [(0, 0x8000), (0x9000, len(before))]:
+        if stub.flash_md5sum(start, end - start) != hashlib.md5(before[start:end]).hexdigest():
+            raise RuntimeError("Data outside the partition table changed")
+    print("Reserved 64 KiB. All bytes outside the partition table match the backup.")
+
+
 def operate(stub, revision, args):
+    if args.command == "provision-journal":
+        provision(stub, revision, args.backup)
+        return
     table = expected_table()
     binary = table.to_binary()
-    if stub.read_flash(0x8000, len(binary)) != binary:
-        raise ValueError("Device partition table differs from partitions-ota.csv")
+    live = stub.read_flash(0x8000, len(binary))
+    if live != binary:
+        table = expected_table("partitions-journal.csv")
+        if live != table.to_binary():
+            raise ValueError("Unrecognized partition table")
+
     parts = {part.name: part for part in table}
     ota = parts["otadata"]
     metadata = stub.read_flash(ota.offset, ota.size)
@@ -125,6 +158,8 @@ def main():
     parser.add_argument("port")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
+    migrate = commands.add_parser("provision-journal", help="reserve the erased 64 KiB tail of slot 1")
+    migrate.add_argument("backup", type=Path, help="verified full-device pre-migration backup")
     backup = commands.add_parser("backup")
     install = commands.add_parser("install")
     select = commands.add_parser("select", help="select an existing application, including for rollback")

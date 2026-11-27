@@ -2,7 +2,6 @@ profile builtin.
 Board = use "../boards/supermini".
 GPIO = use "../lib/gpio".
 Clock = use "../lib/clock".
-File = use "../lib/file".
 Journal = use "../lib/journal".
 
 # Button records contain milliseconds since boot (unsigned little endian, 8 bytes),
@@ -35,7 +34,7 @@ run p =
     rc.
 
 main =
-  mounted = File.mount Unit;
+  mounted = Journal.mount Unit;
   if mounted != 0 then mounted else
     input = GPIO.input Board.button Board.buttonActiveLow;
     if input != 0 then input else

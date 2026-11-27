@@ -154,4 +154,46 @@ restore power. Run `python check_power.py verify PORT WITNESS` against the
 rebooted journal. The checker compares the original prefix, every confirmed
 append and the one possible unacknowledged record. If a partial final record
 is present it checks the prefix before issuing R and verifying replay again.
-The arm phase issues at most 3,000 short records, approximately ten per second.
+The arm phase defaults to 128 short records, approximately ten per second.
+After that it waits for disconnection with one incomplete serial frame.
+
+## Power-safe append-only journal
+
+Build with `build_app.py main.fpr --journal` for a board provisioned with
+`partitions-journal.csv`. The 64 KiB `fprjournal` data partition starts at
+0x280000. On the original layout those bytes belong to the end of OTA slot
+1. Changing the table requires verified backups and an erased destination.
+Both app start offsets and the SPIFFS volume have the same addresses in
+the two layouts. On the verified 4 MiB board, make the private backup first:
+
+    python -m esptool --chip esp32c3 --port "$PORT" read_flash 0 0x400000 previous-flash.bin
+    python ota_slot.py "$PORT" provision-journal previous-flash.bin
+
+Use a new output filename for the backup. Provisioning compares it with the
+live device, verifies existing images fit, writes one table sector and reads
+back both the table and digests for the rest of flash.
+
+The raw journal has 511 shared slots following its format signature. Each
+slot stores a journal name (up to 32 bytes), a payload (1–64 bytes), a CRC32
+and a commit word. The adapter programs and reads back the body, then
+programs and reads back the commit word before acknowledging. A restart
+skips incomplete slots and resumes at the next unused one. Corruption in
+a committed record fails the mount. Full media returns ENOSPC. The adapter
+never erases sectors or relocates committed records.
+
+`--journal` routes Journal.mount, append, inspect and repair to the new
+medium. R remounts and scans it. Existing SPIFFS files remain available
+through the File API or a journal build using the filesystem backend.
+Records on the two media are independent. To collect measurements, add
+`--stats`. Keep the original partition and OTA images when provisioning an
+existing board.
+
+From this directory, run the host fault qualification with:
+
+    cc -std=c11 -O2 -Imain main/log.c tests/raw_power.c -lz -o /tmp/c3-raw-power
+    /tmp/c3-raw-power
+
+The test interrupts initial signature programming and the body and commit
+writes at every simulated bit boundary, remounts, and checks the prior
+records. It also appends after recovery, fills the volume, and tests a
+committed-record checksum failure.

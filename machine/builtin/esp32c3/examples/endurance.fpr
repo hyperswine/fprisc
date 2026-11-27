@@ -2,7 +2,6 @@ profile builtin.
 Board = use "../boards/supermini".
 GPIO = use "../lib/gpio".
 Clock = use "../lib/clock".
-File = use "../lib/file".
 Journal = use "../lib/journal".
 EspStats.report : Int -> Unit .
 
@@ -46,7 +45,7 @@ run p =
     rc.
 
 main =
-  fs = File.mount Unit;
+  fs = Journal.mount Unit;
   if fs != 0 then fs else
     button = GPIO.input Board.button True;
     if button != 0 then button else

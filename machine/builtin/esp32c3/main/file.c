@@ -11,6 +11,7 @@
 #include "esp_partition.h"
 
 #include "bytes.h"
+#include "flash_access.h"
 
 #define MOUNT_DIR "/fpr"
 static bool mounted;
@@ -31,26 +32,34 @@ static int is_erased(const esp_partition_t *part) {
     return 1;
 }
 
+int fpr_c3_partition_access(const esp_partition_t *part) {
+#if CONFIG_APP_BUILD_TYPE_RAM && CONFIG_ESPTOOLPY_FLASHSIZE_4MB && ESP_IDF_VERSION == ESP_IDF_VERSION_VAL(5, 3, 2)
+    /* IDF 5.3.2 C3 RAM startup fabricates a 2 MiB boot header even when the
+     * build selects 4 MiB. Its flash driver enforces that header for reads.
+     * Extend only as far as this partition and only after probing the chip. */
+    static uint32_t extended_limit;
+    uint32_t limit, physical;
+    if (esp_flash_get_size(NULL, &limit) != ESP_OK) return -EIO;
+    if (part->address > UINT32_MAX - part->size) return -EINVAL;
+    uint32_t end = part->address + part->size;
+    if (end > limit) {
+        if ((limit != 2 * 1024 * 1024 && limit != extended_limit) || end > 4 * 1024 * 1024 ||
+            esp_flash_get_physical_size(NULL, &physical) != ESP_OK || end > physical)
+            return -EFBIG;
+        esp_flash_default_chip->size = end;
+        extended_limit = end;
+    }
+#endif
+    return 0;
+}
+
 static V mount_files(V unit) {
     if (mounted) return TAG(0);
     const esp_partition_t *part = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, FPR_FLASH_LABEL);
     if (!part) return TAG(-ENODEV);
-#if CONFIG_APP_BUILD_TYPE_RAM && CONFIG_ESPTOOLPY_FLASHSIZE_4MB && ESP_IDF_VERSION == ESP_IDF_VERSION_VAL(5, 3, 2)
-    /* IDF 5.3.2 C3 RAM startup fabricates a 2 MiB boot header even when the
-     * build selects 4 MiB. Its flash driver enforces that header for reads.
-     * Extend only as far as this partition and only after probing the chip. */
-    uint32_t limit, physical;
-    if (esp_flash_get_size(NULL, &limit) != ESP_OK) return TAG(-EIO);
-    if (part->address > UINT32_MAX - part->size) return TAG(-EINVAL);
-    uint32_t end = part->address + part->size;
-    if (end > limit) {
-        if (limit != 2 * 1024 * 1024 || end > 4 * 1024 * 1024 ||
-            esp_flash_get_physical_size(NULL, &physical) != ESP_OK || end > physical)
-            return TAG(-EFBIG);
-        esp_flash_default_chip->size = end;
-    }
-#endif
+    int limit_rc = fpr_c3_partition_access(part);
+    if (limit_rc) return TAG(limit_rc);
     int erased = is_erased(part);
     if (erased < 0) return TAG(erased);
     esp_vfs_spiffs_conf_t config = {

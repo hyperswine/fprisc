@@ -13,6 +13,8 @@ def main():
     parser.add_argument("--build-dir", type=Path, help="override the per-app build directory")
     parser.add_argument("--flash", action="store_true", help="build an OTA-slot application image")
     parser.add_argument("--files", metavar="PARTITION", help="enable SPIFFS on this partition label")
+    parser.add_argument("--journal", action="store_true", help="use the dedicated append-only partition")
+    parser.add_argument("--stats", action="store_true", help="enable runtime measurement primitives")
     args = parser.parse_args()
     source = args.source.resolve()
     if not source.is_file():
@@ -25,10 +27,16 @@ def main():
     board = Path(__file__).resolve().parent
     mode = "flash" if args.flash else "ram"
     configuration = f"{mode}-{args.files}" if args.files else mode
+    if args.journal:
+        configuration += "-journal"
+    if args.stats:
+        configuration += "-stats"
     build = (args.build_dir or source.parent / "build" / source.stem / configuration).resolve()
     subprocess.run([
         sys.executable, str(Path(idf) / "tools" / "idf.py"), "-C", str(board), "-B", str(build),
         f"-DSDKCONFIG={build / 'sdkconfig'}", f"-DFPR_PROGRAM={source}",
+        f"-DFPR_RAW_JOURNAL={'ON' if args.journal else 'OFF'}",
+        f"-DFPR_RUNTIME_STATS={'ON' if args.stats else 'OFF'}",
         f"-DFPR_FLASH_BOOT={'ON' if args.flash else 'OFF'}",
         f"-DFPR_FLASH_FILES={'ON' if args.files else 'OFF'}",
         f"-DFPR_FLASH_LABEL={args.files or 'fprfiles'}", "build",
