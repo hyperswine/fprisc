@@ -1,6 +1,6 @@
 set(assembly "${guest}.s")
 execute_process(COMMAND "${fpr}" compile --system=bare-metal --profile=builtin --target riscv32imc
-    "${source}" "${assembly}" COMMAND_ERROR_IS_FATAL ANY)
+    "--depfile=${guest}.d" "${source}" "${assembly}" COMMAND_ERROR_IS_FATAL ANY)
 file(STRINGS "${assembly}.units" units)
 set(objects)
 foreach(unit IN ITEMS "${assembly}" ${units})

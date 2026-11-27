@@ -73,7 +73,7 @@ import Data.Bits (xor)
 import Data.Char (ord)
 import Data.Word (Word64)
 import Numeric (showHex)
-import System.Directory (createDirectoryIfMissing, doesFileExist, getFileSize, getModificationTime)
+import System.Directory (makeAbsolute, createDirectoryIfMissing, doesFileExist, getFileSize, getModificationTime)
 import System.Environment (getExecutablePath)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, takeFileName, (</>))
@@ -781,6 +781,15 @@ emitNative ei = do
   nativeSummary (Options.diagNativeInsns diagnostic) "root" rootAsm
   writeFile (out ++ ".units") (unlines (map fst (preludeOut ++ unitOuts)))
   writeFile (out ++ ".abirev") (show codegenRev)
+  forM_ (oDepfile opts) $ \depfile -> do
+    paths <- mapM makeAbsolute (M.keys sources ++ maybe [] pure (oManifest opts))
+    target <- makeAbsolute out
+    let escape '$' = "$$"
+        escape c | c `elem` " #:\\\t" = ['\\', c]
+                 | otherwise = [c]
+        quote = concatMap escape
+    writeFile depfile (quote target ++ ": " ++ unwords (map quote paths) ++ "\n")
+
   forM_ (preludeOut ++ unitOuts) $ \(p, note) -> putStrLn ("unit " ++ p ++ " (" ++ note ++ ")")
   when pruneEligible $
     putStrLn

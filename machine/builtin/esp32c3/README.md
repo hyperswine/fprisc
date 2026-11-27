@@ -11,6 +11,27 @@ Build the compiler with `make fpr` at the repository root. Activate ESP-IDF 5.3.
 
 For the arithmetic example, pass `-DFPR_PROGRAM="$PWD/examples/selfcheck.fpr"` in a separate build directory and select `selfcheck` in the runner. The build invokes `fpr compile --system=bare-metal --profile=builtin --target riscv32imc` and assembles the program and imported units with `-march=rv32imc -mabi=ilp32`. The earlier `--target=rv32` compiler spelling also works.
 
+## Build an application outside the checkout
+
+With ESP-IDF active and a current `fpr` built, run the following from your
+application directory. Set `board` to the absolute path to this board directory.
+
+    python "$board/build_app.py" main.fpr
+    python "$board/build_app.py" main.fpr --flash --files spiffs
+
+Each command prints the application image path. Builds default to
+`build/<program>/<configuration>/` beside the source. Use `--build-dir DIR`
+to override it. The first command builds a ROM-loadable RAM image. The
+second builds an OTA application with the named SPIFFS volume. Installation
+and slot selection are explicit steps described below.
+
+Application modules can use importer-relative paths. Import the board library
+from any checkout-external program with, for example,
+`IO = use "machine/builtin/esp32c3/lib/io".` Native compilation accepts
+`--depfile=PATH` to record the input and resolved imported sources for the
+assembly output. The C3 build consumes this file so editing a transitive
+import rebuilds the guest and relinks the application.
+
 ## Flash files
 
 Use an existing data/SPIFFS partition. The label defaults to `fprfiles`. To use the factory C3 layout tested here, select `-DFPR_FLASH_LABEL=spiffs`. The adapter only formats the selected partition when every byte is erased; a corrupt existing filesystem returns an error. Firmware, OTA metadata, NVS and other partitions are outside the volume. On IDF 5.3.2, C3 RAM startup sets a 2 MiB flash limit. For the 4 MiB build, the adapter probes the physical size before extending that limit to the end of the selected partition.

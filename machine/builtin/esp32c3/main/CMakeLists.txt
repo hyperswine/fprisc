@@ -17,10 +17,13 @@ endif()
 target_compile_definitions(${COMPONENT_LIB} PRIVATE FPR_BUILTIN FPR_ESP_IDF FPR_NHARTS=1)
 target_compile_options(${COMPONENT_LIB} PRIVATE -ffixed-x27)
 set(guest "${CMAKE_CURRENT_BINARY_DIR}/guest.o")
-file(GLOB modules CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/../lib/*.fpr")
-add_custom_command(OUTPUT "${guest}"
+if(POLICY CMP0116)
+    cmake_policy(SET CMP0116 NEW)
+endif()
+add_custom_command(OUTPUT "${guest}.s" "${guest}"
     COMMAND ${CMAKE_COMMAND} "-Dfpr=${fpr}/fpr" "-Dsource=${FPR_PROGRAM}" "-Dcc=${CMAKE_C_COMPILER}"
         "-Dguest=${guest}" -P "${CMAKE_CURRENT_LIST_DIR}/compile.cmake"
-    DEPENDS "${FPR_PROGRAM}" ${modules} "${fpr}/fpr" "${CMAKE_CURRENT_LIST_DIR}/compile.cmake" VERBATIM)
+    DEPFILE "${guest}.d"
+    DEPENDS "${FPR_PROGRAM}" "${fpr}/fpr" "${CMAKE_CURRENT_LIST_DIR}/compile.cmake" VERBATIM)
 set_source_files_properties("${guest}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
 target_sources(${COMPONENT_LIB} PRIVATE "${guest}")

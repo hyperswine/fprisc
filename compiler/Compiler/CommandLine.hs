@@ -37,6 +37,7 @@ data CompileArguments = CompileArguments
     oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
     oEditorJSON :: Bool, -- versioned editor report, never executes or emits code
     oCheckOnly :: Bool, -- check libraries/modules without an executable entry point
+    oDepfile :: Maybe FilePath, -- native assembly dependencies in Make format
     oManifest :: Maybe FilePath, -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
     oStackReport :: Bool, -- --stack-report: emit physical native stack facts
     oHeapBudget :: Maybe String, -- --heap-budget=BYTES: builtin C heap admission
@@ -58,7 +59,7 @@ parseCompileArguments = resolveHost . foldl step defaults . targetArgs
         oQosApp=False, oQosSingle=False, oPlugin=False, oRvv=False,
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
         oFiles=[], oForeign=[], oNoInline=False, oCallables=Nothing, oCost=False,
-        oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oStackBudget=Nothing, oHeapBudget=Nothing, oStackReport=False, oRemarks=Nothing }
+        oEditorJSON=False, oCheckOnly=False, oDepfile=Nothing, oManifest=Nothing, oStackBudget=Nothing, oHeapBudget=Nothing, oStackReport=False, oRemarks=Nothing }
     -- profile aliases: the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
     -- qos-native -> rv64 .qa is built by tools, so the alias maps the
@@ -123,6 +124,7 @@ parseCompileArguments = resolveHost . foldl step defaults . targetArgs
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
+      | "--depfile=" `isPrefixOf` a = o {oDepfile = Just (drop (length "--depfile=") a)}
       | "--manifest=" `isPrefixOf` a = o {oManifest = Just (drop (length "--manifest=") a), oCost = True}
       | "--heap-budget=" `isPrefixOf` a = o {oHeapBudget = Just (drop (length "--heap-budget=") a)}
       | "--stack-budget=" `isPrefixOf` a = o {oStackBudget = Just (drop (length "--stack-budget=") a)}
