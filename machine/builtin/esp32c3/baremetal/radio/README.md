@@ -76,3 +76,20 @@ keeps additional software fallbacks in the unresolved set. The pinned
 BLE roots leave nine imports after this step. The Wi-Fi roots leave 59.
 These counts cover the root-selected link, with controller callbacks and
 runtime initialization outside the import count.
+
+## Build the BLE bring-up image
+
+Set C3_RADIO_SYS and C3_RADIO_REF to checkouts at the commits in
+archives.json. The esp-hal reference checkout needs esp-phy and
+esp-rom-sys. From the FP-RISC repository root, run the C3 build script
+with the BLE example.
+
+    machine/builtin/esp32c3/baremetal/build.sh build/c3-ble ble flash
+
+The build generates the C controller configuration layout and PHY data
+from the pinned sources, then links the FP-RISC guest, C adapter, C3 ROM
+map, and BLE controller archives. Its linker script gives code and data
+separate SRAM ranges. The allocation callbacks use a 24 KiB radio arena.
+The flash image prints each initialization phase over USB after the
+console identity query. The end-to-end test requires the C3 to print
+FPR BLE ADVERTISING and the Mac to discover the service UUID over the air.

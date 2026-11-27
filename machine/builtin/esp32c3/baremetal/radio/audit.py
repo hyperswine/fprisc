@@ -25,25 +25,34 @@ MODES = {
 }
 
 
-def audit(source, mode, prefix, rom_reference):
+def verify_package(source):
     lock = json.loads(Path(__file__).with_name("archives.json").read_text())
     for name, expected in lock["sha256"].items():
         if sha256((source / name).read_bytes()).hexdigest() != expected:
             raise ValueError(f"SHA-256 mismatch for {name}")
+    return lock
 
+
+def rom_scripts(reference, revision):
+    actual = subprocess.check_output(
+        ["git", "-C", reference, "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual != revision:
+        raise ValueError(f"ROM reference revision mismatch: {actual}")
+    directory = reference / "esp-rom-sys" / "ld" / "esp32c3"
+    includes = (directory / "rom-functions.x").read_text()
+    includes = re.sub(r"/\*.*?\*/", "", includes, flags=re.DOTALL)
+    return [directory / name
+            for name in re.findall(r'^INCLUDE "([^"]+)"', includes, flags=re.MULTILINE)
+            if name != "rom/additional.ld"]
+
+
+def audit(source, mode, prefix, rom_reference):
+    lock = verify_package(source)
     rom = []
     if rom_reference is not None:
-        revision = subprocess.check_output(
-            ["git", "-C", rom_reference, "rev-parse", "HEAD"], text=True
-        ).strip()
-        if revision != lock["esp_radio_reference"]:
-            raise ValueError(f"ROM reference revision mismatch: {revision}")
-        directory = rom_reference / "esp-rom-sys" / "ld" / "esp32c3"
-        includes = (directory / "rom-functions.x").read_text()
-        includes = re.sub(r"/\*.*?\*/", "", includes, flags=re.DOTALL)
-        for name in re.findall(r'^INCLUDE "([^"]+)"', includes, flags=re.MULTILINE):
-            if name != "rom/additional.ld":
-                rom.extend(("-T", directory / name))
+        for script in rom_scripts(rom_reference, lock["esp_radio_reference"]):
+            rom.extend(("-T", script))
 
     archives, roots = MODES[mode]
     symbols = [argument for root in roots for argument in ("-u", root)]

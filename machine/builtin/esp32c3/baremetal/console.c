@@ -38,6 +38,10 @@ _Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc) {
     for (;;) __asm__ volatile("wfi");
 }
 
+void c3_console_text(const char *message) {
+    puts_usb(message);
+}
+
 void fpr_cpanic_n(const char *s, uw n) {
     puts_usb("C3 PANIC: ");
     write_bytes(s, n);

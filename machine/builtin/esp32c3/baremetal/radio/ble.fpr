@@ -1,0 +1,5 @@
+profile builtin.
+
+EspBLE.advertise : Unit -> Unit .
+
+main = EspBLE.advertise Unit.
