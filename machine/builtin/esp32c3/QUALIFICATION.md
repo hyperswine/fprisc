@@ -130,3 +130,21 @@ after body readback and immediately before marker programming. Build it with
 `idf.py -C tests/media-reset -B /path/to/build build`, then load the resulting
 `journal_reset.bin` through the ROM RAM loader with the journal app installed
 in flash. A successful injection consumes one otherwise unused slot.
+
+## Physical power loss and interrupted commit
+
+After the host witnessed 150 acknowledgements, the operator unplugged the
+C3 and reconnected it. The flash-booted app replayed all 150 records in
+order and matched every payload. No repair was needed. The wire frame
+pending at disconnection had not received a full payload.
+
+In a separate test, the RAM fixture reset the chip immediately before
+programming the commit word for physical slot 151. Reading the partition
+through the ROM loader showed the expected payload and CRC with an erased
+commit word. The flash app again replayed exactly the 150 acknowledged
+records, then acknowledged another append and replayed it after the prefix.
+
+The dedicated-journal endurance image was 233,216 bytes. At entry IDF
+reported 134,356 free heap bytes. The first workload checkpoint reported
+three live Builtin allocations using 256 bytes, 133,692 free IDF heap
+bytes, a minimum of 133,660 bytes, and 2,252 bytes of stack headroom.
