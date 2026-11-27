@@ -120,3 +120,24 @@ Each checkpoint reports live Builtin allocation count and bytes, peak Builtin
 bytes, current and minimum IDF 8-bit heap, and the main task's stack
 high-water mark in bytes. The checker requires consecutive checkpoints,
 positive remaining stack, and stable live allocator and IDF heap readings.
+
+### Stage an external app and roll back
+
+With the tested two-slot partition table and an unencrypted development C3,
+`ota_slot.py` can install an image from `build_app.py --flash`.
+All commands enter the ROM loader and reset the board on exit. Read the
+selected slot first. For example, when status reports slot 0:
+
+    python ota_slot.py "$PORT" status
+    python ota_slot.py "$PORT" backup 1 previous-slot1.bin
+    python ota_slot.py "$PORT" install 1 /path/to/c3_builtin.bin --replace-backup previous-slot1.bin
+    python ota_slot.py "$PORT" select 0
+
+The install checks the active image, target chip revision, image checksum
+and SHA-256. A nonempty target requires a byte-for-byte backup unless it
+already contains the requested image. The board reads back the programmed
+digest before the tool updates one OTA selector sector. The previous valid
+selector sector stays available across that update. Selection verifies the
+destination application before switching. Keep backups locally.
+
+See [C3 qualification](QUALIFICATION.md) for measured results and test scope.

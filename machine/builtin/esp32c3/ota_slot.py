@@ -1,0 +1,152 @@
+"""Stage and select C3 apps on the two-slot partitions-ota.csv layout (IDF 5.3)."""
+import argparse
+import hashlib
+import io
+import os
+from pathlib import Path
+import struct
+import sys
+import zlib
+
+from esptool import detect_chip
+from esptool.bin_image import ESP32C3FirmwareImage
+
+
+SECTOR = 4096
+ERASED = 0xffffffff
+
+
+def expected_table():
+    sys.path.insert(0, str(Path(os.environ["IDF_PATH"]) / "components/partition_table"))
+    from gen_esp32part import PartitionTable
+
+    return PartitionTable.from_csv(Path(__file__).with_name("partitions-ota.csv").read_text())
+
+
+def image_size(data, revision):
+    image = ESP32C3FirmwareImage(io.BytesIO(data))
+    if (image.chip_id != 5 or not image.append_digest or image.stored_digest != image.calc_digest
+            or image.checksum != image.calculate_checksum() or not image.segments
+            or not image.is_flash_addr(image.segments[0].addr)
+            or image.segments[0].data[:4] != bytes.fromhex("3254cdab")):
+        raise ValueError("Expected an intact ESP32-C3 flash application with an IDF app descriptor")
+    if revision < image.min_rev_full or (image.max_rev_full and revision > image.max_rev_full):
+        raise ValueError("Image chip revision constraints exclude this C3")
+    return image.data_length + 32
+
+
+def selection(metadata):
+    copies = []
+    for index in range(2):
+        seq, state, crc = struct.unpack_from("<I20xII", metadata, index * SECTOR)
+        if seq in (0, ERASED) or crc != zlib.crc32(struct.pack("<I", seq), ERASED):
+            continue
+        if state in (3, 4):  # invalid or aborted
+            continue
+        if state not in (2, ERASED):
+            raise ValueError("OTA verification is pending or the selection state is unknown")
+        copies.append((seq, index))
+    if not copies:
+        if metadata == b"\xff" * (2 * SECTOR):
+            return 0, 0, None
+        raise ValueError("No valid OTA selector in the existing metadata")
+    seq, index = max(copies)
+    return (seq - 1) % 2, seq, index
+
+
+def program(stub, offset, data):
+    # The flasher stub erases sectors covering the uncompressed length.
+    # In particular, an OTA selection update touches exactly one sector.
+    compressed = zlib.compress(data, 9)
+    size = stub.FLASH_WRITE_SIZE
+    blocks = stub.flash_defl_begin(len(data), len(compressed), offset)
+    for n in range(blocks):
+        stub.flash_defl_block(compressed[n * size:(n + 1) * size], n)
+    stub.flash_begin(0, 0)
+    stub.flash_defl_finish(False)
+    if stub.flash_md5sum(offset, len(data)) != hashlib.md5(data).hexdigest():
+        raise RuntimeError("Flash readback digest mismatch")
+
+
+def operate(stub, revision, args):
+    table = expected_table()
+    binary = table.to_binary()
+    if stub.read_flash(0x8000, len(binary)) != binary:
+        raise ValueError("Device partition table differs from partitions-ota.csv")
+    parts = {part.name: part for part in table}
+    ota = parts["otadata"]
+    metadata = stub.read_flash(ota.offset, ota.size)
+    active, seq, index = selection(metadata)
+    print(f"Selected OTA slot {active}, sequence {seq}", flush=True)
+    if args.command == "status":
+        return
+    target = args.slot
+    part = parts[f"app{target}"]
+    old = stub.read_flash(part.offset, part.size)
+    if args.command == "backup":
+        with args.output.open("xb") as out:
+            out.write(old)
+        print(f"Saved slot {target}, SHA-256 {hashlib.sha256(old).hexdigest()}")
+        return
+    next_seq = seq + 1
+    if (next_seq - 1) % 2 != target:
+        next_seq += 1
+    if target != active and next_seq >= ERASED:
+        raise ValueError("OTA sequence exhausted")
+    if args.command == "install":
+        if target == active:
+            raise ValueError("Install requires the inactive OTA slot")
+        # IDF may fall back from a damaged selected image to the other slot.
+        previous = parts[f"app{active}"]
+        image_size(stub.read_flash(previous.offset, previous.size), revision)
+        data = args.image.read_bytes()
+        if len(data) > part.size or image_size(data, revision) != len(data):
+            raise ValueError("App size does not match its checksummed image length or slot capacity")
+        if old[:len(data)] != data:
+            if old != b"\xff" * part.size and (not args.replace_backup or args.replace_backup.read_bytes() != old):
+                raise ValueError("Nonempty inactive slot requires its exact full-slot --replace-backup")
+            program(stub, part.offset, data)
+    else:
+        image_size(old, revision)
+    if target == active:
+        return
+    copy = 0 if index is None else 1 - index
+    new = bytearray(b"\xff" * SECTOR)
+    raw = struct.pack("<I", next_seq)
+    struct.pack_into("<I20xII", new, 0, next_seq, ERASED, zlib.crc32(raw, ERASED))
+    program(stub, ota.offset + copy * SECTOR, new)
+    if selection(stub.read_flash(ota.offset, ota.size))[:2] != (target, next_seq):
+        raise RuntimeError("Boot selection did not verify")
+    print(f"Selected OTA slot {target}, sequence {next_seq}", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("port")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("status")
+    backup = commands.add_parser("backup")
+    install = commands.add_parser("install")
+    select = commands.add_parser("select", help="select an existing application, including for rollback")
+    for cmd in (backup, install, select):
+        cmd.add_argument("slot", type=int, choices=(0, 1))
+    backup.add_argument("output", type=Path)
+    install.add_argument("image", type=Path)
+    install.add_argument("--replace-backup", type=Path)
+    args = parser.parse_args()
+    chip = detect_chip(port=args.port, baud=115200)
+    try:
+        if chip.CHIP_NAME != "ESP32-C3" or chip.get_flash_encryption_enabled() or chip.get_secure_boot_enabled():
+            raise ValueError("Expected an unencrypted development C3 with secure boot disabled")
+        revision = chip.get_chip_revision()
+        stub = chip.run_stub()
+        try:
+            operate(stub, revision, args)
+        finally:
+            stub.hard_reset()
+    finally:
+        chip._port.close()
+
+
+if __name__ == "__main__":
+    main()
