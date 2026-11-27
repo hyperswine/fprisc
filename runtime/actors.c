@@ -324,15 +324,22 @@ void fpr_drop_park(fpr_slab_t *sl) {
     return;
   }
   fpr_slab_t **slots = live_block(a)->dp;
+  /* This dropper's hold is taken BEFORE a full list gives up its oldest:
+   * the oldest entry can be this same slab. Releasing it first let its last
+   * hold go while no root was left (escaped 0), freeing the slab, and the
+   * re-park then held and later released it again -- a double free that
+   * corrupted buddy's lists (a cycle spun every hart: the GUI shell's
+   * Files freeze, docs/2026-11-27-DROP-PARK-DOUBLE-FREE.md). */
+  sl->holds++;
   if (a->dp_n == DP_N) {
     uw oldest = a->dp_oldest;
-    fpr_slab_unhold(slots[oldest], 1);
+    fpr_slab_t *old = slots[oldest];
     slots[oldest] = sl;
     a->dp_oldest = (oldest + 1) % DP_N;
+    fpr_slab_unhold(old, 1);
   } else {
     slots[a->dp_n++] = sl;
   }
-  sl->holds++;
 }
 static void drop_drain(acb_t *a) {
   if (!a->dp_n) return;
