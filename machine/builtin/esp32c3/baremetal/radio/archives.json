@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/esp-rs/esp-wireless-drivers-3rdparty",
+  "revision": "ca2809144cf6d2f89d413f1d415f1c4454ee6249",
+  "sha256": {
+    "LICENSE": "3ec4263dd562688b9973a956c5f250d78cf8b8d852e971909be7d7fa719f16dd",
+    "include/esp32c3/esp_bt.h": "95f5730d73ee59057994bfb4c41915c1c8dfe24f355deed925ea2d2f111b39e7",
+    "include/esp32c3/phy_init_data.h": "9637e2303ff8a2b06357e0a8501b15eb214ab3baaa701cf9e13183771e0f956e",
+    "include/esp32c3/sdkconfig.h": "8ae84ef311dcd1df2c043aeadedb86fdcf0a309ef925713229d0d8487e02d46d",
+    "libs/esp32c3/libbtbb.a": "1d9b62fd2ea43914fa082eaabcdfa650fc2f8e5485198588dd6d2d339c650afd",
+    "libs/esp32c3/libbtdm_app.a": "5fa8d63686042bdd3f0df59ee8fdebd5cf7fab1ad96e44ef9d1a5ca10e28a926",
+    "libs/esp32c3/libcoexist.a": "e96b7d92cd8a634a88f511d7c289709980190c530e0145a9a6ecec7a531fb97f",
+    "libs/esp32c3/libcore.a": "c1ec78ca36bdab0659b7c5cd445f91f38bd7f74e49956ec9d6bba82f15edd49c",
+    "libs/esp32c3/libnet80211.a": "ea4d532270e5360868e7fa59ffd4200e3b12d866184f93da2f0852d509a41791",
+    "libs/esp32c3/libphy.a": "bbd4952f90ec59fd5f23151e53aac3f7834c84cd05021620749ec4fae2c3c74a",
+    "libs/esp32c3/libpp.a": "4c766810d60444c2643eeeae7b51ac3430498ad966a46236320def83db6f5541",
+    "libs/esp32c3/libwpa_supplicant.a": "fe9a3eaf201f047f0ddf5936b7b79b1938529cfb53b286e4b61bfa85e56914da",
+    "version": "010f19489637b876e02aa742592a5acb0e634e5ba03e59fc87eb0f8e9ecd4bbd"
+  }
+}
