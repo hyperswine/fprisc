@@ -8,7 +8,9 @@ from audit import verify_package
 STRUCTS = (
     "wifi_osi_funcs_t", "wpa_crypto_funcs_t", "wifi_init_config_t",
     "wifi_active_scan_time_t", "wifi_scan_time_t", "wifi_scan_channel_bitmap_t",
-    "wifi_scan_config_t", "wifi_country_t",
+    "wifi_scan_config_t", "wifi_country_t", "wifi_pmf_config_t",
+    "wifi_scan_threshold_t", "wifi_bss_max_idle_config_t", "wifi_ap_config_t",
+    "wifi_sta_config_t", "wifi_nan_sync_config_t", "wifi_config_t",
 )
 CONSTANTS = ("ESP_WIFI_OS_ADAPTER_VERSION", "ESP_WIFI_OS_ADAPTER_MAGIC",
              "WIFI_INIT_CONFIG_MAGIC")
@@ -48,8 +50,11 @@ class Bindings:
         self.source = source
         self.aliases = dict(re.findall(r"^pub type (\w+)\s*=\s*(.*?);", source, re.M | re.S))
 
+    def declaration(self, name):
+        return re.search(rf"^pub (struct|union) {name} \{{(.*?)^\}}", self.source, re.S | re.M)
+
     def fields(self, struct):
-        body = re.search(rf"^pub struct {struct} \{{(.*?)^\}}", self.source, re.S | re.M)[1]
+        body = self.declaration(struct)[2]
         body = re.sub(r"^    #\[.*?\]$", "", body, flags=re.M)
         parts = re.split(r"^    pub (\w+):\s*", body, flags=re.M)
         if parts[0].strip() or len(parts) % 2 != 1:
@@ -79,7 +84,10 @@ class Bindings:
         if ptr:
             const = "const " if ptr[1] == "const" else ""
             return self.c_type(ptr[2], f"*{qualification}{name}", const)
-        array = re.fullmatch(r"\[([^;]+);\s*(\d+)usize\]", ty)
+        bitfield = re.fullmatch(r"__BindgenBitfieldUnit<(.+)>", ty)
+        if bitfield:
+            return self.c_type(bitfield[1], name, qualification)
+        array = re.fullmatch(r"\[([^;]+);\s*(\d+)(?:usize)?\]", ty)
         if array:
             return self.c_type(array[1], f"{name}[{array[2]}]", qualification)
         if ty in self.aliases:
@@ -98,7 +106,8 @@ class Bindings:
             value = re.search(rf"^pub const {name}: u32 = (\d+);", self.source, re.M)[1]
             print(f"#define {name} UINT32_C({value})")
         for name in STRUCTS:
-            print(f"typedef struct {{")
+            kind = self.declaration(name)[1]
+            print(f"typedef {kind} {{")
             for field, ty in self.fields(name):
                 print(f"    {self.c_type(ty, field)};")
             print(f"}} {name};")

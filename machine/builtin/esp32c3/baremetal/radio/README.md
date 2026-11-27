@@ -143,3 +143,10 @@ truncation, checksum failures, and RX buffer ownership.
 
     cc -std=c11 -Wall -Wextra -Werror -I. net_probe.c wifi_probe.c tests/net_vectors.c -o net-vectors
     ./net-vectors
+
+The station test configuration is provisioned over USB at runtime. The
+decoder accepts an open or WPA2-personal test SSID and a caller-selected
+IPv4 address on the test network. The configuration field layouts are
+checked against the pinned RV32 bindings. The password is held in the
+configuration buffer in SRAM and can be cleared after the driver has
+copied it.
