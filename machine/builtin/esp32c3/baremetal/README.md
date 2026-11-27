@@ -77,3 +77,11 @@ the inactive slot, install button-flash.bin into that slot, and select the
 previous slot to roll back. The utility uses the ESP-IDF partition-table
 parser on the host. The flash application links the FP-RISC runtime and
 compiler support, and uses the bootloader already installed on the board.
+
+The physical C3 cold-booted the 13,824-byte button image from OTA slot 1
+after a USB power cycle. The flash identity was visible over USB, the
+one-second timer measured 1,000 ms on the C3 and 999.4 ms on the Mac, and
+GPIO9 reported both debounced BOOT edges. The rollback selected slot 0
+and verified its original image digest. The test then restored the
+previous slot 1 image and OTA metadata, matched the pre-test digest over
+all 4 MiB of flash, and replayed all 151 records from the restored logger.
