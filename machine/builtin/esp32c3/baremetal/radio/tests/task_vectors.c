@@ -1,5 +1,6 @@
 #include "task.h"
 #include "btdm_services.h"
+#include "event_group.h"
 #include "btdm_irq.h"
 #include "../../interrupt.h"
 #include "os_queue.h"
@@ -77,8 +78,11 @@ static void queue_vectors(void) {
     CHECK(c3_queue_send(&queue, &second, now));
     CHECK(!c3_queue_send(&queue, &first, now));
     CHECK(c3_semaphore_take(&sem, C3_WAIT_FOREVER));
-    CHECK(c3_queue_send(&queue, &first, now));
+    CHECK(c3_queue_send(&queue, &second, now));
+    CHECK(c3_queue_send_front(&queue, &first, now));
+    CHECK(!c3_queue_send_front(&queue, &first, now));
     CHECK(c3_queue_try_receive(&queue, &value, NULL) && value == first);
+    CHECK(c3_queue_try_receive(&queue, &value, NULL) && value == second);
     CHECK(!c3_queue_receive(&queue, &value, now + 3));
     CHECK(!c3_semaphore_take(&sem, now + 2));
     CHECK(c3_semaphore_give(&sem, NULL));
@@ -167,6 +171,46 @@ static void interrupt_vectors(void) {
     CHECK(c3_irq_dispatch(IRQ_REG(8 * 4)) && radio_hits == 3);
 }
 
+static unsigned notified;
+static void event_waiter(void *arg) {
+    CHECK(c3_events_wait(arg, 3, 1, 1, UINT32_MAX) == 7);
+    ++notified;
+}
+static void event_deleted(void *arg) {
+    CHECK(c3_events_wait(arg, 8, 0, 0, UINT32_MAX) == 0);
+    ++notified;
+}
+static void event_vectors(void) {
+    void *event = c3_events_create();
+    CHECK(event);
+    CHECK(c3_task_create(event_waiter, event, 3, stacks[0], sizeof(stacks[0])) == 2);
+    CHECK(c3_task_create(event_waiter, event, 2, stacks[1], sizeof(stacks[1])) == 3);
+    c3_task_yield();
+    CHECK(c3_events_set(event, 1) == 1);
+    c3_task_yield();
+    CHECK(notified == 0);
+    CHECK(c3_events_set(event, 6) == 4);
+    c3_task_yield();
+    CHECK(notified == 2);
+    CHECK(c3_events_clear(event, 4) == 4 && c3_events_wait(event, 4, 0, 0, 0) == 0);
+    uint64_t start = now;
+    CHECK(c3_events_wait(event, 8, 0, 0, 2) == 0 && now == start + 2000);
+
+    CHECK(c3_task_create(event_deleted, event, 3, stacks[0], sizeof(stacks[0])) == 2);
+    c3_task_yield();
+    c3_events_delete(event);
+    CHECK(c3_events_create() == event);
+    c3_task_yield();
+    CHECK(notified == 3);
+
+    CHECK(c3_task_create(event_waiter, event, 3, stacks[0], sizeof(stacks[0])) == 2);
+    c3_task_yield();
+    c3_events_cancel(2);
+    CHECK(c3_task_delete(2));
+    CHECK(c3_events_set(event, 3) == 3);
+    c3_events_delete(event);
+}
+
 void main(void) {
     c3_tasks_init(1);
     CHECK(c3_task_create(reader, &channel, 3, stacks[0], sizeof(stacks[0])) == 2);
@@ -187,6 +231,8 @@ void main(void) {
     CHECK(c3_task_delete(2));
     CHECK(!c3_task_delete(2) && !c3_task_delete(1));
     CHECK(c3_task_create(writer, NULL, 1, stacks[0], sizeof(stacks[0])) == 2);
+    c3_tasks_init(1);
+    event_vectors();
     callback_vectors();
     interrupt_vectors();
     for (const char *s = "RV32 task services PASS\n"; *s; ++s) UART = (uint8_t)*s;

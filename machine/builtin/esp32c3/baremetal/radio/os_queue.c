@@ -48,6 +48,18 @@ bool c3_queue_send(c3_os_queue *q, const void *item, uint64_t deadline) {
     return true;
 }
 
+bool c3_queue_send_front(c3_os_queue *q, const void *item, uint64_t deadline) {
+    while (q->count == q->capacity) {
+        if (c3_tasks_now_us() >= deadline) return false;
+        c3_task_park(&q->head, deadline);
+    }
+    q->head = q->head ? q->head - 1 : q->capacity - 1;
+    copy_bytes(q->buffer + (size_t)q->head * q->item_bytes, item, q->item_bytes);
+    ++q->count;
+    signal(&q->count, NULL);
+    return true;
+}
+
 bool c3_queue_receive(c3_os_queue *q, void *item, uint64_t deadline) {
     while (!c3_queue_try_receive(q, item, NULL)) {
         if (c3_tasks_now_us() >= deadline) return false;

@@ -12,6 +12,7 @@ typedef struct {
 bool c3_queue_init(c3_os_queue *queue, void *buffer, size_t bytes,
                    unsigned capacity, unsigned item_bytes);
 bool c3_queue_send(c3_os_queue *queue, const void *item, uint64_t deadline_us);
+bool c3_queue_send_front(c3_os_queue *queue, const void *item, uint64_t deadline_us);
 bool c3_queue_receive(c3_os_queue *queue, void *item, uint64_t deadline_us);
 bool c3_queue_try_send(c3_os_queue *queue, const void *item, bool *higher_priority_woken);
 bool c3_queue_try_receive(c3_os_queue *queue, void *item, bool *higher_priority_woken);

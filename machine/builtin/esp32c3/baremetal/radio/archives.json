@@ -21,6 +21,7 @@
     "esp-wifi-sys-esp32c3/libs/libsmartconfig.a": "f1a914a1a2738b8e9c9887d2cdd117fd9e3ca4ce4b24912f41db7be91913c629",
     "esp-wifi-sys-esp32c3/libs/libwapi.a": "72f37d369a015ff7db679710f7d859cea89189800924df9103ab83c9f565e663",
     "esp-wifi-sys-esp32c3/libs/libwpa_supplicant.a": "f9bae7e68653f8afeb9704e60b2f20e20a054b58e95cf75de4c8e441937de321",
+    "esp-wifi-sys-esp32c3/src/c_types.rs": "d2ad76f76d884c27b664ea56e04f3c8e18c278492698af048b5e2244b9f42e59",
     "esp-wifi-sys-esp32c3/src/include.rs": "d295a01f2fa6e053c6fd59943c5cc0c0143816ba5ad4f324cb7a7fe9791832b6"
   }
 }

@@ -93,3 +93,17 @@ separate SRAM ranges. The allocation callbacks use a 24 KiB radio arena.
 The flash image prints each initialization phase over USB after the
 console identity query. The end-to-end test requires the C3 to print
 FPR BLE ADVERTISING and the Mac to discover the service UUID over the air.
+
+## Wi-Fi callback ABI
+
+Generate C declarations for the version 9 Wi-Fi adapter and its
+configuration and scan types from the locked bindings.
+
+    python3 generate_wifi.py /path/to/esp-wifi-sys > wifi_config.h
+    python3 check_wifi_layout.py /path/to/esp-wifi-sys
+
+The layout check compares every struct size, alignment, and field offset
+produced by RV32 GCC against the pinned Rust bindings. It uses rustc with
+the riscv32imc-unknown-none-elf target installed. The C generator itself
+requires Python. The RV32 task vectors also cover queue front insertion
+and event groups, including multiple waiters observing the same bits.
