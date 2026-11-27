@@ -80,11 +80,12 @@ For the recommended RV32 configuration:
 `machine/tangnano20k/examples.sol` (2026-11-18) is the Sol port of the retired
 `run_tangnano20k_examples.py`, `run_tangnano20k_base.py` and
 `check_tangnano20k_dtree.py`. It builds the compiler (`--skip-compiler-build`
-when it is current), the SoftFloat archive if missing, and
-`machine/tangnano20k/board-host.c`, a native helper for what Sol cannot do: the
-serial port, the boot ROM's `I`/`U`/`C`/`G` upload and the guest's UART virtual
-device (for the board or a `qemu-system-riscv32` child), plus the classifier's
-libm reference. `--target board --fpga-manifest PATH` checks the preset build's
+when it is current) and the SoftFloat archive if missing, and runs
+`machine/tangnano20k/board-host.sol` (2026-11-27; it replaced `board-host.c`):
+the serial port (Sol's `Serial`), the boot ROM's `I`/`U`/`C`/`G` upload and the
+guest's UART virtual device (for the board, or a `qemu-system-riscv32` child as
+a Sol `Child`), plus the classifier's reference. With two boards attached it
+points `openFPGALoader` at this board's programmer with `--ftdi-serial`. `--target board --fpga-manifest PATH` checks the preset build's
 manifest and artifact hashes, loads its bitstream into FPGA SRAM and checks the
 ROM identity (ISA, clocks, build id). Presets: `fprisc-48` (default), `fprisc-72`,
 `fprisc-81`, `fprisc-84` on the Tang Nano 20K and `arty-s7-81` on the Arty S7-50
@@ -98,9 +99,9 @@ At most 256 arguments and 65,536 encoded bytes (including lengths) are allowed.
 Arguments are UTF-8, exclude NUL, and are never interpreted by a shell.
 The host supplies an empty list if no `--arg` options are given. A new guest
 asking an older host for arguments receives an explicit unavailable error.
-To run one built image directly, build the helper
-(`cc -O2 -o board-host machine/tangnano20k/board-host.c -lm`) and use
-`board-host board IMAGE --port DEV --mhz N [--settle S] --root DIR ...`.
+To run one built image directly, use
+`./fpr sol machine/tangnano20k/board-host.sol board IMAGE --port DEV --mhz N [--settle S] --root DIR ...`
+(below, `board-host` stands for `./fpr sol machine/tangnano20k/board-host.sol`).
 
 The following commands retain the original RV64 configuration:
 

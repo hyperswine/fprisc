@@ -17,13 +17,13 @@
 # the manifest and its artifact hashes, programs the bitstream into FPGA SRAM
 # (never flash or the SD card) and checks the ROM identity against it. QEMU checks
 # software only. The serial port, ROM upload and the guest's UART virtual device
-# are machine/tangnano20k/board-host.c, built into the output directory.
+# are machine/tangnano20k/board-host.sol, run with the same Sol.
 # Writes OUT/results.json (default build/tangnano20k-examples/TARGET); a failed or
 # interrupted run leaves passed=false there.
 unsafe program.
 B = use "../../sol/lib/build".
 CLI = use "../../sol/lib/cli".
-J = use "../../sol/lib/json".
+J = use "std/jsondoc".
 D = use "../../sol/lib/digest".
 
 suite = ["hello","numeric","collections","host","args","wc","classifier"].
@@ -76,12 +76,16 @@ defaultPort (_,_,_,p,_) = p.
 defaultSettle (_,_,_,_,s) = s.
 
 # ---- small helpers -----------------------------------------------------------
-writeStreamed path content =
-  bytes = unwrap (Utf8.encode content);
-  h = unwrap (Stream.openWrite path (Bytes.len bytes + 1));
-  (result,next) = Stream.writeChunk bytes h;
-  _ = unwrap (Stream.closeWrite next);
-  unwrap result.
+# The programmer behind a board's UART: both bridges are FTDI-style 0403:6010
+# devices whose UART is /dev/cu.usbserial-<serial><interface>, so with two
+# boards attached the loader is pointed at this board's serial, not the first.
+ftdiSerial port =
+  at = Str.indexOf "usbserial-" port;
+  if at < 0 then [] else
+    rest = Str.slice port (at + 10) (Str.len port);
+    if Str.len rest < 2 then [] else ["--ftdi-serial",Str.slice rest 0 (Str.len rest - 1)].
+# lands now and replaces what was there (the report is rewritten as cases finish)
+writeStreamed path content = writeNow path content.
 tailOf n s = Str.slice s (Numeric.max 0 (Str.len s - n)) (Str.len s).
 decode bytes = case Utf8.decode bytes of Ok s -> s | Err _ -> "<output is not UTF-8>".
 count line lines = List.len (List.filter (fn l -> l == line) lines).
@@ -160,12 +164,12 @@ guestOptions o files arguments inputs env =
 executeGuest o out rep dir files arguments inputs env =
   log = "{dir}/run.log";
   if o.target == "qemu" then
-    must out rep (runLogged [] (List.append [o.helper,"qemu","{dir}/base.elf","--xlen","32"] (guestOptions o files arguments inputs env)) log (o.timeout + 30))
+    must out rep (runLogged [] (List.concat [o.helper,["qemu","{dir}/base.elf","--xlen","32"],guestOptions o files arguments inputs env]) log (o.timeout + 30))
   else
     bin = "{dir}/base.bin";
     size = parseInt (B.query ["stat","-f","%z",bin]);
     upload = size * 8680 / (o.mhz * 1000000) + 1;
-    board = [o.helper,"board",bin,"--port",o.port,"--mhz","{o.mhz}","--settle",o.settle,
+    board = List.append o.helper ["board",bin,"--port",o.port,"--mhz","{o.mhz}","--settle",o.settle,
       "--isa",(if o.compressed then "rv32imc" else "rv32im"),"--mem-mhz","{o.memMhz}"];
     identity = if o.buildId == "" then [] else ["--build-id",o.buildId];
     output = must out rep (runLogged [] (List.concat [board,identity,guestOptions o files arguments inputs env]) log (o.timeout + 60 + upload));
@@ -241,7 +245,7 @@ classifier o out rep dir =
   budget = heapBudget dir;
   limit = unwrap (J.num (field "usable_heap_block_bytes" (J.JObj budget)));
   output = executeGuest {o | timeout = 600} out rep dir dir [] [] [];
-  result = unwrap (J.parse (must out rep (runLogged [] [o.helper,"dtree","512","128","16","6","5","{dir}/run.log","10"] "{dir}/check.log" 60)));
+  result = unwrap (J.parse (must out rep (runLogged [] (List.append o.helper ["dtree","512","128","16","6","5","{dir}/run.log","10"]) "{dir}/check.log" 60)));
   runs = unwrap (J.items (field "elapsed_us_runs" result));
   samples = unwrap (J.items (field "heap_samples" result));
   _ = (if List.len runs == 10 then Unit else fail out rep "classifier did not complete ten exact iterations");
@@ -319,8 +323,7 @@ main u =
   soft = B.setting "FPR_SOFTFLOAT_ROOT" "{root}/build/tangnano20k-softfloat";
   _ = (if B.exists "-f" "{soft}/build/Linux-RISCV32-GCC/softfloat.a" then Unit
        else _ = must out2 rep2 (runLogged env (List.append sol ["machine/tangnano20k/build-softfloat.sol"]) "{out2}/softfloat-build.log" 600); Unit);
-  helper = "{out2}/board-host";
-  _ = must out2 rep2 (runLogged [] ["cc","-O2","-Wall","-o",helper,"machine/tangnano20k/board-host.c","-lm"] "{out2}/board-host-build.log" 120);
+  helper = List.append sol ["{root}/machine/tangnano20k/board-host.sol"];
   o = {target = target, preset = preset, mhz = mhz, memMhz = presetMemMhz preset, compressed = compressed,
        timeout = timeout, port = CLI.valueOr (defaultPort board) "port" parsed,
        settle = CLI.valueOr (defaultSettle board) "settle" parsed, buildId = buildId,
@@ -328,7 +331,7 @@ main u =
   loader = CLI.valueOr "{B.setting "HOME" "~"}/Documents/Libs/oss-cad-suite/bin/openFPGALoader" "loader" parsed;
   rep3 = if bitstream == "" then rep2 else
     _ = print "programming FPGA SRAM: {bitstream}";
-    _ = must out2 rep2 (runLogged [] [loader,"-b",loaderBoard board,bitstream] "{out2}/program-fpga.log" 120);
+    _ = must out2 rep2 (runLogged [] (List.concat [[loader,"-b",loaderBoard board],ftdiSerial o.port,[bitstream]]) "{out2}/program-fpga.log" 120);
     J.set "fpga_programmed_sram" (J.JBool True) rep2;
   _ = save out2 rep3;
   if programPath != "" then
