@@ -474,7 +474,11 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
       -- SliceAll: verified libraries are sliced together with the prelude,
       -- from the user's own program; otherwise libraries are seeds too
       let body = if slicing == SliceAll then ptopsAll ++ libX else ptopsAll
-          seeds = mentions (if slicing == SliceAll then userX else utopsXP)
+          -- Library code sliced with the prelude reaches prelude code by
+          -- name only, but its operators resolve to struct members after
+          -- slicing (`t + "y"` is Str.+): seed the operator structs, or a
+          -- library adding strings ran into "unknown symbol: Str.+"
+          seeds = if slicing == SliceAll then mentions userX <> S.fromList ["Str", "List", "Numeric", "Int"] else mentions utopsXP
           ks = sliceIndices seeds (S.fromList (injectedNames ++ builtinNames)) body
           np = length ptopsAll
           pk = [t | (i, t) <- zip [0 ..] ptopsAll, S.member i ks]
