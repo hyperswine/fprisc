@@ -62,10 +62,11 @@ journal|journal-cut|endurance)
     else
         compile "$here/flash.c" flash.o
     fi
+    compile "$here/flash_region.c" flash_region.o
     compile "$here/file_unavailable.c" file_unavailable.o
     compile "$here/../main/log.c" log.o
     compile "$here/../main/flash_log.c" flash_log.o -DFPR_C3_BAREMETAL -DFPR_RAW_JOURNAL
-    set -- "$@" flash.o file_unavailable.o log.o flash_log.o -T "$here/flash_rom.ld" ;;
+    set -- "$@" flash.o flash_region.o file_unavailable.o log.o flash_log.o -T "$here/flash_rom.ld" ;;
 ble)
     link_layout="$here/radio/ble.ld"
     python3 "$here/radio/generate_bt.py" "$radio_package" "$radio_reference" > ble_config.h

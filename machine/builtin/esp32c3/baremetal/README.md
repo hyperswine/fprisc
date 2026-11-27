@@ -102,6 +102,10 @@ The backend accepts the dedicated 64 KiB fprjournal partition at
 0x280000 and checks that no other table entry overlaps it. ROM read and
 program calls are confined to that partition. Bounded, aligned transfers
 use SRAM buffers, and the cache is suspended around each ROM operation.
+The private flash driver also supports single-sector erase for regions
+explicitly configured to allow it. It checks 4 KiB alignment and full
+sector containment before entering ROM. The journal region allows read and
+program only.
 The journal verifies the programmed body before writing its commit
 marker. Existing records remain available after a partially written
 record. SPI initialization comes from the flash bootloader.
