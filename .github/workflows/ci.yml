@@ -69,6 +69,8 @@ jobs:
       - name: Native build dependencies
         run: |
           apt-get install -y --no-install-recommends make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+          # tests/sol-checks/sol-live.sol fetches the served page with curl
+          apt-get install -y --no-install-recommends curl
       - name: Build compiler
         run: |
           rm -f cabal.project.freeze
@@ -110,6 +112,8 @@ jobs:
       - name: Native build dependencies
         run: |
           apt-get install -y --no-install-recommends make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+          # tools/toolchain-elf.sol sets $ORIGIN runpaths on the bundled libraries
+          apt-get install -y --no-install-recommends patchelf
       - name: Build compiler
         run: |
           rm -f cabal.project.freeze

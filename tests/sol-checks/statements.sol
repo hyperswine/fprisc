@@ -67,8 +67,31 @@ main u = root = H.root Unit; work = tempDir "fpr-statements";
   _ = put v "retry.sol" "r = > c = readPath \"c.txt\"; _ = writePath \"c.txt\" (c + \"x\"); Str.len c.\n> writePath \"r.txt\" (str r).\n";
   ProcessResult rc2 ro2 re2 = sol root v "retry.sol" [("SOL_FORCE_RETRY","1")];
   _ = must "results: a retried statement records its result once" (rc2 == 0 and readPath "{v}/c.txt" == "1x" and readPath "{v}/r.txt" == "1") re2;
-  # 8. the isolation example: visibility inside a statement and across statements
+  _ = put v "dup.sol" "x = > 1.\nx = > 2.\n> print x.\n";
+  ProcessResult uc uo ue = sol root v "dup.sol" [];
+  _ = must "results: a result name bound twice is refused" (uc != 0 and uo == "" and Str.contains "statement result `x` is bound 2 times" ue) "{uo}{ue}";
+  # 8. realtime effects the name check cannot see: the IO constructors behind
+  # the Now wrappers are refused, and a closure carried in a result panics
+  # before it acts
+  b = fresh work "bypass";
+  _ = put b "ctor.sol" "> write @leak.txt (NowSet \"x\").\n";
+  ProcessResult bc bo be = sol root b "ctor.sol" [];
+  _ = must "bypass: an IO constructor is refused" (bc != 0 and Str.contains "reaches immediate operation(s) NowSet" be and not (H.isFile "{b}/leak.txt")) be;
+  _ = put b "sh.sol" "> read (NowSh \"echo ran > ran.txt\").\n";
+  ProcessResult hc ho he = sol root b "sh.sol" [];
+  _ = must "bypass: NowSh is refused" (hc != 0 and Str.contains "reaches immediate operation(s) NowSh" he and not (H.isFile "{b}/ran.txt")) he;
+  _ = put b "closure.sol" "w = >! fn p -> writeNow p \"x\".\n> w \"closure.txt\".\n";
+  ProcessResult cc co ce = sol root b "closure.sol" [];
+  _ = must "bypass: a carried closure panics before acting" (cc != 0 and Str.contains "writeNow is an immediate operation inside a transactional" ce and not (H.isFile "{b}/closure.txt")) ce;
+  # 9. a run that aborts ends its Child processes: the child would write
+  # late.txt after 3 s, and its pipes must not hold the run open
+  k = fresh work "child";
+  _ = put k "s.sol" ">! c = unwrap (Child.open [\"sh\",\"-c\",\"sleep 3; echo late > late.txt\"]); error \"boom\".\n";
+  ProcessResult kc ko ke = sol root k "s.sol" [];
+  _ = Sys.sleepUs 4000000;
+  _ = must "child: ended with the aborted run" (kc != 0 and not (H.isFile "{k}/late.txt")) ke;
+  # 10. the isolation example: visibility inside a statement and across statements
   ProcessResult xc xo xe = H.call ["{root}/fpr","sol","{root}/sol/examples/txn_iso.sol"] [("FPR_HOME",root)] 120000;
   _ = must "txn_iso example" (xc == 0 and Str.endsWith "txn_iso: OK\n" xo) "{xo}{xe}";
-  print "statements: per-statement commit and abort, refusal before running, main as a statement, quiet >!, exit, per-statement retry, statement results, isolation PASS".
+  print "statements: per-statement commit and abort, refusal before running, main as a statement, quiet >!, exit, per-statement retry, statement results, escapes past the name check, Child ended on abort, isolation PASS".
 >! main Unit.

@@ -16,8 +16,11 @@ main u = root = H.root Unit;
   port = 8000 + (Sys.uptimeMs Unit % 1000) + 700;
   child = unwrap (Child.open ["{root}/fpr","sol","{root}/sol/examples/live-counter.sol","{port}"]);
   pageText = waitUp port 50;
-  ProcessResult nc no _ = H.call ["node","-e","process.stdout.write(typeof WebSocket)"] [] 10000;
-  ProcessResult wc wo we = (if nc == 0 and no == "function"
+  # no node at all (the CI container) is the same as a Node without WebSocket
+  hasWs = case Proc.runNow (ProcessSpec ["node","-e","process.stdout.write(typeof WebSocket)"] "" [] "" 10000) of
+      Ok (ProcessResult nc no _) -> nc == 0 and no == "function"
+    | Err _ -> False;
+  ProcessResult wc wo we = (if hasWs
     then H.call ["node","{root}/tests/sol-checks/live/client.mjs","{port}"] [] 30000
     else ProcessResult 0 "skipped" "");
   _ = Child.kill child;
