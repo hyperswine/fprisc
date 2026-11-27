@@ -1,0 +1,9 @@
+profile builtin.
+
+Serial.result : I32 -> Int -> Unit .
+
+main =
+  x = I32.trunc 12345;
+  y = I32.trunc 67;
+  actual = x * y + I32.trunc 89;
+  Serial.result actual (if actual == I32.trunc 827204 then 1 else 0).

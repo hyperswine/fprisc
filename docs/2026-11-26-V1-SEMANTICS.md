@@ -13,8 +13,11 @@ How to read it. Every clause carries one of three marks:
   or with each other, or the behaviour looks accidental. The owner decides.
 - **[defect]** the implementation is wrong by its own rules. Fix, do not
   specify.
+- **[decided]** the owner chose the rule (date given). It is the 1.0-rel
+  rule whether or not the implementation follows it yet; the clause says
+  which.
 
-Nothing here is decided by this page. A clause becomes a rule when the owner
+Apart from the **[decided]** clauses, nothing here is decided by this page. A clause becomes a rule when the owner
 accepts it and it has a test (the conformance suite of core spec §5.5 stage 0
 does not exist yet; each **[is]** clause below is a candidate case for it).
 
@@ -140,25 +143,28 @@ Precedence, loosest first:
 - **[is] `and` and `or` short-circuit.** `a >> b` evaluates `a` then `b` and
   answers `b`. `a |>? f` is `case a of Ok v -> f v | Err e -> Err e`.
 - **[is] A block runs its statements in order.**
-- **[decide] Record fields are evaluated in field-name order, not source
-  order.** `{b = f 1, a = g 2}` runs `g` first, because the desugarer sorts
-  the fields. The same holds for the new values of a record update (after the
-  base record). Either make it source order or state it; it is observable
-  only when the field expressions have effects.
-- **[decide] `a |> f` evaluates `f` before `a`**, since it is `f a`. A reader
-  expects the left operand first.
+- **[decided 26 Nov 2026] Source order everywhere.** The whole rule is
+  "left to right, as written": record fields are evaluated in the order they
+  are written, in a literal and in an update (after the base record), and
+  `a |> f` evaluates `a` before `f`. *Not implemented:* today the desugarer
+  sorts record fields by name, so `{b = f 1, a = g 2}` runs `g` first, and
+  `a |> f` evaluates `f` first because it is `f a`. Whether any existing
+  program depends on the old order has not been measured; the suites will
+  show it when the change is made.
 - **[is] A nullary definition is evaluated at every reference.**
   `x = expr.` is a function of no arguments: naming `x` runs `expr`, each
   time, and nothing runs at program start. A definition whose body is an
   integer literal is replaced by the literal at its references
   ([nullary literal fold](2026-11-26-NULLARY-LITERAL-FOLD.md)); that cannot be
   observed.
-- **[decide] Whether 1.0-rel keeps evaluate-at-each-reference.** It is the
-  rule three implementation pages assume and no language page states. It
-  surprises (a top-level table is rebuilt on every use, noted as a Sol porting
-  cost) and the alternative, evaluate once, needs an initialisation order and
-  a rule for effects. Core spec Q3 (the effect bit) is the natural place to
-  split it: a pure nullary definition may be evaluated once.
+- **[decided 26 Nov 2026] Nullary definitions split by purity.** A nullary
+  definition whose body is pure is a constant: it may be evaluated once,
+  folded, or evaluated at each reference, and a program cannot tell which. A
+  nullary definition whose body has an effect is refused; write it as a
+  function of `Unit`. There is no initialisation order and nothing runs at
+  program start. *Not implemented, and it depends on the effect bit (core
+  spec Q3), which is not designed.* Until Q3 exists the rule in force is the
+  **[is]** clause above: evaluated at every reference.
 - **[is] Arithmetic** is as core spec §1: `Int` is exact; `/` and `%` are
   floored (`-7 / 2 = -4`, `-7 % 2 = 1`, `7 % -2 = -1`); a zero divisor traps.
 
@@ -170,12 +176,17 @@ Precedence, loosest first:
   bytes, positions start at 0, slices are half-open. `strlen "é"` is 2.
   `charAt s i` answers the byte and traps out of range. `substr s off len`
   clamps. `chr n` makes one byte and traps outside 0..255.
-- **[decide] D10 says `String` is valid UTF-8; nothing enforces it.**
-  `chr 233` is a one-byte string that is not UTF-8. `String.fromCodes` and
-  `String.codes` work on bytes, although their names and one runtime message
-  say code points. Sol counts code points. This is core spec §4's open
-  `String`/`Bytes` row; the rule for 1.0-rel has to say which operations
-  count bytes and which code points, and where validity is checked.
+- **[decided 26 Nov 2026] `String` is valid UTF-8, indexed by byte.**
+  Validity is checked where a string is built from bytes; lengths and
+  positions stay byte offsets, as today. Code points come from explicit
+  functions: `String.codes` answers code points, and `String.fromCodes`
+  answers an `Option` (`None` for a value that is not a code point).
+  Arbitrary bytes live in `Bytes`. Sol's string length changes to bytes to
+  match. *Not implemented:* nothing validates today (`chr 233` is a one-byte
+  string that is not UTF-8); `String.codes`/`fromCodes` work on bytes; native
+  has no `Bytes` type (core spec §4); Sol counts code points. Still to
+  settle under this rule: what `chr` becomes, and whether a slice at a byte
+  offset inside a code point is refused, trapped or answered as `Option`.
 - **[is] Interpolation** `"{e}"` renders `e` with the value printer:
   `True`; `[1, 2]`; `(1, a)`; `{a = 1, b = x}`; `B q 2`; `Some (Some x)`;
   `A (-1)`. Strings inside a structure are printed without quotes or escapes.
@@ -250,6 +261,13 @@ Precedence, loosest first:
 - **[defect] Local recursion escapes the rule.** A recursive function defined
   inside a block compiles with no marker, and `fpr stdcheck` accepts it. The
   safety graph covers top-level names only.
+- **[decided in outline, 26 Nov 2026] Unproved recursion is budget-checked
+  by default in Base; ExtBase and Sol follow Base.**
+  Builtin and bounded units keep today's rule (a proof or `unsafe`)
+  unless the project's `fpr.toml` turns the check on. The
+  mechanism, and what is still open (the default limit, the project file
+  being outside the module hash, server loops, what callers owe), is in
+  [recursion budgets](2026-11-26-RECURSION-BUDGETS.md). *Not implemented.*
 - **[decide] Two checkers, two rules.** An ordinary compile accepts an
   `unsafe`-marked recursion; `fpr stdcheck` refuses any recursion without a
   verified measure and treats a name containing "unsafe" as the marker.
@@ -273,16 +291,27 @@ Precedence, loosest first:
   them: it does not compile.
 - **[is] Exhaustion** ends a confined process with a budget reason, panics in
   the main actor, and fails any other actor.
-- **[decide] Preconditions: three answers exist.** The core spec gives `/`,
-  `%`, shifts and indexing a precondition and stops. [Failure modes](2026-11-10-FAILURE-MODES.md)
-  says an obligation lifts to the caller's signature, a program is refused
-  where lifting stops, a decidably false one is refused, and no run-time
-  check is ever inserted. The compiler does none of the lifting: each
-  obligation is discharged, or becomes a run-time check that traps at the
-  call site with the caller named, or (for a divisor) is left to the
-  division trap. `1 / 0` compiles and traps. This decision changes whether a
-  trap is reachable from checked code and whether the check's cost is in a
-  bound, so it gates the layer rules.
+- **[decided 26 Nov 2026] Preconditions, by layer.**
+  1. A precondition the compiler proves costs nothing at run time.
+  2. A precondition that is decidably false is refused in every layer
+     (`1 / 0` does not compile).
+  3. In **Builtin** and in **bounded units**, an unproved precondition is
+     refused: no run-time check is inserted, so no precondition trap is
+     reachable there and none has to be counted in a bound.
+  4. In **Base and above**, an unproved precondition compiles to one
+     run-time check that traps at the call site with the caller named, and
+     the compiler reports it.
+
+  This replaces the two older answers: [failure modes](2026-11-10-FAILURE-MODES.md)
+  ("refused everywhere, never a run-time check") and the compiler's
+  behaviour ("a run-time check everywhere, `1 / 0` compiles"). *Not
+  implemented:* rule 2 and rule 3 do not exist in the compiler; rule 4 is
+  today's behaviour, except that an ordinary compile reports nothing (only
+  `fpr commit` prints a one-line count). "Bounded unit" has no definition,
+  declaration syntax or enforcement point yet (core spec §2); rule 3 waits
+  on that. [Division guard costs](2026-11-26-DIVISION-GUARD-COSTS.md)
+  proposes a further gate inside rule 4 for a check that stays in a hot
+  loop; it leaves `1 / 0` open, which rule 2 now settles.
 - **[is] Cleanup when an actor ends:** its received messages are released and
   its mailbox is drained.
 - **[decide] Resources are not cleaned up.** A `Handle` is an `Int` with no
@@ -437,12 +466,14 @@ used once per path; `unsafe` and `measure`; pins.
 1. **Fix the defects** (they need no decision): `==` on structures holding
    floats; names beginning with `case`/`of`/`Type`; local recursion escaping
    the safety rule; the four linear leaks.
-2. **Decide the [decide] clauses.** In order of how much rests on them:
-   preconditions (§7); evaluation of nullary definitions (§4); `String`
-   bytes or code points (§5); the meaning of "safe" and the trust list (§6,
-   §8); the mailbox and ordering contract (§10); module hash and store (§9);
+2. **Implement the four decisions of 26 November** (preconditions by
+   layer, §7; nullary definitions by purity and source-order evaluation, §4;
+   UTF-8 strings indexed by byte, §5). Two of them wait on designs the core
+   spec owes: bounded units (§2) and the effect bit (Q3).
+3. **Decide the remaining [decide] clauses.** In order of how much rests on
+   them: the meaning of "safe" and the trust list (§6, §8); the mailbox and ordering contract (§10); module hash and store (§9);
    then the smaller surface items.
-3. **Turn each accepted [is] clause into a conformance case** and run it on
+4. **Turn each accepted [is] and [decided] clause into a conformance case** and run it on
    every target and on Sol; that is stage 0 of the core spec, and it is what
    will show where Sol and the other targets differ from this page.
 

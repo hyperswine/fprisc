@@ -59,6 +59,9 @@ main=do
   forM_ [["--host=esp-idf","--system=posix"],["--system=posix","--host=esp-idf"]] $ \args -> do
     let host=parseCompileArguments args
     require (oSystem host==Just "posix" && oHost host==Just "esp-idf" && tgtName (oTarget host)=="rv32") "host flags depend on order"
+  forM_ [["--target=riscv32imc"], ["--target","riscv32imc"], ["--target=rv32"]] $ \flags -> do
+    let target = parseCompileArguments (flags ++ ["in.fpr","out.s"])
+    require (oTargetFlag target && tgtName (oTarget target) == "rv32" && oFiles target == ["in.fpr","out.s"]) "RV32 target spelling"
   let cross=parseCompileArguments ["--system=posix","--target=x64mac"]
       explicit=parseCompileArguments ["--host=esp-idf","--target=rv64"]
   require (oBase cross && oX64 cross && oX64Mac cross && oTargetFlag cross) "explicit hosted cross target replaced"

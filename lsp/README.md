@@ -299,6 +299,25 @@ extension. Imported standard-library modules, including `std/live`, `std/term`,
 `std/clock`, and `std/os`, are read directly from your configured source tree.
 Their APIs are not advertised as globally available builtins.
 
+## Capture a language server freeze
+
+Enable `"fpr.traceFreeze": true` in your VS Code user settings and run
+**Developer: Reload Window**. The server writes a local `lsp-freeze-*.jsonl`
+file in the extension logs directory. Use **Developer: Open Logs Folder**
+and search the current session's window and extension host logs for the file.
+
+Each incoming request or notification has a `begin` record with the full LSP
+message and an `end` record with the same sequence number once synchronous
+dispatch returns. If the server freezes during dispatch, look for the last
+`begin` without a matching `end`. To reconstruct the buffer, find the latest
+`textDocument/didOpen` or `textDocument/didChange` for that URI. Both carry full
+text, including unsaved edits. An `end` only marks dispatch returning.
+Compiler checks and other background work can continue afterward.
+
+Trace files include source text and local paths and grow until the server
+stops. Review them before sharing. Disable the setting and reload the window
+when you finish capturing the issue.
+
 ## Refresh and test
 
 ```sh

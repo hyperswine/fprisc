@@ -114,6 +114,12 @@ let srv;
   assert((await ask('completion', 'dotted.fpr', 3, 19)).some(c => c.label === 'id'));
   assert.equal((await ask('definition', 'dotted.fpr', 3, 20)).range.start.line, 1);
   assert(!(diagnostics.get(uri('dotted.fpr')) || []).some(d => d.code === 'unresolved-name' && /mymod|deep|\bx\b|\bid\b/.test(d.message)));
+  // Cmd-hover asks for a definition anywhere, comments included. Past the end
+  // of the comment-free code the word used to come back empty, and its
+  // pattern matched nothing at the start of an indented binding forever.
+  write('comment.fpr', 'f x =\n  y = x;\n  # y, in a comment\n  y.\n'); open('comment.fpr');
+  assert.equal(await ask('definition', 'comment.fpr', 2, 8), null, 'definition inside a comment');
+  assert.equal((await ask('definition', 'comment.fpr', 3, 2)).range.start.line, 1, 'local binding still found');
   const indexed = await request('workspace/symbol', { query: 'mymod' });
   assert(indexed.some(s => s.name === 'mymod.deep.id'));
   change('dotted.fpr', 'unsavedSymbol = 2.\n');

@@ -57,6 +57,7 @@ usage =
       "  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM",
       "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix [--host=unix|esp-idf])",
       "    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/2026-09-19-PROFILES.md)",
+      "    --target riscv32imc              scalar RV32 assembly for RV32IMC/ILP32 firmware",
       "    --profile=builtin --arc             the raw ABI with first-order automatic ARC",
       "    --editor-json                      check only; versioned diagnostics, inputs and inferred types",
       "    --callables[=summary|json]          checked callable census/summaries (compile; stderr)",

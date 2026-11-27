@@ -76,6 +76,12 @@
           "default": [],
           "description": "Additional module roots, searched after the home (FPR_PATH)."
         },
+        "fpr.traceFreeze": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Capture language server input, including full unsaved FP-RISC and Sol buffers, in local VS Code logs. Reload the window after changing this setting."
+        },
         "fpr.check": {
           "type": "boolean",
           "default": true,

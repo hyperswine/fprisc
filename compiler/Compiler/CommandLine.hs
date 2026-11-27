@@ -45,8 +45,11 @@ data CompileArguments = CompileArguments
   }
 
 parseCompileArguments :: [String] -> CompileArguments
-parseCompileArguments = resolveHost . foldl step defaults
+parseCompileArguments = resolveHost . foldl step defaults . targetArgs
   where
+    targetArgs ("--target" : "riscv32imc" : rest) = "--target=riscv32imc" : targetArgs rest
+    targetArgs (arg : rest) = arg : targetArgs rest
+    targetArgs [] = []
     defaults = CompileArguments
       { oTarget=rv64, oTargetFlag=False, oBuiltin=False, oBase=False,
         oSystem=Nothing, oHost=Nothing, oProfileFlag=Nothing,
@@ -104,6 +107,7 @@ parseCompileArguments = resolveHost . foldl step defaults
     step o "--editor-json" = o {oEditorJSON = True, oCheckOnly = True}
     step o "--check-only" = o {oCheckOnly = True}
     step o "--sol" = o {oSol = True}
+    step o "--target=riscv32imc" = step o "--target=rv32"
     step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}
     step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
     step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- direct typed ELF output
