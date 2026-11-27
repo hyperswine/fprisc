@@ -74,7 +74,9 @@ To select the original application on this two-slot layout, run `python "$ota" -
 Build `examples/journal.fpr` with the same file-enabled configuration as
 `examples/logger.fpr` and a fresh sdkconfig. The journal uses synchronous
 SPIFFS writes (`CONFIG_SPIFFS_CACHE_WR=n`) and checks close before sending
-an acknowledgement. Its data file is `FPRJNL.BIN`. With the ESP-IDF Python
+an acknowledgement. A power failure during SPIFFS garbage collection can
+make an earlier acknowledged record unreadable. The qualification report
+reproduces this limit. Its data file is `FPRJNL.BIN`. With the ESP-IDF Python
 environment active, run `python check_journal.py PORT JOURNAL_RAM_IMAGE` to
 append three test records and verify replay across a reset during an incoming
 serial frame. Each invocation adds three records.

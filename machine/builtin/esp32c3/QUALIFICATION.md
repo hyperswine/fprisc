@@ -41,6 +41,21 @@ replayed. These results cover that append pattern and simulated failure
 model. Physical power removal and garbage collection can have different
 failure characteristics.
 
+### Failure during SPIFFS garbage collection
+
+Extending the same NOR simulator to the first append which relocated live
+pages changed the outcome. After 79 acknowledged records, a simulated cut
+at mutating byte position 523 left record 48 unreadable on remount
+(`SPIFFS_read` returned -10004). At position 782 the prefix still failed
+after a separate remount and `SPIFFS_check`. These positions count bytes
+written or erased since the start of the candidate append. The earlier
+603-position pass covers an append that did not relocate live pages.
+
+The IDF 5.3.2 collector moves and retires a data page before publishing
+the replacement object index. A journal CRC or a tail truncate cannot
+restore a previously acknowledged record if its filesystem page becomes
+unreachable. Treat SPIFFS acknowledgements as conditional on this limit.
+
 ## RV32 resource and ownership audit
 
 The instrumented RAM endurance image was 228,896 bytes. Its guest object
