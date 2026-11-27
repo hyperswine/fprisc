@@ -1,0 +1,25 @@
+# clause: v1.0 decision 2 (27 Nov 2026). A local function may have guarded clauses:
+# consecutive clauses of one local name are one function, falling through in
+# order to the first unguarded clause; a later unguarded binding of the same
+# name still shadows. Native and Sol give the same answers.
+O = use "std/option".
+describe : Int -> String .
+describe n =
+  sign x | x > 0 = "positive";
+  sign x | x < 0 = "negative";
+  sign y = "zero";
+  size x | x > 100, x < 1000 = "big";
+  size x | x >= 1000 = "huge";
+  size x = "small";
+  "{sign n} {size n}".
+unwrapOr : O.Option Int -> Int .
+unwrapOr o =
+  pick v | O.Some x <- v = x;
+  pick v = 0 - 1;
+  pick o.
+shadow u = x = 1; x = x + 1; x.
+main =
+  _ = print "{describe 5} | {describe (0 - 3)} | {describe 0} | {describe 500} | {describe 5000}";
+  _ = print "{unwrapOr (O.Some 7)} {unwrapOr O.None} {shadow Unit}";
+  partial x | x > 0 = "ok";
+  print (partial 1).

@@ -783,23 +783,67 @@ guardItem =
 block :: P SExpr
 block = do
   stmts <- many (try stmt)
+  grouped <- either fail pure (localClauses stmts)
   e <- expr
-  pure $ if null stmts then e else SBlock stmts e
+  pure $ if null grouped then e else SBlock grouped e
   where
     stmt = try nameStmt <|> patStmt
     nameStmt = do
       n <- pName
       ps <- many lowerName
+      g <- option [] (pipeSep *> guardItem `sepBy1` symbol ",")
       eqSign
       o <- getOffset
       e <- expr
       _ <- symbol ";"
-      pure (SBind n ps (SMark o e))
+      pure (Left (n, ps, g, SMark o e))
     patStmt = do
       p <- pattern'
       eqSign
       o <- getOffset
       e <- expr
       _ <- symbol ";"
-      pure (SBindPat p (SMark o e))
+      pure (Right (SBindPat p (SMark o e)))
+
+-- Local functions with guards (v1.0 decision 2, 27 Nov 2026): consecutive
+-- clauses of one local name form one function, as top-level clauses do.
+-- Parameters are names, so a clause can only fail by its guards, and the
+-- group becomes one clause: the first clause's parameters, each clause's
+-- guards as a chain of choices falling through to the next clause, and a
+-- trap when none holds.  A clause naming its parameters differently binds
+-- its names to the first clause's.  The rest of a clause with several guard
+-- items is bound once, as a local function, so the result grows linearly.
+localClauses :: [Either (String, [String], [SGuard], SExpr) SStmt] -> Either String [SStmt]
+localClauses = go
+  where
+    go [] = Right []
+    go (Right st : rest) = (st :) <$> go rest
+    -- an unguarded binding is a binding (a later one of the same name
+    -- shadows it); a guarded clause starts a group that takes the clauses
+    -- of that name after it, up to and including the first unguarded one
+    go (Left (n, ps, [], e) : rest) = (SBind n ps e :) <$> go rest
+    go (Left c@(n, _, _, _) : rest) =
+      let (clauses, others) = takeGroup n [c] rest
+       in (:) <$> group n clauses <*> go others
+    takeGroup n acc (Left x@(m, _, g, _) : more)
+      | m == n = if null g then (reverse (x : acc), more) else takeGroup n (x : acc) more
+    takeGroup _ acc more = (reverse acc, more)
+    group n clauses@((_, ps0, _, _) : _)
+      | any (\(_, ps, _, _) -> length ps /= length ps0) clauses =
+          Left ("the clauses of local function " ++ n ++ " take different numbers of parameters")
+      | otherwise = Right (SBind n ps0 (chain (zip [0 :: Int ..] clauses)))
+      where
+        chain [] = SApp (SVar "error") (SStrI [SegStr ("no clause of local function " ++ n ++ " holds")])
+        chain ((i, (_, ps, gs, e)) : rest) =
+          let fallName = n ++ "#fall" ++ show i
+              shared = length gs > 1 && not (null rest)
+              fall = if shared then SApp (SVar fallName) (SVar "Unit") else chain rest
+              renames = [SBind y [] (SVar x) | (y, x) <- zip ps ps0, y /= x]
+              body = guards gs e fall
+              inner = if null renames then body else SBlock renames body
+           in if shared then SBlock [SBind fallName ["unit#"] (chain rest)] inner else inner
+        guards [] e _ = e
+        guards (GBool c : more) e fall = SCase c [(PCon "True" [], guards more e fall), (PCon "False" [], fall)]
+        guards (GPat p x : more) e fall = SCase x [(p, guards more e fall), (PWild, fall)]
+    group n [] = Left ("empty clause group for " ++ n)
 
