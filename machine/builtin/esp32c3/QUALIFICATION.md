@@ -148,3 +148,20 @@ The dedicated-journal endurance image was 233,216 bytes. At entry IDF
 reported 134,356 free heap bytes. The first workload checkpoint reported
 three live Builtin allocations using 256 bytes, 133,692 free IDF heap
 bytes, a minimum of 133,660 bytes, and 2,252 bytes of stack headroom.
+
+
+## Completed two-hour dedicated-journal run
+
+With GPIO8 released and the onboard LED off, the physical ESP32-C3 completed 122 consecutive workload checkpoints
+over 7,259.683 host-monotonic seconds. Each checkpoint reported
+3 live allocations, 256 live Builtin heap bytes and
+133,740 free IDF heap bytes. The maximum Builtin peak was
+256 bytes. Minimum observed IDF heap was
+133,708 bytes and minimum stack headroom was
+2,252 bytes.
+
+A ROM-loader readback found 122 CRC-valid committed endurance
+records with strictly increasing device timestamps spanning
+7,260.005 seconds. After reset, the installed
+slot 1 journal replayed the 150 power-test records and the post-interruption
+append. Slot 0 retains the board's original application.
