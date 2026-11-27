@@ -1,7 +1,7 @@
-# svm.sol — linear SVM by subgradient descent on the hinge loss, on the
-# Numeric datatype. Two gaussian blobs, margin 1; features, weights, and
-# the L2 lambda are inexact Numerics and every score/update is plain
-# operators — the hinge comparison `y*score < 1` needs no scaled "one".
+# svm.sol — linear SVM by subgradient descent on the hinge loss. Two
+# gaussian blobs, margin 1; features, labels (+1/-1), weights and the L2
+# lambda are F64 and every score/update is a plain operator — the hinge
+# comparison `y*score < 1.0` needs no scaled "one".
 
 rnd = use "../lib/rand".
 Rand = rnd.Rand.
@@ -11,53 +11,48 @@ mkRow s =
   s2 = Rand.next4 s1;
   s3 = Rand.next4 s2;
   cls = Rand.uniform s3 2;
-  cx = case cls == 0 of True -> 0 - 1 | False -> 1;
-  cy = case cls == 0 of True -> 0 - 1 | False -> 1;
-  {x1 = cx + Rand.gauss4 s1 / 2, x2 = cy + Rand.gauss4 s2 / 2,
-    y = case cls == 0 of True -> 0 - 1 | False -> 1}.
+  c = case cls == 0 of True -> 0.0 - 1.0 | False -> 1.0;
+  {x1 = c + Rand.gauss4 s1 / 2.0, x2 = c + Rand.gauss4 s2 / 2.0, y = c}.
 
 fill : (Vector _) -> Int -> (k : Int | measure k) -> (Vector _) .
 fill v s k | k <= 0 = v.
 fill v s k = fill (Vec.push (mkRow (Rand.next (s + k * 100003))) v) s (k - 1).
 
+score : F64 -> F64 -> F64 -> F64 -> F64 -> F64 .
 score w1 w2 b x1 x2 = w1 * x1 + w2 * x2 + b.
 
 # hinge subgradients: contribute only where the margin is violated.
-# JIT note: with the record rows in SoA columns ({x1,x2,y} = ddi -- the
-# label stays an exact Int), hW1/hW2 compile as typed duals with the
-# weights captured.  hB stays interpreted, HONESTLY: its margin-ok arm
-# yields exact-Int (0 - p.y) and its other arm an inexact 0, and the
-# typed tier refuses to double-ize exact-int arithmetic (JI join JD =
-# JW) -- store the label inexact at mkRow if you want all three folds
-# native.
+# JIT note: the record rows are three f64 SoA columns ({x1,x2,y}), so all
+# three folds compile as typed duals with the weights captured.
 hW1 w1 w2 b acc p =
-  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1 of
-    True -> 0 - p.y * p.x1 # meant to use - (...) instead of 0 - (...)
-  | False -> Numeric.inexact 0).
+  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1.0 of
+    True -> 0.0 - p.y * p.x1
+  | False -> 0.0).
 hW2 w1 w2 b acc p =
-  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1 of
-    True -> 0 - p.y * p.x2
-  | False -> Numeric.inexact 0).
+  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1.0 of
+    True -> 0.0 - p.y * p.x2
+  | False -> 0.0).
 hB w1 w2 b acc p =
-  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1 of
-    True -> 0 - p.y
-  | False -> Numeric.inexact 0).
+  acc + (case p.y * score w1 w2 b p.x1 p.x2 < 1.0 of
+    True -> 0.0 - p.y
+  | False -> 0.0).
 
 # accuracy: count of sign(score) == sign(y)
 correct w1 w2 b acc p =
-  acc + (case p.y * score w1 w2 b p.x1 p.x2 > 0 of True -> 1 | False -> 0).
+  acc + (case p.y * score w1 w2 b p.x1 p.x2 > 0.0 of True -> 1 | False -> 0).
 
-lam = Numeric.div 1 100. # L2 lambda = 0.01
+lam = 0.01. # L2 lambda
 
 epoch n lr w1 w2 b v =
-  (s1, v1) = Vec.fold (hW1 w1 w2 b) 0 v;
-  (s2, v2) = Vec.fold (hW2 w1 w2 b) 0 v1;
-  (s3, v3) = Vec.fold (hB w1 w2 b) 0 v2;
-  w1n = w1 - lr * (s1 / n + lam * w1);
-  w2n = w2 - lr * (s2 / n + lam * w2);
-  (w1n, w2n, b - lr * (s3 / n), v3).
+  (s1, v1) = Vec.fold (hW1 w1 w2 b) 0.0 v;
+  (s2, v2) = Vec.fold (hW2 w1 w2 b) 0.0 v1;
+  (s3, v3) = Vec.fold (hB w1 w2 b) 0.0 v2;
+  m = F64.ofInt n;
+  w1n = w1 - lr * (s1 / m + lam * w1);
+  w2n = w2 - lr * (s2 / m + lam * w2);
+  (w1n, w2n, b - lr * (s3 / m), v3).
 
-train : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
+train : (k : Int | measure k) -> Int -> F64 -> F64 -> F64 -> F64 -> (Vector _) -> (F64, F64, F64, (Vector _)) .
 train k n lr w1 w2 b v | k <= 0 = (w1, w2, b, v).
 train k n lr w1 w2 b v =
   (w1a, w2a, ba, v2) = epoch n lr w1 w2 b v;
@@ -68,9 +63,9 @@ chkAtLeast name got want = case got >= want of
 | False -> error "FAIL {name}: {got} < {want}".
 
 > n = 300;
-  lr = Numeric.div 6 10;
+  lr = 0.6;
   train_v = fill (Vec.new Unit) 424242 n;
-  (w1, w2, b, v2) = train 80 n lr 0 0 0 train_v;
+  (w1, w2, b, v2) = train 80 n lr 0.0 0.0 0.0 train_v;
   u0 = print "learned w = ({w1}, {w2}), b = {b}";
   (tr, v3) = Vec.fold (correct w1 w2 b) 0 v2;
   u1 = print "train accuracy: {tr * 100 / n}%";

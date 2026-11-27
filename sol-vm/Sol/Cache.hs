@@ -85,9 +85,7 @@ cacheIdentity :: IO (Int, String, (String, String, String, String))
 cacheIdentity = do
   exe <- getExecutablePath >>= makeAbsolute
   st <- getFileStatus exe
-  -- SOL_F64=strict changes how a script type-checks (docs/2026-11-27-SOL-F64.md)
-  f64 <- lookupEnv "SOL_F64"
-  let statId = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st, f64)
+  let statId = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
   pure (schema, statId, (arch, os, compilerName, show compilerVersion))
 
 cacheSlot :: Binary a => Maybe FilePath -> a -> IO (FilePath, BS.ByteString)

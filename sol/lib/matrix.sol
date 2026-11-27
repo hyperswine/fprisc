@@ -4,7 +4,7 @@
 # row/col selection) threads the Vec through get/set the same way the
 # Prolog engine threads its heap.
 #
-#   Matrix 1 = Type (Mat Int Int Vector)
+#   Matrix 1 a = Type (Mat Int Int (Vector a))   (elements of any type: Int from a CSV, F64 for a net)
 #
 # The wrapper is LINEAR and the Vector field is DECLARED (not a bare type
 # var), so the checker tracks the payload: dropping a matrix, using one
@@ -22,11 +22,13 @@
 
 base = use "base".
 
-Matrix 1 = Type (Mat Int Int (Vector Int)).
+Matrix 1 a = Type (Mat Int Int (Vector a)).
+# `xs == []` would compare a list of floats, which == does not reach
+mNil xs = case xs of [] -> True | _ -> False.
 
 # ---- construction ----------------------------------------------------------
 
-mFromRows rss | rss == [] = Mat 0 0 (Vec.new Unit).
+mFromRows rss | mNil rss = Mat 0 0 (Vec.new Unit).
 mFromRows rss =
   r0 :: _ = rss;
   c = List.len r0;
@@ -34,7 +36,7 @@ mFromRows rss =
 
 # ragged input is the caller's bug: the first row's width is the contract,
 # and a mismatch panics rather than silently mis-indexing every later cell
-mFlatten c rss | rss == [] = [].
+mFlatten c rss | mNil rss = [].
 mFlatten c rss | (r :: _) <- rss, List.len r != c =
   error "matrix: ragged row ({List.len r} fields vs {c})".
 mFlatten c rss = r :: rest = rss; r + (mFlatten c rest).
@@ -78,7 +80,7 @@ mCol j m =
   (xs, Mat r c v2).
 
 # rows by 0-based index, in the order given, as lists
-mRowsAt is m | is == [] = ([], m).
+mRowsAt is m | mNil is = ([], m).
 mRowsAt is m =
   i :: rest = is;
   (xs, m2) = mRow i m;
@@ -95,7 +97,7 @@ mHead n m =
   (r, c, m2) = mDims m;
   mSelectRows (mIota (Numeric.min n r)) m2.
 
-mPicks js xs | js == [] = [].
+mPicks js xs | mNil js = [].
 mPicks js xs = j :: rest = js; xs ! j :: mPicks rest xs.
 
 mSelectCols js m =
@@ -120,10 +122,10 @@ mMapRows f m = (rss, m2) = mAllRows m; (map f rss, m2).
 
 # ---- algebra ---------------------------------------------------------------
 
-mDot xs ys | xs == [] = 0.
+mDot xs ys | mNil xs = 0.
 mDot xs ys = x :: xr = xs; y :: yr = ys; x * y + mDot xr yr.
 
-mSum xs | xs == [] = 0.
+mSum xs | mNil xs = 0.
 mSum xs = x :: r = xs; x + mSum r.
 
 mTRows c rss | c == 0 = [].
@@ -205,7 +207,7 @@ mColMeans m =
   (map (fn s -> Numeric.div s r) (mColSumsOf c rss), m3).
 
 mColSumsOf c rss | c == 0 = [].
-mColSumsOf c rss | rss == [] = mRep c 0.
+mColSumsOf c rss | mNil rss = mRep c 0.
 mColSumsOf c rss = map (fn col -> mSum col) (mTRows c rss).
 
 mFree m = Mat r c v = m; Vec.free v.
@@ -222,18 +224,18 @@ mParseRow line = map (fn f -> base.pI f) (Str.split 44 line).
 mFromCsv s = mFromRows (map (fn l -> mParseRow l) (mCsvLines s)).
 
 # first line is a header: (headerFields, matrix)
-mFromCsvHeader s | mCsvLines s == [] = ([], mFromRows []).
+mFromCsvHeader s | mNil (mCsvLines s) = ([], mFromRows []).
 mFromCsvHeader s =
   h :: rest = mCsvLines s;
   (Str.split 44 h, mFromRows (map (fn l -> mParseRow l) rest)).
 
-mJoinC xs | xs == [] = "".
-mJoinC xs | (x :: rest) <- xs, rest == [] = "{x}".
+mJoinC xs | mNil xs = "".
+mJoinC xs | (x :: rest) <- xs, mNil rest = "{x}".
 mJoinC xs = x :: rest = xs; "{x},{mJoinC rest}".
 
 # render through BStr: an interpolation fold over a big matrix is the
 # exact O(n^2) VStr trap the BStr tier exists for
-mCsvRows rss b | rss == [] = b.
+mCsvRows rss b | mNil rss = b.
 mCsvRows rss b = xs :: rest = rss; mCsvRows rest (BStr.append "{mJoinC xs}{base.nl}" b).
 
 mToCsv m =
@@ -244,7 +246,7 @@ mToCsvHeader hs m = (body, m2) = mToCsv m; ("{mJoinC hs}{base.nl}{body}", m2).
 
 # ---- show (debug printing) -------------------------------------------------
 
-mShowRows rss | rss == [] = "".
+mShowRows rss | mNil rss = "".
 mShowRows rss = xs :: rest = rss; "  [{mJoinC xs}]{base.nl}{mShowRows rest}".
 
 mShow m =

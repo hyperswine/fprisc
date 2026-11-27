@@ -19,28 +19,28 @@ P = pl.P.
 
 # ---- damped spring: x'' = -4x - 0.3v ---------------------------------------
 
-spring : (k : Int | measure k) -> Int -> Int -> Int -> (List _, List _) .
+spring : (k : Int | measure k) -> F64 -> F64 -> F64 -> (List _, List _) .
 spring k t x v | k <= 0 = ([], []).
 spring k t x v =
-  v2 = v + (0 - 4) * x * 0.05 - 0.3 * v * 0.05;
+  v2 = v + (0.0 - 4.0) * x * 0.05 - 0.3 * v * 0.05;
   x2 = x + v2 * 0.05;
   (pxs, pvs) = spring (k - 1) (t + 0.05) x2 v2;
   ((t, x) :: pxs, (t, v) :: pvs).
 
 # ---- gradient descent on f(a,b) = (a-2)^2 + 3(b+1)^2 ----------------------
 
-gd : (k : Int | measure k) -> Int -> Int -> Int -> (List _, List _) .
+gd : (k : Int | measure k) -> Int -> F64 -> F64 -> (List _, List _) .
 gd k i a b | k <= 0 = ([], []).
 gd k i a b =
-  loss = (a - 2) * (a - 2) + 3 * (b + 1) * (b + 1);
-  a2 = a - 0.15 * 2 * (a - 2);
-  b2 = b - 0.15 * 6 * (b + 1);
+  loss = (a - 2.0) * (a - 2.0) + 3.0 * (b + 1.0) * (b + 1.0);
+  a2 = a - 0.15 * 2.0 * (a - 2.0);
+  b2 = b - 0.15 * 6.0 * (b + 1.0);
   (ls, tr) = gd (k - 1) (i + 1) a2 b2;
-  ((Numeric.inexact i, loss) :: ls, (a, b) :: tr).
+  ((F64.ofInt i, loss) :: ls, (a, b) :: tr).
 
 # ---- two-body orbits: a = -r / |r|^3 (mu = 1), Euler-Cromer ---------------
 
-orbit : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> List _ .
+orbit : (k : Int | measure k) -> Int -> F64 -> F64 -> F64 -> F64 -> List _ .
 orbit k every x y vx vy | k <= 0 = [].
 orbit k every x y vx vy =
   r2 = x * x + y * y;
@@ -56,19 +56,19 @@ orbit k every x y vx vy =
 
 # ---- travelling pulse: y = 1/(1 + 8(x - c)^2), c sweeps 0..4 --------------
 
-waveRow : Int -> (i : Int | measure (40 - i)) -> List _ .
+waveRow : F64 -> (i : Int | measure (40 - i)) -> List _ .
 waveRow c i | i > 40 = [].
 waveRow c i =
-  x = i / 10.0;
+  x = F64.ofInt i / 10.0;
   d = x - c;
-  (x, 1 / (1 + 8 * d * d)) :: waveRow c (i + 1).
+  (x, 1.0 / (1.0 + 8.0 * d * d)) :: waveRow c (i + 1).
 waveFrames : (f : Int | measure (24 - f)) -> List _ .
 waveFrames f | f > 24 = [].
-waveFrames f = waveRow (f / 6.0) 1 :: waveFrames (f + 1).
+waveFrames f = waveRow (F64.ofInt f / 6.0) 1 :: waveFrames (f + 1).
 
 > (sx, sv) = spring 160 0.0 1.5 0.0;
   u1 = writePath @plot-spring.svg (P.series "damped spring: x and v over t" [("x", sx), ("v", sv)]);
-  (ls, tr) = gd 40 0 (0 - 3.0) 2.5;
+  (ls, tr) = gd 40 0 (0.0 - 3.0) 2.5;
   u2 = writePath @plot-descent.svg (P.line "gradient descent: loss per step" ls);
   u3 = writePath @plot-traj.svg (P.scatter "descent trajectory in (a, b)" tr);
   u4 = writePath @plot-wave.svg (P.anim "travelling pulse (SMIL morph)" 4 (waveFrames 1));

@@ -8,8 +8,8 @@
 #   sol examples/csvplot.sol
 #   -> /tmp/sol-csvplot/readings.csv, /tmp/sol-csvplot/sensor.svg
 #
-# The generated CSV is exact ints (like csvmatrix); decimals appear only
-# where the fits' Numeric.div introduces them. The LCG is seeded, so the
+# The generated CSV is exact ints (like csvmatrix); the fits work in F64
+# (F64.ofInt where an exact sum is divided). The LCG is seeded, so the
 # printed numbers are reproducible run to run.
 
 mx  = use "../lib/matrix".  M = mx.M.
@@ -39,14 +39,14 @@ step st p = (n, sx, sy, sxx, sxy) = st; (x, y) = p;
 fitOf pts | List.len pts < 2 = error "fit needs at least 2 points".
 fitOf pts =
   (n, sx, sy, sxx, sxy) = List.fold step (0, 0, 0, 0, 0) pts;
-  xm = Numeric.div sx n;
-  ym = Numeric.div sy n;
-  b = Numeric.div (n * sxy - sx * sy) (n * sxx - sx * sx);
+  xm = F64.ofInt sx / F64.ofInt n;
+  ym = F64.ofInt sy / F64.ofInt n;
+  b = F64.ofInt (n * sxy - sx * sy) / F64.ofInt (n * sxx - sx * sx);
   (n, xm, ym, ym - b * xm, b).
 
-resid a b p = (x, y) = p; y - (a + b * x).
+resid a b p = (x, y) = p; F64.ofInt y - (a + b * F64.ofInt x).
 sqResid a b p = r = resid a b p; r * r.
-sigmaOf a b pts = Numeric.sqrt (Numeric.div (List.fold (fn s p -> s + sqResid a b p) 0 pts) (List.len pts)).
+sigmaOf a b pts = Num.sqrt (List.fold (fn s p -> s + sqResid a b p) 0.0 pts / F64.ofInt (List.len pts)).
 
 # ---- 3. the 3-sigma rule, ITERATED to a stable clean set --------------------
 # The plain rule has a contamination budget: with fraction f of the points
@@ -57,7 +57,9 @@ sigmaOf a b pts = Numeric.sqrt (Numeric.div (List.fold (fn s p -> s + sqResid a 
 # nothing (the stable set). Past ~11% the scale itself must be robust
 # (median absolute deviation), which is a different example.
 
-mark a b sig p = (p, resid a b p, Numeric.abs (resid a b p) > 3 * sig).
+fabs : F64 -> F64 .
+fabs v = if v < 0.0 then 0.0 - v else v.
+mark a b sig p = (p, resid a b p, fabs (resid a b p) > 3.0 * sig).
 fstT t = (p, r, isBad) = t; p.
 thdT t = (p, r, isBad) = t; isBad.
 fstP p = (x, y) = p; x.
@@ -72,8 +74,9 @@ memberP ps p = not (List.find (fn q -> q == p) ps == []).
 
 # ---- 4. chart points: exact ints enter the plot boundary converted ---------
 
-numP p = (x, y) = p; (Numeric.inexact x, Numeric.inexact y).
+numP p = (x, y) = p; (F64.ofInt x, F64.ofInt y).
 num pts = map numP pts.
+linePts : F64 -> F64 -> F64 -> F64 -> List (F64, F64) .
 linePts a b x0 x1 = [(x0, a + b * x0), (x1, a + b * x1)].
 
 # ---- 5. the vertical: CSV out, CSV in, fit, reject, refit, chart ------------
@@ -94,13 +97,13 @@ linePts a b x0 x1 = [(x0, a + b * x0), (x1, a + b * x1)].
   (nC, xmC, ymC, aFit, bFit) = fitOf clean;
   sigFit = sigmaOf aFit bFit clean;
   p1 = print "all-data fit: y = {aAll} + {bAll} x (sigma {sigAll})";
-  la = linePts aAll bAll 0 (weeks - 1);
-  lc = linePts aFit bFit 0 (weeks - 1);
+  la = linePts aAll bAll 0.0 (F64.ofInt (weeks - 1));
+  lc = linePts aFit bFit 0.0 (F64.ofInt (weeks - 1));
   svg = P.chart "weekly sensor: 3-sigma robust refit" [
       ("readings", False, num clean),
-      ("fit (all data)", True, num la),
+      ("fit (all data)", True, la),
       ("rejected", False, num bad),
-      ("fit (clean)", True, num lc)];
+      ("fit (clean)", True, lc)];
   u4 = writePath "{dir}/sensor.svg" svg;
   p2 = print "clean fit: y = {aFit} + {bFit} x (sigma {sigFit})";
   p3 = print "rejected {List.len bad} outlier(s) at weeks {badWeeks}";

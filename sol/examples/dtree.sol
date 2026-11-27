@@ -7,18 +7,17 @@
 # reproduced. Trees need lookahead (or luck) for XOR; that is the
 # algorithm, not the runtime.
 #
-# Numeric refactor: features, thresholds, and labels are plain Numerics
-# (labels stay the exact ints +1/-1); the packed base-1024 counting fold
-# is untouched int arithmetic — only the `xv < th` comparison touches the
-# inexact tier, and promotion handles it in place.
+# Features and thresholds are F64, labels stay the ints +1/-1; the packed
+# base-1024 counting fold is plain Int arithmetic — only the `xv < th`
+# comparison is on F64.
 
 rnd = use "../lib/rand".
 Rand = rnd.Rand.
 
 Tree = Type (Leaf x | Node a b c d). # Node feat thresh left right
 
-quarter = Numeric.div 1 4.
-minusHalf = 0 - Numeric.div 1 2.
+quarter = 0.25.
+minusHalf = 0.0 - 0.5.
 
 mkRow s =
   sa = Rand.next s;
@@ -36,6 +35,7 @@ mkRow s =
 fill v s k = List.range 1 k |> List.rev |> List.fold (fn acc j -> Vec.push (mkRow (Rand.next (s + j * 100003))) acc) v.
 
 # the packed counting fold: (feat, th) captured; four counts in one i64
+cnt : Int -> F64 -> Int -> _ -> Int .
 cnt feat th acc p =
   xv = case feat == 1 of True -> p.x1 | False -> p.x2;
   pos = case p.y > 0 of True -> 1 | False -> 0;
@@ -53,7 +53,7 @@ scoreOf c =
 
 # scan candidates, threading the linear vec through the fold; the first
 # strictly best split wins. Returns (feat, th, score, v)
-scan cands v = List.fold scanStep (0, 0, 999999, v) cands.
+scan cands v = List.fold scanStep (0, 0.0, 999999, v) cands.
 
 scanStep (bf, bt, bs, v) (feat, th) =
   (packed, v2) = Vec.fold (cnt feat th) 0 v;
@@ -62,10 +62,11 @@ scanStep (bf, bt, bs, v) (feat, th) =
     True -> (feat, th, s, v2)
   | False -> (bf, bt, bs, v2).
 
-grid = List.range (0 - 6) 6 |> List.map (fn k -> k * quarter). # -1.5 .. 1.5 step 0.25
+grid = List.range (0 - 6) 6 |> List.map (fn k -> F64.ofInt k * quarter). # -1.5 .. 1.5 step 0.25
 
 allCands = (grid |> List.map (fn t -> (1, t))) + (grid |> List.map (fn t -> (2, t))).
 
+pick : Int -> _ -> F64 .
 pick 1 p = p.x1.
 pick _ p = p.x2.
 

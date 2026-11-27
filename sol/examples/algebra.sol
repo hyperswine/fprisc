@@ -12,11 +12,19 @@ expect what got want = case got == want of
     True -> print "ok  {what}"
   | False -> error "FAIL {what}: got {got}, wanted {want}".
 
-# ---- numbers: % is floored modulo, ^ is exact exponentiation ----
+# floats compare by their text or within a tolerance: == does not reach a
+# float inside a structure, and F64 ^ is exp(y log x) as native has it
+fabs : F64 -> F64 .
+fabs v = if v < 0.0 then 0.0 - v else v.
+near what got want = case fabs (got - want) < 0.000000000001 of
+    True -> print "ok  {what}"
+  | False -> error "FAIL {what}: got {got}, wanted {want}".
+
+# ---- numbers: % is floored modulo (Int only), ^ is exact on Int ----
 > expect "% ints"            (7 % 3, -7 % 3, 10 % 5) (1, 2, 0).
-> expect "% inexact"         (7.5 % 2) 1.5.
 > expect "^ exact"           (2 ^ 10, 3 ^ 3, 10 ^ 0, (-2) ^ 3) (1024, 27, 1, -8).
-> expect "^ inexact base"    (2.5 ^ 2) 6.25.
+> near   "^ on F64"          (2.5 ^ 2.0) 6.25.
+> expect "F64 arithmetic"    (F64.str (7.5 - 2.0 * 3.0), F64.str (F64.ofInt 7 / 2.0)) ("1.5", "3.5").
 > expect "precedence"        (2 + 7 % 4 * 2, 3 * 2 ^ 2, 2 ^ 3 ^ 2, 10 % 3 % 2) (8, 12, 512, 1).
 > expect "% in a pipeline"   (List.range 1 10 |> List.filter (fn x -> x % 3 == 0)) [3, 6, 9].
 > expect "^ in a map"        (List.map (fn x -> x ^ 2) [1, 2, 3]) [1, 4, 9].
@@ -33,8 +41,9 @@ expect what got want = case got == want of
 > expect "vec -"             (Vec.toList (Vec.fromList [1, 2, 3] - Vec.fromList [1, 1, 1])) [0, 1, 2].
 > expect "vec * vec = dot"   (Vec.fromList [1, 2, 3] * Vec.fromList [4, 5, 6]) 32.
 > expect "dot stays exact"   (Vec.fromList [1, 2] * Vec.fromList [3, 4]) 11.
-> expect "dot inexact"       (Vec.fromList [1.5, 2] * Vec.fromList [2, 2]) 7.
-> expect "k * vec"           (Vec.toList (2 * Vec.fromList [1.5, 2])) [3, 4].
+> expect "dot on F64"        (F64.str (Vec.fromList [1.5, 2.0] * Vec.fromList [2.0, 2.0])) "7".
+> expect "k * vec"           (Vec.toList (2 * Vec.fromList [3, 4])) [6, 8].
+> expect "k * vec on F64"    (List.map F64.str (Vec.toList (2.0 * Vec.fromList [1.5, 2.0]))) ["3", "4"].
 > expect "vec expression"    (Vec.toList (2 * Vec.fromList [1, 2] + Vec.fromList [10, 10])) [12, 14].
 
 # ---- matrices: + - elementwise, * matmul, m * v is matrix times vector ----

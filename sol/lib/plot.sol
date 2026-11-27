@@ -30,8 +30,9 @@ base = use "base".
 
 # ---- geometry / palette ----------------------------------------------------
 
-pW = 640.  pH = 400.
-pL = 52.   pR = 624.  pT = 40.  pB = 360.
+# pixels are F64: data maps onto them by float arithmetic
+pW = 640.0.  pH = 400.0.
+pL = 52.0.   pR = 624.0.  pT = 40.0.  pB = 360.0.
 
 inkP = "#0b0b0b".
 inkS = "#52514e".
@@ -44,11 +45,17 @@ colAt i = colors ! (i % (List.len colors)).   # i is a 0-based series number
 # ---- small numeric helpers -------------------------------------------------
 
 fmtN v = F64.ofInt (Num.round (v * 1000.0)) / 1000.0.
+fmin : F64 -> F64 -> F64 .
+fmin a b = if a < b then a else b.
+fmax : F64 -> F64 -> F64 .
+fmax a b = if a > b then a else b.
+# `isNil xs` would compare a list of floats, which == does not reach
+isNil xs = case xs of [] -> True | _ -> False.
 
-bGo f xs a | xs == [] = a.
+bGo f xs a | isNil xs = a.
 bGo f xs a = x :: r = xs; bGo f r (f a x).
-bMin xs = x :: r = xs; bGo (fn a b -> Numeric.min a b) r x.
-bMax xs = x :: r = xs; bGo (fn a b -> Numeric.max a b) r x.
+bMin xs = x :: r = xs; bGo (fn a b -> fmin a b) r x.
+bMax xs = x :: r = xs; bGo (fn a b -> fmax a b) r x.
 
 # bounds of [(x, y)] -> (minx, maxx, miny, maxy), degenerate spans padded
 ptsBounds pts =
@@ -59,11 +66,11 @@ ptsBounds pts =
   (lo1, hi1, lo2, hi2).
 fst2 p = (a, b) = p; a.
 snd2 p = (a, b) = p; b.
-padB lo hi = case hi - lo == 0 of True -> (lo - 1, hi + 1) | False -> (lo, hi).
+padB lo hi = case hi - lo == 0.0 of True -> (lo - 1.0, hi + 1.0) | False -> (lo, hi).
 
 mergeB a b =
   (a1, a2, a3, a4) = a; (b1, b2, b3, b4) = b;
-  (Numeric.min a1 b1, Numeric.max a2 b2, Numeric.min a3 b3, Numeric.max a4 b4).
+  (fmin a1 b1, fmax a2 b2, fmin a3 b3, fmax a4 b4).
 
 allBounds ptss = bGo (fn a pts -> mergeB a (ptsBounds pts)) (lTailP ptss) (ptsBounds (ptss ! 0)).
 lTailP xs = x :: r = xs; r.
@@ -71,7 +78,7 @@ lTailP xs = x :: r = xs; r.
 # bounds over possibly-EMPTY series: an empty series renders nothing and
 # contributes nothing; a chart of only-empty series gets degenerate
 # padded axes instead of the head-on-empty panic
-chartBounds ptss | ptss == [] = (-1, 1, -1, 1).
+chartBounds ptss | isNil ptss = (-1.0, 1.0, -1.0, 1.0).
 chartBounds ptss = allBounds ptss.
 
 # data -> pixel (y flips)
@@ -79,7 +86,7 @@ sx bx v = (x1, x2, y1, y2) = bx; pL + (v - x1) * (pR - pL) / (x2 - x1).
 sy bx v = (x1, x2, y1, y2) = bx; pB - (v - y1) * (pB - pT) / (y2 - y1).
 
 # "x,y x,y ..." pixel-mapped SMIL/polyline point list
-ptsStr bx pts b | pts == [] = b.
+ptsStr bx pts b | isNil pts = b.
 ptsStr bx pts b =
   p :: r = pts; (x, y) = p;
   ptsStr bx r (BStr.append "{fmtN (sx bx x)},{fmtN (sy bx y)} " b).
@@ -93,19 +100,19 @@ svgOpen title b =
   BStr.append "<text x=\"{pL}\" y=\"24\" fill=\"{inkP}\" font-size=\"15\" font-weight=\"600\">{title}</text>{base.nl}" b3.
 
 # 5 ticks per axis: recessive grid lines + secondary-ink labels
-tickVals lo hi = [lo, lo + (hi - lo) / 4, lo + (hi - lo) / 2, lo + 3 * (hi - lo) / 4, hi].
+tickVals lo hi = [lo, lo + (hi - lo) / 4.0, lo + (hi - lo) / 2.0, lo + 3.0 * (hi - lo) / 4.0, hi].
 
-gridX bx vs b | vs == [] = b.
+gridX bx vs b | isNil vs = b.
 gridX bx vs b =
   v :: r = vs; px = fmtN (sx bx v);
   b2 = BStr.append "<line x1=\"{px}\" y1=\"{pT}\" x2=\"{px}\" y2=\"{pB}\" stroke=\"{gridC}\" stroke-width=\"1\"/>{base.nl}" b;
-  gridX bx r (BStr.append "<text x=\"{px}\" y=\"{pB + 18}\" fill=\"{inkS}\" font-size=\"11\" text-anchor=\"middle\">{fmtN v}</text>{base.nl}" b2).
+  gridX bx r (BStr.append "<text x=\"{px}\" y=\"{pB + 18.0}\" fill=\"{inkS}\" font-size=\"11\" text-anchor=\"middle\">{fmtN v}</text>{base.nl}" b2).
 
-gridY bx vs b | vs == [] = b.
+gridY bx vs b | isNil vs = b.
 gridY bx vs b =
   v :: r = vs; py = fmtN (sy bx v);
   b2 = BStr.append "<line x1=\"{pL}\" y1=\"{py}\" x2=\"{pR}\" y2=\"{py}\" stroke=\"{gridC}\" stroke-width=\"1\"/>{base.nl}" b;
-  gridY bx r (BStr.append "<text x=\"{pL - 6}\" y=\"{py + 4}\" fill=\"{inkS}\" font-size=\"11\" text-anchor=\"end\">{fmtN v}</text>{base.nl}" b2).
+  gridY bx r (BStr.append "<text x=\"{pL - 6.0}\" y=\"{py + 4.0}\" fill=\"{inkS}\" font-size=\"11\" text-anchor=\"end\">{fmtN v}</text>{base.nl}" b2).
 
 axes bx b =
   (x1, x2, y1, y2) = bx;
@@ -113,12 +120,12 @@ axes bx b =
   gridY (x1, x2, y1, y2) (tickVals y1 y2) b2.
 
 legend named b = legGo named 0 b.
-legGo named i b | named == [] = b.
+legGo named i b | isNil named = b.
 legGo named i b =
   nm :: r = named;
-  lx = pL + i * 120;
-  b2 = BStr.append "<rect x=\"{lx}\" y=\"{pB + 26}\" width=\"10\" height=\"10\" rx=\"2\" fill=\"{colAt i}\"/>{base.nl}" b;
-  legGo r (i + 1) (BStr.append "<text x=\"{lx + 15}\" y=\"{pB + 35}\" fill=\"{inkS}\" font-size=\"12\">{nm}</text>{base.nl}" b2).
+  lx = pL + F64.ofInt (i * 120);
+  b2 = BStr.append "<rect x=\"{lx}\" y=\"{pB + 26.0}\" width=\"10\" height=\"10\" rx=\"2\" fill=\"{colAt i}\"/>{base.nl}" b;
+  legGo r (i + 1) (BStr.append "<text x=\"{lx + 15.0}\" y=\"{pB + 35.0}\" fill=\"{inkS}\" font-size=\"12\">{nm}</text>{base.nl}" b2).
 
 svgClose b = BStr.toStr (BStr.append "</svg>{base.nl}" b).
 
@@ -127,7 +134,7 @@ svgClose b = BStr.toStr (BStr.append "</svg>{base.nl}" b).
 polyline bx col pts b =
   BStr.append "<polyline points=\"{ptsS bx pts}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>{base.nl}" b.
 
-markers bx col pts b | pts == [] = b.
+markers bx col pts b | isNil pts = b.
 markers bx col pts b =
   p :: r = pts; (x, y) = p;
   markers bx col r (BStr.append "<circle cx=\"{fmtN (sx bx x)}\" cy=\"{fmtN (sy bx y)}\" r=\"4\" fill=\"{col}\"><title>({fmtN x}, {fmtN y})</title></circle>{base.nl}" b).
@@ -146,7 +153,7 @@ pSeries title named =
   b = axes bx (svgOpen title (BStr.new Unit));
   b2 = serGo bx named 0 b;
   svgClose (legend (map (fn s -> fst2 s) named) b2).
-serGo bx named i b | named == [] = b.
+serGo bx named i b | isNil named = b.
 serGo bx named i b =
   s :: r = named; (nm, pts) = s;
   serGo bx r (i + 1) (polyline bx (colAt i) pts b).
@@ -166,10 +173,10 @@ pAnim title dur frames =
   first = ptsS bx (frames ! 0);
   b2 = BStr.append "<polyline points=\"{first}\" fill=\"none\" stroke=\"{colAt 0}\" stroke-width=\"2\" stroke-linejoin=\"round\"><animate attributeName=\"points\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{vals}\"/></polyline>{base.nl}" b;
   svgClose b2.
-valsGo bx frames b | frames == [] = b.
+valsGo bx frames b | isNil frames = b.
 valsGo bx frames b =
   f :: r = frames;
-  sep = case r == [] of True -> "" | False -> ";";
+  sep = case isNil r of True -> "" | False -> ";";
   valsGo bx r (BStr.append "{ptsS bx f}{sep}" b).
 
 # tracks = [[(x, y) over time]]: one dot per track animated along its
@@ -179,20 +186,20 @@ pAnimDots title dur tracks =
   b = axes bx (svgOpen title (BStr.new Unit));
   b2 = trailGo bx tracks 0 b;
   svgClose (dotGo bx tracks 0 dur b2).
-trailGo bx tracks i b | tracks == [] = b.
+trailGo bx tracks i b | isNil tracks = b.
 trailGo bx tracks i b =
   t :: r = tracks;
   b2 = BStr.append "<polyline points=\"{ptsS bx t}\" fill=\"none\" stroke=\"{colAt i}\" stroke-width=\"1\" opacity=\"0.25\"/>{base.nl}" b;
   trailGo bx r (i + 1) b2.
-dotGo bx tracks i dur b | tracks == [] = b.
+dotGo bx tracks i dur b | isNil tracks = b.
 dotGo bx tracks i dur b =
   t :: r = tracks; (x0, y0) = t ! 0;
   cxs = joinSemi (map (fn p -> fmtN (sx bx (fst2 p))) t);
   cys = joinSemi (map (fn p -> fmtN (sy bx (snd2 p))) t);
   b2 = BStr.append "<circle cx=\"{fmtN (sx bx x0)}\" cy=\"{fmtN (sy bx y0)}\" r=\"6\" fill=\"{colAt i}\"><animate attributeName=\"cx\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{cxs}\"/><animate attributeName=\"cy\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{cys}\"/></circle>{base.nl}" b;
   dotGo bx r (i + 1) dur b2.
-joinSemi xs | xs == [] = "".
-joinSemi xs | (x :: r) <- xs, r == [] = "{x}".
+joinSemi xs | isNil xs = "".
+joinSemi xs | (x :: r) <- xs, isNil r = "{x}".
 joinSemi xs = x :: r = xs; "{x};{joinSemi r}".
 
 # ---- the public surface ----------------------------------------------------
@@ -206,12 +213,12 @@ joinSemi xs = x :: r = xs; "{x};{joinSemi r}".
 # callers convert exact int columns up front (Numeric.inexact) rather
 # than unify mixed element types.
 pChart title specs =
-  bx = chartBounds (List.filter (fn pts -> not (pts == [])) (map thdS specs));
+  bx = chartBounds (List.filter (fn pts -> not (isNil pts)) (map thdS specs));
   b = axes bx (svgOpen title (BStr.new Unit));
   b2 = specGo bx specs 0 b;
   svgClose (legend (map fstS specs) b2).
 
-specGo bx specs i b | specs == [] = b.
+specGo bx specs i b | isNil specs = b.
 specGo bx specs i b =
   s :: r = specs; (t, asLine, pts) = s;
   b2 = case asLine of

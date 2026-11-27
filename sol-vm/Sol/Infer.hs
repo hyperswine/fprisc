@@ -19,7 +19,7 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferResult, inferResultStrict, inferSession, builtinNames, solBuiltins, solBuiltinsStrict) where
+module Sol.Infer (inferResult, inferSession, builtinNames, solBuiltins) where
 
 import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSession, mono, scheme, sv)
 import Infer.Session (CheckedDefinitions)
@@ -44,13 +44,6 @@ solProf =
 inferResult :: Sigs -> Structs -> [STop] -> InferenceResult
 inferResult = inferTopsResult Nothing solProf
 
--- F64 as native has it (docs/2026-11-27-SOL-F64.md, step 1): float literals
--- are F64, Num.* takes and answers F64, and the F64.*/F32.* surface exists.
--- Sol.Main checks with this first; a script that only type-checks the old way
--- (Int as the one numeric type) gets these errors as warnings in step 1.
-inferResultStrict :: Sigs -> Structs -> [STop] -> InferenceResult
-inferResultStrict = inferTopsResult Nothing solProf {ipBuiltins = solBuiltinsStrict}
-
 -- Session snapshots are opt-in and only supported by this profile.
 inferSession :: Maybe CheckedDefinitions -> Sigs -> Structs -> [STop] -> (InferenceResult, Maybe CheckedDefinitions, Int)
 inferSession old = inferTopsSession True old Nothing solProf
@@ -58,11 +51,14 @@ inferSession old = inferTopsSession True old Nothing solProf
 -- names the checker types without the prelude (Sol.Slice keeps any
 -- prelude definition that would shadow one)
 builtinNames :: [Name]
-builtinNames = M.keys solBuiltinsStrict
+builtinNames = M.keys solBuiltins
 
 -- native's float types (Infer.hs's builtins), over the old table
-solBuiltinsStrict :: TEnv
-solBuiltinsStrict = M.union strict legacyTable
+-- F64 as native has it (docs/2026-11-27-SOL-F64.md): float literals are F64,
+-- Num.* takes and answers F64, and the F64.*/F32.* surface exists. Since
+-- step 2 this is the only table: mixing Int and F64 is a type error.
+solBuiltins :: TEnv
+solBuiltins = M.union strict legacyTable
   where
     f1 = mono (TFn tF64 tF64)
     f2 = mono (TFn tF64 (TFn tF64 tF64))
@@ -88,18 +84,6 @@ solBuiltinsStrict = M.union strict legacyTable
       ++ [("Num." ++ f, f1) | f <- unary]
       ++ [("F64." ++ f, f1) | f <- unary]
       ++ [("F32." ++ f, g1) | f <- unary]
-
-solBuiltins :: TEnv
-solBuiltins = M.union legacyTable (M.map eraseFloat (M.filterWithKey (\k _ -> take 4 k `elem` ["F64.", "F32."] || k == "Try.parseF64") solBuiltinsStrict))
-  where
-    eraseFloat sc = case sc of Forall a b t -> Forall a b (erase t)
-    erase t = case t of
-      TC "F64" -> tInt
-      TC "F32" -> tInt
-      TFn x y -> TFn (erase x) (erase y)
-      TAp x y -> TAp (erase x) (erase y)
-      TTupT ts -> TTupT (map erase ts)
-      o -> o
 
 legacyTable :: TEnv
 legacyTable =

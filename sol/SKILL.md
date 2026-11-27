@@ -60,11 +60,13 @@ count xs = case xs of [] -> 0 | x :: rest -> 1 + count rest.
 - `List.range a b` includes `b`.
 - Strings are UTF-8 bytes on both sides: `strlen`, `charAt`, `substr`,
   `Str.indexOf` and `Str.slice` count bytes; `chr` makes one byte.
-- Floats are `F64`, as native (since 27 Nov 2026): `Int` and `F64` do not mix;
-  convert with `F64.ofInt n`, `F64.toInt x`, `Num.floor`/`Num.round x`. Until
-  step 2 a script that mixes still runs, with `=== F64: WARNINGS ===`;
-  `SOL_F64=strict` makes them errors. `==` and printing do not reach a float
-  inside a structure: compare or print it with `F64.==`/`F64.str`.
+- Floats are `F64`, as native (since 27 Nov 2026): `Int` and `F64` do not mix,
+  and mixing is a type error; convert with `F64.ofInt n`, `F64.toInt x`,
+  `Num.floor`/`Num.round x`. An unannotated `a + b` or `<` (also on a record
+  field) defaults to `Int`: give float helpers a signature. `%` is `Int` only;
+  `F64 ^ F64` is `exp(y log x)`, as native. `==` and printing do not reach a
+  float inside a structure (a tuple, list or record): compare or print it with
+  `F64.==`/`F64.str`, and test a float list for `[]` with a `case`.
 - Defining a prelude name (`run`, `write`, `close`, `print`, ...) is an error or
   a confusing type error: pick another name.
 

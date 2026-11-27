@@ -40,7 +40,7 @@ import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryChecker)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
-import Sol.Infer (inferResult, inferResultStrict, inferSession, builtinNames, solBuiltins)
+import Sol.Infer (inferResult, inferSession, builtinNames, solBuiltins)
 import Infer.Session (CheckedDefinitions)
 import Sol.Slice (injectedNames, mentions, orderedShapes, shapeSeed, sliceIndices)
 import qualified Sol.Digest as Digest
@@ -546,21 +546,11 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
       then pure (checkedTops, []) -- ops stay Int prims; debugging only
       else do
         previous <- maybe (pure Nothing) readIORef session
-        -- F64 step 1 (docs/2026-11-27-SOL-F64.md): check with native's float
-        -- types first; a script that only type-checks the old way (Int as the
-        -- one numeric type) runs the old way, its strict errors shown as
-        -- warnings. The REPL keeps the old typing until step 2.
-        f64Mode <- lookupEnv "SOL_F64"
-        let strict = inferResultStrict sigs structs checkedTops
-            -- SOL_F64=strict: no fallback, mixing is an error (step 2's rule)
-            strictOk = null (inferenceDiagnostics strict) || f64Mode == Just "strict"
-            (result, candidate, reused) = case session of
-              Nothing | strictOk -> (strict, Nothing, 0)
-                      | otherwise -> (inferResult sigs structs checkedTops, Nothing, 0)
+        -- Floats are F64 as native has them (docs/2026-11-27-SOL-F64.md);
+        -- mixing Int and F64 is a type error, in scripts and the REPL alike.
+        let (result, candidate, reused) = case session of
+              Nothing -> (inferResult sigs structs checkedTops, Nothing, 0)
               Just _ -> inferSession previous sigs structs checkedTops
-            f64Warnings = case session of
-              Nothing | not strictOk && null (inferenceDiagnostics result) -> inferenceDiagnostics strict
-              _ -> []
             terrs0=inferenceDiagnostics result
             notes0=inferenceNotes result
             holes0=inferenceHoles result
@@ -571,11 +561,6 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
         when (traceSession && not (isNothing session)) $ do
           let total = S.size (S.fromList [n | TBind n _ _ _ <- checkedTops])
           hPutStrLn stderr ("[sol repl-check] reused " ++ show reused ++ "/" ++ show total ++ " definitions; evals rechecked")
-        quietF64 <- (== Just "0") <$> lookupEnv "SOL_F64_WARNINGS"
-        unless (null f64Warnings || quietF64) $ do
-          diagnostic "=== F64: WARNINGS (Sol types floats as F64; these become errors in step 2) ==="
-          mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics f64Warnings)
-          diagnostic "  convert explicitly: F64.ofInt n, F64.toInt x (truncates), Num.floor/Num.round x; this run uses the old typing"
         (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (terrs0, notes0, holes0, map plainFloatOps rewritten0)
         let preludeNames = trusted <> S.fromList [n | TBind n _ _ _ <- ptopsExp]
             safety = checkSafety preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
