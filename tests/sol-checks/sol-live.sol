@@ -3,7 +3,8 @@
 # over the websocket, std/live's frames step the model and every step pushes a
 # snapshot; a frame the codec refuses leaves the model as it was. The
 # websocket side needs Node's built-in WebSocket (Node 22); without it the
-# check says so and passes. docs/2026-11-27-SOL-VIEW-DRIVER.md.
+# check says so and passes. docs/2026-11-27-SOL-VIEW-DRIVER.md and
+# docs/2026-11-27-SOL-LIVE-APP.md (live-room.sol, room.mjs).
 H = use "helpers".
 fetch port = H.call ["curl","-s","--max-time","2","http://127.0.0.1:{port}/"] [] 5000.
 waitUp : unsafe Int -> Int -> String .
@@ -29,5 +30,17 @@ main u = root = H.root Unit;
   _ = (if wo == "skipped" then print "sol-live: no Node WebSocket here; the websocket half was skipped"
        else if wc == 0 and Str.trim wo == "0 5 5 15 0" then Unit
        else error "sol-live: snapshots {Str.trim wo}, want 0 5 5 15 0\n{we}");
-  print "sol-live: std/ui page from Sol, std/live shell and client, frames step the model, refused frames ignored PASS".
+  # the whole app shape: sessions, joined/left, After, patches, Quit and a durable count
+  _ = (if wo == "skipped" then Unit else
+    store = "{tempDir "fpr-live-room"}/count";
+    port2 = port + 1;
+    room = unwrap (Child.open ["{root}/fpr","sol","{root}/sol/examples/live-room.sol","{port2}",store]);
+    _ = waitUp port2 50;
+    ProcessResult rc ro re = H.call ["node","{root}/tests/sol-checks/live/room.mjs","{port2}"] [] 60000;
+    status = Child.wait 5000 room;
+    _ = (if rc == 0 and Str.trim ro == "a joined, a sees 2 online, count 5 on b, count 105 later, ticker ticks, ticker stopped, a sees 1 online, patches used" then Unit
+         else error "sol-live room: {Str.trim ro}\n{re}");
+    _ = (if status == Ok 0 then Unit else error "sol-live room: the server did not stop on Quit: {status}");
+    (if Str.trim (readNow store) == "105" then Unit else error "sol-live room: the durable count is {readNow store}, want 105"));
+  print "sol-live: std/ui pages from Sol on std/live's wire: a counter, and an app with sessions, joined/left, After, a subscription, patches, Quit and a durable count PASS".
 >! main Unit.

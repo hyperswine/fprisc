@@ -37,10 +37,10 @@
 module Sol.Web where
 
 import Sol.Diagnostic (diagnostic, verbose)
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Concurrent.MVar
-import Control.Exception (IOException, SomeException, try)
-import Control.Monad (forM_, forever, unless, when)
+import Control.Exception (AsyncException, IOException, SomeException, fromException, throwIO, try)
+import Control.Monad (forM, forM_, forever, unless, void, when)
 import Data.Bits (complement, rotateL, shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
@@ -360,6 +360,132 @@ serveLive port init page step frame = do
         Right () -> pure ()
       close conn
     pure ()
+  pure vUnit
+
+-- ---- View.liveApp: std/live's whole app shape on its wire --------------------
+--
+--   >! View.liveApp port model page step frame subs.
+--
+-- sol/lib/live.sol's serveApp builds the arguments; this side owns what needs
+-- the socket or a thread:
+--   page sid m                 the document for GET / (sid 0)
+--   step sid text m            -> (m', [(kind, n, text)]) after one frame;
+--                              the joined and left events arrive as the frames
+--                              {"joined":true} / {"left":true}
+--   frame sid proto prev m     -> (text, rendered): what to send the session
+--                              (a snapshot or a patch against prev, a list of
+--                              zero or one earlier render; "" sends nothing)
+--   subs m                     -> [(ms, text)]: the frames a ticker delivers
+--                              every ms, re-read after each step
+-- Effects: kind 0 pushes text to session n (0: every session), kind 1
+-- delivers text as a frame from sid 0 after n ms, kind 2 stops serving.
+-- Every step runs in order under one lock.
+serveApp :: Int -> Value -> (Int -> Value -> IO String) -> (Int -> String -> Value -> IO Value)
+         -> (Int -> Int -> Value -> Value -> IO Value) -> (Value -> IO Value) -> IO Value
+serveApp port model0 page step frame subs = do
+  hSetBuffering stdout LineBuffering
+  model <- newMVar model0
+  -- sid -> (sender, protocol, previous render as a 0/1-element list)
+  sessions <- newMVar (M.empty :: M.Map Int (String -> IO (), Int, Value))
+  tickers <- newMVar (M.empty :: M.Map (Int, String) ThreadId)
+  next <- newIORef (1 :: Int)
+  quit <- newEmptyMVar
+  addr : _ <- getAddrInfo (Just defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}) Nothing (Just (show port))
+  sock <- socket (addrFamily addr) Stream defaultProtocol
+  setSocketOption sock ReuseAddr 1
+  bind sock (addrAddress addr)
+  listen sock 16
+  bound <- getSocketName sock
+  let actualPort = case bound of SockAddrInet p _ -> fromIntegral p; SockAddrInet6 p _ _ _ -> fromIntegral p; _ -> port
+  verbose ("[live] serving a std/live app on http://localhost:" ++ show actualPort)
+  let nil = VData listT 0 []
+      one v = VData listT 1 [v, nil]
+      items (VData t 1 [x, rest]) | t == listT = x : items rest
+      items _ = []
+      pair (VData _ _ [a, b]) = pure (a, b)
+      pair v = error ("View.liveApp: expected a pair, got " ++ render v)
+      -- report a failed step and carry on, but never swallow a kill: a
+      -- ticker whose subscription went away is stopped by killThread
+      safely act = (try act :: IO (Either SomeException ())) >>= either
+        (\e -> case fromException e :: Maybe AsyncException of
+            Just a -> throwIO a
+            Nothing -> diagnostic ("[live] " ++ show e)) pure
+      -- bring every session up to date with m
+      refresh m = modifyMVar_ sessions $ \ss -> fmap M.fromList . mapM (\(sid, (send, proto, prev)) -> do
+          r <- frame sid proto prev m >>= pair
+          case r of
+            (VStr t, rendered) -> do
+              unless (null t) (safely (send t))
+              pure (sid, (send, proto, one rendered))
+            _ -> pure (sid, (send, proto, prev))) $ M.toList ss
+      -- one frame through step, then its effects, the tickers and every page
+      deliver sid text = do
+        effects <- modifyMVar model $ \m -> do
+          (m2, effs) <- step sid text m >>= pair
+          refresh m2
+          wanted <- subs m2
+          retick [(fromIntegral ms, t) | VData _ _ [VInt ms, VStr t] <- items wanted]
+          pure (m2, items effs)
+        mapM_ perform effects
+      perform (VData _ _ [VInt kind, VInt n, VStr t]) = case kind of
+        0 -> do
+          ss <- readMVar sessions
+          forM_ (M.toList ss) $ \(sid, (send, _, _)) -> when (n == 0 || fromIntegral n == sid) (safely (send t))
+        1 -> void (forkIO (threadDelay (fromIntegral n * 1000) >> safely (deliver 0 t)))
+        2 -> void (tryPutMVar quit ())
+        _ -> diagnostic ("[live] unknown effect " ++ show kind)
+      perform v = diagnostic ("[live] not an effect: " ++ render v)
+      retick wanted = modifyMVar_ tickers $ \running -> do
+        let want = M.fromList [(k, ()) | k <- wanted]
+        forM_ (M.toList (M.difference running want)) $ \(_, tid) -> killThread tid
+        started <- forM [k | k <- wanted, M.notMember k running] $ \k@(ms, t) -> do
+          tid <- forkIO (forever (threadDelay (max 1 ms * 1000) >> safely (deliver 0 t)))
+          pure (k, tid)
+        pure (M.union (M.intersection running want) (M.fromList started))
+      serveConn conn = do
+        req <- recvUntil conn (BC.pack "\r\n\r\n")
+        let ls = lines (filter (/= '\r') (BC.unpack req))
+            reqLine = case ls of (l : _) -> l; [] -> ""
+            hdrs = drop 1 ls
+            target = case words reqLine of (_ : p : _) -> p; _ -> "/"
+            path = takeWhile (/= '?') target
+            query = drop 1 (dropWhile (/= '?') target)
+            proto = if "lv=3" `isInfixOf` query then 3 else if "lv=2" `isInfixOf` query then 2 else 0 :: Int
+        case (path, header "Sec-WebSocket-Key" hdrs) of
+          ("/ws", Just key) -> do
+            let accept' = b64encode (sha1 (map (fromIntegral . ord) (key ++ wsGUID)))
+            sendAll conn (BC.pack ("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " ++ accept' ++ "\r\n\r\n"))
+            sendLock <- newMVar ()
+            let send t = withMVar sendLock (\_ -> wsSendText conn t)
+            sid <- atomicModifyIORef' next (\n -> (n + 1, n))
+            modifyMVar_ sessions (pure . M.insert sid (send, proto, nil))
+            deliver sid "{\"joined\":true}"
+            let loop = wsRecvText conn >>= \case
+                  Nothing -> pure ()
+                  Just t -> deliver sid t >> loop
+            _ <- try loop :: IO (Either SomeException ())
+            modifyMVar_ sessions (pure . M.delete sid)
+            safely (deliver sid "{\"left\":true}")
+          ("/", _) -> do
+            body <- utf8Enc <$> withMVar model (page 0)
+            sendAll conn (BC.pack ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " ++ show (BS.length body) ++ "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n") <> body)
+          _ -> sendAll conn (BC.pack "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n\r\nno such page\n")
+  -- the subscriptions of the first model
+  withMVar model subs >>= \w -> modifyMVar_ tickers pure >> retick [(fromIntegral ms, t) | VData _ _ [VInt ms, VStr t] <- items w]
+  acceptor <- forkIO $ forever $ do
+    (conn, _) <- accept sock
+    _ <- forkIO $ do
+      r <- try (serveConn conn) :: IO (Either SomeException ())
+      case r of
+        Left e -> diagnostic ("[live] connection error: " ++ show e)
+        Right () -> pure ()
+      close conn
+    pure ()
+  takeMVar quit
+  killThread acceptor
+  readMVar tickers >>= mapM_ killThread . M.elems
+  close sock
+  verbose "[live] stopped (Quit)"
   pure vUnit
 
 wsGUID :: String

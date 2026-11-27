@@ -72,3 +72,97 @@ withArgs args w = case w of
     WList xs -> WList (L.append xs args)
   | WCon n as -> WCon n (L.append as args)
   | other -> other.
+
+# ---- the whole app: events, commands, subscriptions, sessions, durable state ----
+#
+#   >! Live.serveApp 8080 { title = "Room", init = model, update = update,
+#                           view = view, subs = subs, codec = @Msg } None.
+#
+#     update : Live.Ev msg -> model -> (model, List (Live.Cmd msg))
+#     view   : Int -> model -> G.Node        this SESSION's page (sid 0: GET /)
+#     subs   : model -> List (Live.Sub msg)  re-read after every update
+#     store  : None, or Some { path, save : model -> String,
+#                              load : String -> Result model String }:
+#              the model is loaded from `path` at start and written there
+#              (now) whenever `save` of it changes
+#
+# std/live's names and meanings, on View.liveApp (sol-vm/Sol/Web.hs). A page
+# gets a structural patch (protocol 2: one splice per array) when its client
+# asked for one and it is smaller than the snapshot. Not here: std/live's Run
+# (a command run in its own actor) and its per-field durable log.
+
+# Msg sid m: from a page (sid 0: a command or a subscription); Joined/Left: a
+# page opened or closed; Refused: a frame the codec did not accept
+Ev msg = Type (Msg Int msg | Joined Int | Left Int | Refused Int String).
+# After ms m: deliver m later; Navigate sid url / Emit sid name detail: to one
+# page (sid 0: every page); Quit: stop serving
+Cmd msg = Type (After Int msg | Navigate Int String | Emit Int String String | Quit).
+Sub msg = Type (Every Int msg).
+
+serveApp port app store =
+  start = (case store of None -> app.init | Some st -> loadModel st app.init);
+  View.liveApp port start (appPage app) (appStep app store) (appFrame app) (appSubs app).
+
+loadModel st init =
+  if not (exists st.path) then init else
+    case st.load (readNow st.path) of
+      Ok m -> m
+    | Err why -> error "live: cannot load {st.path}: {why}".
+
+appPage app sid m = case G.renderStyled (app.view sid m) of
+  (s, d) -> strJoin "" ["<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>",
+    G.esc app.title, "</title></head><body><div id=\"lv-root\"></div><script>", bootstrap s d,
+    "</script><script>", LJ.src Unit, "</script></body></html>"].
+
+# a message as the frame a page would send for it
+frameOf codec msg = J.render (J.object [("msg", J.Text (G.wire codec msg)), ("arg", J.Text "")]).
+
+eventOf codec sid text = case J.parse text of
+    Err why -> Refused sid "not JSON: {why}"
+  | Ok v ->
+      if J.field "joined" v != O.None then Joined sid
+      else if J.field "left" v != O.None then Left sid
+      else (case decodeWire codec (fieldText "msg" v) (fieldText "arg" v) of
+          Ok m -> Msg sid m
+        | Err why -> Refused sid why).
+
+effectOf codec cmd = case cmd of
+    After ms m -> (1, ms, frameOf codec m)
+  | Navigate sid url -> (0, sid, J.render (J.object [("nav", J.Text url)]))
+  | Emit sid name detail -> (0, sid, J.render (J.object [("emit", J.Text name), ("detail", J.Text detail)]))
+  | Quit -> (2, 0, "").
+
+appStep app store sid text m = case app.update (eventOf app.codec sid text) m of
+  (m2, cmds) ->
+    _ = (case store of
+        None -> Unit
+      | Some st -> (if st.save m2 != st.save m then writeNow st.path (st.save m2) else Unit));
+    (m2, L.map (effectOf app.codec) cmds).
+
+appSubs app m = L.map (fn s -> case s of Every ms msg -> (ms, frameOf app.codec msg)) (app.subs m).
+
+# this session's frame: nothing when its page is unchanged, else a patch
+# against what it shows (protocol 2 and up) or a snapshot, whichever is shorter
+appFrame app sid proto prev m = case G.renderStyled (app.view sid m) of
+  (s, d) -> (case prev of
+      (s0, d0) :: _ ->
+        if s0 == s and d0 == d then ("", (s, d))
+        else
+          full = snapshot s d;
+          (if proto < 2 then (full, (s, d)) else
+             patch = strJoin "" ["\{\"p\":2,\"s\":", splice s0 s, ",\"d\":", splice d0 d, "}"];
+             (if strlen patch < strlen full then patch else full, (s, d)))
+    | [] -> (snapshot s d, (s, d))).
+
+# one splice turning old into new: [start, removed, [inserted...]]
+splice old new =
+  prefix = commonCount old new;
+  a = L.drop prefix old;
+  b = L.drop prefix new;
+  suffix = commonCount (L.reverse a) (L.reverse b);
+  removed = L.length a - suffix;
+  inserted = L.take (L.length b - suffix) b;
+  "[{prefix},{removed},{J.render (J.strings inserted)}]".
+# how many leading elements two lists share
+commonCount a b = case L.fold (fn acc p -> (n, stopped) = acc; (x, y) = p;
+    if stopped or x != y then (n, True) else (n + 1, False)) (0, False) (L.zip a b) of (n, _) -> n.

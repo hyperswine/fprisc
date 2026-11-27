@@ -444,7 +444,7 @@ builtinArities =
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
         ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.uptimeMs", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1), ("Sys.loop", 2),
-        ("use", 1), ("run", 2), ("View.serve", 5), ("View.live", 5),
+        ("use", 1), ("run", 2), ("View.serve", 5), ("View.live", 5), ("View.liveApp", 6),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
         ("Vec.set", 3), ("Vec.pack", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
         ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
@@ -467,6 +467,7 @@ builtinCall env g args
   | g == "use" || g == "run" = modCall env g args
   | g == "View.serve" = viewServe env args
   | g == "View.live" = viewLive env args
+  | g == "View.liveApp" = viewLiveApp env args
   | S.member g actorNames = actorCall env g args
   | otherwise = vecCall env g args
 
@@ -497,6 +498,20 @@ viewLive env [VInt port, model, fpage, fstep, fframe] =
     text _ (VStr s) = pure s
     text what v = vmPanic ("View.live: " ++ what ++ " must answer a String, got " ++ render v)
 viewLive _ _ = vmPanic "View.live: expected port model page step frame"
+
+viewLiveApp :: VMEnv -> [Value] -> IO Value
+viewLiveApp env [VInt port, model, fpage, fstep, fframe, fsubs] =
+  serveApp (fromIntegral port) model
+    (\sid m -> applyN fpage [VInt (fromIntegral sid), m] >>= text "page")
+    (\sid t m -> applyN fstep [VInt (fromIntegral sid), VStr t, m])
+    (\sid proto prev m -> applyN fframe [VInt (fromIntegral sid), VInt (fromIntegral proto), prev, m])
+    (apply env fsubs)
+  where
+    applyN f [] = pure f
+    applyN f (x : xs) = apply env f x >>= \g -> applyN g xs
+    text _ (VStr s) = pure s
+    text what v = vmPanic ("View.liveApp: " ++ what ++ " must answer a String, got " ++ render v)
+viewLiveApp _ _ = vmPanic "View.liveApp: expected port model page step frame subs"
 
 -- ---- the actor shim (the sketch tier; docs/2026-08-27-PATHS.md phase 1) ---------------
 --

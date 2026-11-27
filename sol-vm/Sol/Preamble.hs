@@ -254,6 +254,10 @@ prelude =
       -- a std/view page on std/live's wire (sol/lib/live.sol builds the
       -- arguments): port, model, page, step, frame
       "View.live : Int -> m -> (m -> String) -> (String -> m -> m) -> (m -> String) -> Unit.",
+      -- std/live's whole app shape (sol/lib/live.sol's serveApp): port, model,
+      -- page sid, step sid frame (with effects), frame sid protocol previous,
+      -- subscriptions
+      "View.liveApp : Int -> m -> (Int -> m -> String) -> (Int -> String -> m -> (m, List (Int, Int, String))) -> (Int -> Int -> List r -> m -> (String, r)) -> (m -> List (Int, String)) -> Unit.",
       "Persistent = Type (Persistent x).",
       "Cmd = Type (None | Print x | ReadFile x y | Rng x y z | Batch x | Put x y | Get x y | Msg x y).",
       -- ---- stdlib: sigs are rows, structures implement them ----
@@ -482,6 +486,6 @@ halArities =
       ("sortListWith", 2), ("strHash", 1), ("intHash", 1),
       ("mutmapStrings", 1), ("mutmapInts", 1), ("mutmapReserve", 2), ("mutmapInsert", 3), ("mutmapInsertWith", 4), ("mutmapSlot", 2), ("mutmapValueAt", 2), ("mutmapSetAt", 3), ("mutmapRemoveAt", 2), ("mutmapRemove", 2), ("mutmapSize", 1), ("mutmapCapacity", 1), ("mutmapFold", 3), ("mutmapToList", 1), ("mutmapFree", 1),
       ("fixedmapStrings", 1), ("fixedmapInts", 1), ("fixedmapInsert", 3), ("fixedmapInsertWith", 4), ("fixedmapCapacity", 1), ("fixedmapGrowable", 1), ("fixedmapSlot", 2), ("fixedmapValueAt", 2), ("fixedmapSetAt", 3), ("fixedmapRemoveAt", 2), ("fixedmapRemove", 2), ("fixedmapSize", 1), ("fixedmapFold", 3), ("fixedmapToList", 1), ("fixedmapFree", 1),
-      ("use", 1), ("run", 2), ("View.serve", 5), ("View.live", 5)
+      ("use", 1), ("run", 2), ("View.serve", 5), ("View.live", 5), ("View.liveApp", 6)
     ]
     ++ [(name, arity) | (name, arity, _) <- ScriptIO.api ++ Process.api ++ Digest.api ++ Format.api ++ Http.api]
