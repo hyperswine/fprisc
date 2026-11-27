@@ -1,5 +1,7 @@
 #include "task.h"
 #include "btdm_services.h"
+#include "btdm_irq.h"
+#include "../../interrupt.h"
 #include "os_queue.h"
 
 #define FINISH (*(volatile uint32_t *)0x100000)
@@ -126,6 +128,45 @@ static void callback_vectors(void) {
     osi.queue_delete(queue_slot);
 }
 
+#define IRQ_REG(offset) (*(volatile uint32_t *)(C3_INTERRUPT_MATRIX + (offset)))
+static unsigned timer_hits, gpio_hits, radio_hits;
+void c3_timer_ack(void) { ++timer_hits; }
+void c3_gpio_irq(void) { ++gpio_hits; }
+_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc) {
+    (void)cause;
+    (void)pc;
+    fail(__LINE__);
+}
+
+static void controller_irq(const void *arg) {
+    CHECK(arg == &radio_hits && osi.is_in_isr());
+    ++radio_hits;
+}
+
+static void interrupt_vectors(void) {
+    c3_irq_init();
+    CHECK(c3_irq_dispatch(1) && timer_hits == 2);
+    CHECK(c3_irq_dispatch(2) && gpio_hits == 1);
+    c3_btdm_install_interrupts(&osi);
+    const void *handle = NULL;
+    CHECK(osi.interrupt_alloc(1, 5, controller_irq, &radio_hits, NULL) != 0);
+    CHECK(osi.interrupt_alloc(0, 5, controller_irq, &radio_hits, &handle) == 0 && handle);
+    CHECK(osi.interrupt_alloc(0, 5, controller_irq, &radio_hits, NULL) != 0);
+    unsigned bb = IRQ_REG(5 * 4), rwbt = IRQ_REG(7 * 4);
+    CHECK(bb != rwbt && bb > 2 && rwbt > 2);
+    CHECK(c3_irq_dispatch(bb) && c3_irq_dispatch(rwbt) && radio_hits == 2);
+    CHECK(!osi.is_in_isr());
+    uint32_t mask = (1u << bb) | (1u << rwbt);
+    CHECK((IRQ_REG(0x104) & mask) == mask);
+    CHECK(osi.interrupt_off(5) == 0 && !(IRQ_REG(0x104) & mask));
+    CHECK(osi.interrupt_on(5) == 0 && (IRQ_REG(0x104) & mask) == mask);
+    CHECK(osi.interrupt_free(handle) == 0 && !IRQ_REG(5 * 4) && !IRQ_REG(7 * 4));
+    CHECK(!c3_irq_dispatch(bb) && !c3_irq_dispatch(rwbt));
+    CHECK(osi.interrupt_free(handle) != 0);
+    osi.interrupt_handler_set(8, controller_irq, &radio_hits);
+    CHECK(c3_irq_dispatch(IRQ_REG(8 * 4)) && radio_hits == 3);
+}
+
 void main(void) {
     c3_tasks_init(1);
     CHECK(c3_task_create(reader, &channel, 3, stacks[0], sizeof(stacks[0])) == 2);
@@ -147,6 +188,7 @@ void main(void) {
     CHECK(!c3_task_delete(2) && !c3_task_delete(1));
     CHECK(c3_task_create(writer, NULL, 1, stacks[0], sizeof(stacks[0])) == 2);
     callback_vectors();
+    interrupt_vectors();
     for (const char *s = "RV32 task services PASS\n"; *s; ++s) UART = (uint8_t)*s;
     FINISH = 0x5555;
     for (;;) {}

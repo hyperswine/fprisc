@@ -62,3 +62,10 @@ The callback vectors run with a simulated clock on RV32 and cover
 blocking, ISR wake notification, and deletion of a blocked task. Board
 interrupt registration, the allocator, and PHY initialization are
 separate from these services.
+
+btdm_irq.c maps the controller's BT baseband request to separate BT_BB
+and RWBT CPU lines, and the RWBLE request to its own line. It preserves
+the timer and GPIO lines and marks callback execution as ISR context.
+The RV32 test checks the route, enable, disable, and release sequences
+with a simulated interrupt-matrix register block. RF interrupt delivery
+requires a physical controller test.
