@@ -1,6 +1,6 @@
 # ESP32-C3 Builtin with ESP-IDF
 
-One FP-RISC Builtin program runs in IDF's main task. The C3 provides native USB Serial/JTAG. The program can use the on-chip SPI flash as a SPIFFS volume. These examples boot from RAM through the ROM downloader. A hardware reset resumes the installed flash firmware.
+One FP-RISC Builtin program runs in IDF's main task. The C3 provides native USB Serial/JTAG. The program can use the on-chip SPI flash as a SPIFFS volume. The default images run from RAM through the ROM downloader. The flash build can also boot directly from an OTA slot.
 
 ## Build and run
 
@@ -31,3 +31,19 @@ Import the modules under `lib/`, using a path relative to the program. Allocate 
 - `File.read fd p count` and `File.write fd p count` return byte counts, including partial transfers. A zero-byte read with nonzero count means EOF. `File.close fd` returns zero on success. Failures return negative error numbers.
 
 After mounting, the logger sends ACK (0x06). The protocol uses W to create a file, followed by length-prefixed binary chunks of 1–64 bytes. The device echoes each stored chunk before the next one. A zero length ends the write. R replays the file to USB. A log is considered complete after the device reports successful close.
+
+## Boot the logger from flash
+
+The tested 4 MiB C3 has two 0x140000-byte OTA applications, followed by the SPIFFS partition labelled `spiffs`. The original application was in slot 0 and slot 1 was unused. Match the device partition table and identify the inactive slot before installing. Writing an OTA slot replaces its previous contents.
+
+    idf.py -B build/persistent -DSDKCONFIG="$PWD/build/persistent.config" \
+      -DFPR_FLASH_BOOT=ON -DFPR_FLASH_FILES=ON -DFPR_FLASH_LABEL=spiffs \
+      -DFPR_PROGRAM="$PWD/examples/logger.fpr" build
+    ota="$IDF_PATH/components/app_update/otatool.py"
+    python "$ota" --port "$PORT" write_ota_partition --slot 1 --input build/persistent/c3_builtin.bin
+    python "$ota" --port "$PORT" switch_ota_partition --slot 1
+    python check_board.py "$PORT" read
+
+The last command resets the chip and reads the existing test file through the installed logger. After disconnecting and reconnecting power, use `python check_board.py "$PORT" read --attach` to read from the running logger without a downloader handshake or reset. The example processes one command per boot.
+
+To select the original application on this two-slot layout, run `python "$ota" --port "$PORT" switch_ota_partition --slot 0`. Selecting slot 1 again boots the logger. Both applications share the existing flash partition table.

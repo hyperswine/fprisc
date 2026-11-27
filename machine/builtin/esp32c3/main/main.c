@@ -35,7 +35,7 @@ FPR_FN(fpr_g_Serial_x2eresult, serial_result, 2);
 
 void app_main(void) {
     /* IDF owns tp. Runtime primitives find the sole Builtin hart through task TLS. */
-    fpr_esp_hart = &fpr_harts[0];
+    fpr_set_tp(&fpr_harts[0]);
     fpr_builtin_heap_init(heap, heap + sizeof(heap));
     usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
