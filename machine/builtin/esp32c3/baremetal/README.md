@@ -116,3 +116,17 @@ After two USB power cycles, replay returned all 151 original records and
 the new durable record. Independent flash readback confirmed the new
 commit in slot 279, an intact body with erased commit word in slot 280,
 and byte-for-byte preservation of the preceding records.
+
+The LED-off endurance build wrote 122 checkpoints at one-minute
+intervals on the same C3. Independent flash readback verified their
+commit words and CRCs over 7,260,004 ms of device time. Every USB
+checkpoint reported three live allocations and 256 bytes of live and
+peak heap use. Restoration verified all flash outside the journal
+against the original backup. The restored logger replayed all 152
+acknowledged records.
+
+A separate bench image verified bounded read, program, and 4 KiB sector
+erase through the C3 ROM. It programmed a marker into one verified-blank
+sector inside the temporary OTA slot, read it back, erased the sector, and
+verified all 4 KiB were erased. The test also checked the permission,
+alignment, and range guards.
