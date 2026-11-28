@@ -242,11 +242,13 @@ Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed vers
 # 3.6 MiB a session at 500 sessions.)
 # (one type: a writer's mailbox holds the register's answers AND its broadcasts)
 
-# the register's state.  sessions: sid -> writer.  told: the WRITERS that have been
-# told the model changed and have not pulled it yet -- they are not told again
+# the register's state.  sessions: sid -> writer.  told: the SESSIONS (by sid) whose
+# writers have been told the model changed and have not pulled it yet -- they are not told again
 # (a writer pulls the NEWEST model whenever it gets to it, so one notice is
 # enough).  Without this every event was a message to every session, and 1,000
 # sessions leaving at once queued a million sends in front of whatever came next.
+# told is keyed by sid, never by a writer's actor id: an actor id is an address, not
+# an Int, and ordering it (Ord.int, <) traps under exact Int.
 Rs = Type (Rs cfg app model sessions nextSid db saved tickers version told).
 
 # ---- serve -----------------------------------------------------------------------------
@@ -344,9 +346,9 @@ handle : Int -> Int -> Reg -> Rs -> O.Option Rs .
 handle me from q st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
   (case q of
       Snapshot -> _ = A.sendSure me from (Model version (app.project 0 model));
-        O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove from told))
+        O.Some st
     | Pull sid -> _ = A.sendSure me from (Model version (app.project sid model));
-        O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove from told))
+        O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove sid told))
     | Join writer ->
         # the WRITER hears its Welcome from here, not forwarded by the reader:
         # messages from one sender arrive in order, so it is ahead of the
@@ -356,7 +358,7 @@ handle me from q st = case st of Rs cfg app model sessions nextSid db saved tick
         _ = (case syncFrame app.codec (app.subs model) of O.Some text -> _ = A.sendSure me writer (Push text); Unit | O.None -> Unit);
         _ = A.sendSure me from (Welcome nextSid Unit);
         advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version told)
-    | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version (case M.get sid sessions of O.Some w -> M.remove w told | O.None -> told))
+    | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version (M.remove sid told))
     | Event ev -> advance me (keep ev) st
     | TickDue ms key ->
         due = wanted app.codec ms key (app.subs model);
@@ -379,17 +381,19 @@ advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers
   (case app.update ev model of (model2, cmds) ->
       saved2 = persist me app.fields db model2 saved;
       quit = perform me sessions cmds;
-      told2 = broadcast me (M.values sessions) (version + 1) told;
+      told2 = broadcast me sessions (M.keys sessions) (version + 1) told;
       (if quit then _ = settle app.fields db model2 saved2; _ = goodbye (M.values sessions); O.None
        else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1) told2)))).
 
-# tell every writer that has not already been told; answers who has now been told
-broadcast : unsafe Int -> List Int -> Int -> M.Map Int Bool -> M.Map Int Bool .
-broadcast me writers version told = case writers of
+# tell every session's writer that has not already been told; answers who has now been told
+broadcast : unsafe Int -> M.Map Int Int -> List Int -> Int -> M.Map Int Bool -> M.Map Int Bool .
+broadcast me sessions sids version told = case sids of
     Nil -> told
-  | w :: r -> (case M.member w told of
-      True -> broadcast me r version told
-    | False -> _ = A.sendSure me w (Changed version); broadcast me r version (M.insert w True told)).
+  | sid :: r -> (case M.member sid told of
+      True -> broadcast me sessions r version told
+    | False -> (case M.get sid sessions of
+        O.Some w -> _ = A.sendSure me w (Changed version); broadcast me sessions r version (M.insert sid True told)
+      | O.None -> broadcast me sessions r version told)).
 goodbye : unsafe List Int -> Unit .
 goodbye writers = case writers of Nil -> Unit | w :: r -> _ = send w Stop; goodbye r.
 
