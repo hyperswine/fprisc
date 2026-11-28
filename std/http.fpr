@@ -2,11 +2,11 @@
 #
 #   Http = use "std/http".
 #   case Http.get "http://example.org/data.json" of
-#       Ok r -> (case r.status == 200 of True -> Json.parse r.body | False -> Err "HTTP {r.status}")
+#       Ok r -> if r.status == 200 then Json.parse r.body else Err "HTTP {r.status}"
 #     | Err why -> Err why                 # it never got an answer
 #
-#   Http.serve listener (fn req -> case req.path == "/health" of
-#       True -> Http.text 200 "ok" | False -> Http.text 404 "no such page")
+#   Http.serve listener (fn req -> if req.path == "/health" then
+#       Http.text 200 "ok" else Http.text 404 "no such page")
 #
 # A Request is { method, path, query, headers, body }; a Response is
 # { status, headers, body }.  Header NAMES are lower-case in both, because
@@ -27,35 +27,31 @@ T = use "transport".
 TLS = use "tls".
 E = use "encoding".
 
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
-
 # ---- headers ---------------------------------------------------------------------
 # the first header of that (lower-case) name
 header : String -> { headers : List (String, String) | r } -> O.Option String .
 header name m = headerGo (S.toLower name) m.headers.
-headerGo : unsafe String -> List (String, String) -> O.Option String .
+headerGo : String -> (hs : List (String, String) | measure hs) -> O.Option String .
 headerGo name hs = case hs of
     Nil -> O.None
-  | (k, v) :: r -> (case k == name of True -> O.Some v | False -> headerGo name r).
+  | (k, v) :: r -> if k == name then O.Some v else headerGo name r.
 
 # "Name: value" lines -> pairs, names lower-cased; a line without ":" is dropped
 parseHeaders : List String -> List (String, String) .
 parseHeaders ls = parseHeadersGo ls Nil.
-parseHeadersGo : unsafe List String -> List (String, String) -> List (String, String) .
+parseHeadersGo : (ls : List String | measure ls) -> List (String, String) -> List (String, String) .
 parseHeadersGo ls acc = case ls of
-    Nil -> rev acc Nil
+    Nil -> L.reverse acc
   | l :: r ->
       at = strIndexOf ":" l;
-      (case at < 0 of
-          True -> parseHeadersGo r acc
-        | False -> parseHeadersGo r ((S.toLower (S.trim (S.left at l)), S.trim (S.dropLeft (at + 1) l)) :: acc)).
+      if at < 0 then parseHeadersGo r acc
+      else parseHeadersGo r ((S.toLower (S.trim (S.left at l)), S.trim (S.dropLeft (at + 1) l)) :: acc).
 
 renderHeaders : List (String, String) -> String .
 renderHeaders hs = strJoin "" (renderHeadersGo hs Nil).
-renderHeadersGo : unsafe List (String, String) -> List String -> List String .
+renderHeadersGo : (hs : List (String, String) | measure hs) -> List String -> List String .
 renderHeadersGo hs acc = case hs of
-    Nil -> rev acc Nil
+    Nil -> L.reverse acc
   | (k, v) :: r -> renderHeadersGo r ("\r\n" :: v :: ": " :: k :: acc).
 
 # ---- responses, for a server -------------------------------------------------------
@@ -99,13 +95,11 @@ answerWith lim rd handler conn = case serverRequestOn lim rd of
   | Ok req -> ST.write (renderResponse (handler req)) conn.
 
 refusedStatus : String -> Int .
-refusedStatus why = case S.startsWith "header: no separator" why of
-    True -> 431
-  | False -> (case S.startsWith "body: larger" why of
-        True -> 413
-      | False -> (case why == "header: timed out" or why == "body: timed out" of
-            True -> 408
-          | False -> 400)).
+refusedStatus why =
+  if S.startsWith "header: no separator" why then 431
+  else if S.startsWith "body: larger" why then 413
+  else if why == "header: timed out" or why == "body: timed out" then 408
+  else 400.
 
 readRequest : ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
 readRequest conn = serverRequestOn limits (ST.reader conn).
@@ -124,25 +118,24 @@ requestFrom lim ls r = case ls of
 
 withBody lim method target hs r =
   at = strIndexOf "?" target;
-  path = (case at < 0 of True -> target | False -> S.left at target);
-  query = (case at < 0 of True -> "" | False -> S.dropLeft (at + 1) target);
+  path = if at < 0 then target else S.left at target;
+  query = if at < 0 then "" else S.dropLeft (at + 1) target;
   case bodyLength hs of
     Err why -> Err why
-  | Ok n -> (case n > lim.body of
-        True -> Err "body: larger than {lim.body} bytes (content-length {n})"
-      | False -> (case n == 0 of
-            True -> Ok { method = method, path = path, query = query, headers = hs, body = "" }
-          | False -> (case ST.readExactlyWithin lim.readMs n r of (res, _) ->
-                (case res of
-                    Ok body -> Ok { method = method, path = path, query = query, headers = hs, body = body }
-                  | Err why -> Err "body: {why}")))).
+  | Ok n ->
+      if n > lim.body then Err "body: larger than {lim.body} bytes (content-length {n})"
+      else if n == 0 then Ok { method = method, path = path, query = query, headers = hs, body = "" }
+      else case ST.readExactlyWithin lim.readMs n r of (res, _) ->
+          (case res of
+              Ok body -> Ok { method = method, path = path, query = query, headers = hs, body = body }
+            | Err why -> Err "body: {why}").
 
 bodyLength : List (String, String) -> Result Int String .
 bodyLength hs = case headerGo "content-length" hs of
     O.None -> Ok 0
   | O.Some t -> (case S.toInt (S.trim t) of
         Err _ -> Err "content-length is not a number: {t}"
-      | Ok v -> (case v < 0 of True -> Err "content-length is negative: {t}" | False -> Ok v)).
+      | Ok v -> if v < 0 then Err "content-length is negative: {t}" else Ok v).
 
 renderResponse : { status : Int, headers : List (String, String), body : String } -> String .
 renderResponse resp = strJoin "" (
@@ -155,9 +148,8 @@ renderResponse resp = strJoin "" (
 parseResponse : String -> Result { status : Int, headers : List (String, String), body : String } String .
 parseResponse raw =
   at = strIndexOf "\r\n\r\n" raw;
-  case at < 0 of
-    True -> Err "malformed reply (no end of headers)"
-  | False -> responseFrom (S.split "\r\n" (S.left at raw)) (S.dropLeft (at + 4) raw).
+  if at < 0 then Err "malformed reply (no end of headers)"
+  else responseFrom (S.split "\r\n" (S.left at raw)) (S.dropLeft (at + 4) raw).
 responseFrom ls body = case ls of
     Nil -> Err "empty reply"
   | line :: hs -> (case S.split " " line of
@@ -166,72 +158,77 @@ responseFrom ls body = case ls of
           | Ok status -> finish status (parseHeaders hs) body)
       | _ -> Err "malformed status line: {line}").
 finish status hs body = case headerGo "transfer-encoding" hs of
-    O.Some enc -> (case S.contains "chunked" (S.toLower enc) of
-        True -> (case dechunk body 0 Nil of Ok b -> Ok { status = status, headers = hs, body = b } | Err e -> Err e)
-      | False -> Ok { status = status, headers = hs, body = body })
+    O.Some enc ->
+      if S.contains "chunked" (S.toLower enc) then
+        case dechunk body 0 Nil of Ok b -> Ok { status = status, headers = hs, body = b } | Err e -> Err e
+      else Ok { status = status, headers = hs, body = body }
   | O.None -> Ok { status = status, headers = hs, body = body }.
 
 dechunk : unsafe String -> Int -> List String -> Result String String .
 dechunk s i acc =
   eol = strIndexFrom "\r\n" s i;
-  case eol < 0 of
-    True -> Err "malformed chunked body"
-  | False -> (case hexSize s i eol 0 of
-        O.None -> Err "malformed chunk size"
-      | O.Some n -> (case n == 0 of
-            True -> Ok (strJoin "" (rev acc Nil))
-          | False -> dechunk s (eol + 2 + n + 2) (substr s (eol + 2) n :: acc))).
-hexSize : unsafe String -> Int -> Int -> Int -> O.Option Int .
-hexSize s i e acc = case i >= e or charAt s i == 59 of
-    True -> O.Some acc
-  | False -> (case hexVal (charAt s i) of O.None -> O.None | O.Some d -> hexSize s (i + 1) e (acc * 16 + d)).
+  if eol < 0 then Err "malformed chunked body"
+  else case hexSize s i (eol - i) 0 of
+      O.None -> Err "malformed chunk size"
+    | O.Some n ->
+        if n == 0 then Ok (strJoin "" (L.reverse acc))
+        else dechunk s (eol + 2 + n + 2) (substr s (eol + 2) n :: acc).
+hexSize : String -> Int -> (rem : Int | measure rem) -> Int -> O.Option Int .
+hexSize s i rem acc =
+  if rem <= 0 then O.Some acc
+  else if charAt s i == 59 then O.Some acc
+  else case hexVal (charAt s i) of
+      O.None -> O.None
+    | O.Some d -> hexSize s (i + 1) (rem - 1) (acc * 16 + d).
 hexVal : Int -> O.Option Int .
-hexVal c = case c >= 48 and c <= 57 of
-    True -> O.Some (c - 48)
-  | False -> (case c >= 97 and c <= 102 of
-        True -> O.Some (c - 87)
-      | False -> (case c >= 65 and c <= 70 of True -> O.Some (c - 55) | False -> O.None)).
+hexVal c =
+  if c >= 48 and c <= 57 then O.Some (c - 48)
+  else if c >= 97 and c <= 102 then O.Some (c - 87)
+  else if c >= 65 and c <= 70 then O.Some (c - 55)
+  else O.None.
 
 # ---- Bounded native HTTP/1.1 client (TCP/TLS, no child processes) ----------------
 Options = { headerBytes : Int, bodyBytes : Int, timeoutMs : Int, trust : TLS.Trust, minimum : TLS.Minimum }.
 defaults = {headerBytes = 16384, bodyBytes = 4194304, timeoutMs = 60000, trust = TLS.DefaultRoots, minimum = TLS.TLS12}.
 clientDefaults = defaults.
 invalid why = Err (T.Invalid why).
-controls : unsafe String -> Int -> Bool .
-controls text at = if at >= strlen text then False else
-  c = charAt text at;
-  c < 32 or c == 127 or controls text (at + 1).
+controls : String -> Bool .
+controls text = not (S.allChars (fn c -> c >= 32 and c != 127) text).
+isTokenChar : Int -> Bool .
+isTokenChar c =
+  (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
+  strIndexOf (chr c) "!#$%&'*+-.^_`|~" >= 0.
 token : String -> Bool .
-token s = strlen s > 0 and tokenGo s 0.
-tokenGo : unsafe String -> Int -> Bool .
-tokenGo s i = if i >= strlen s then True else
-  c = charAt s i;
-  ((c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
-    strIndexOf (chr c) "!#$%&'*+-.^_`|~" >= 0) and tokenGo s (i + 1).
-fieldValue : unsafe String -> Int -> Bool .
-fieldValue s i = if i >= strlen s then True else
-  c = charAt s i;
-  (c == 9 or (c >= 32 and c != 127)) and fieldValue s (i + 1).
-decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 0 (2 ^ 62 - 1).
-digits : unsafe String -> Int -> Int -> Int -> Result Int T.Failure .
-digits text i n hi = if i >= strlen text then Ok n else
-  d = charAt text i - 48;
-  if d < 0 or d > 9 or n > (hi - d) / 10 then invalid "invalid content-length" else digits text (i + 1) (n * 10 + d) hi.
-firstDelimiter : unsafe String -> Int -> Int .
-firstDelimiter s i = if i >= strlen s then i else
-  c = charAt s i;
-  if c == 47 or c == 63 or c == 35 then i else firstDelimiter s (i + 1).
+token s = strlen s > 0 and S.allChars isTokenChar s.
+fieldValue : String -> Bool .
+fieldValue s = S.allChars (fn c -> c == 9 or (c >= 32 and c != 127)) s.
+decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 (strlen text) 0 (2 ^ 62 - 1).
+digits : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> Result Int T.Failure .
+digits text i rem n hi =
+  if rem <= 0 then Ok n
+  else
+    d = charAt text i - 48;
+    if d < 0 or d > 9 or n > (hi - d) / 10 then invalid "invalid content-length"
+    else digits text (i + 1) (rem - 1) (n * 10 + d) hi.
+firstDelimiter : String -> Int .
+firstDelimiter s = firstDelimiterGo s 0 (strlen s).
+firstDelimiterGo : String -> Int -> (rem : Int | measure rem) -> Int .
+firstDelimiterGo s i rem =
+  if rem <= 0 then i
+  else
+    c = charAt s i;
+    if c == 47 or c == 63 or c == 35 then i else firstDelimiterGo s (i + 1) (rem - 1).
 parseUrl url =
   at = strIndexOf "://" url;
   if at < 0 then Err "not a URL (no scheme): {url}" else
   scheme = S.toLower (S.left at url);
   rest = S.dropLeft (at + 3) url;
-  cut = firstDelimiter rest 0;
+  cut = firstDelimiter rest;
   authority = S.left cut rest;
   suffix = S.dropLeft cut rest;
   target = if suffix == "" then "/" else if S.startsWith "?" suffix then "/{suffix}" else suffix;
   if scheme != "http" and scheme != "https" then Err "unsupported scheme: {scheme}" else
-  if strlen authority == 0 or controls url 0 or strIndexOf " " url >= 0 or strIndexOf "#" url >= 0 or strIndexOf "@" authority >= 0 then Err "invalid HTTP URL" else
+  if strlen authority == 0 or controls url or strIndexOf " " url >= 0 or strIndexOf "#" url >= 0 or strIndexOf "@" authority >= 0 then Err "invalid HTTP URL" else
   parts = if S.startsWith "[" authority then
       end = strIndexOf "]" authority;
       if end < 2 then Err "invalid bracketed host" else
@@ -246,7 +243,7 @@ parseUrl url =
     port = if portText == "" then Ok (if scheme == "https" then 443 else 80) else decimal portText;
     case port of Err _ -> Err "bad port in the URL" | Ok p ->
       if host == "" or p < 1 or p > 65535 then Err "invalid host or port" else Ok {scheme = scheme, host = host, port = p, target = target}.
-validHeaders hs = L.all (fn pair -> case pair of (key, value) -> token key and fieldValue value 0 and
+validHeaders hs = L.all (fn pair -> case pair of (key, value) -> token key and fieldValue value and
   not (L.member (S.toLower key) ["host", "content-length", "transfer-encoding", "connection", "accept-encoding", "expect"])) hs.
 requestHead q u =
   host = if strIndexOf ":" u.host >= 0 then "[{u.host}]" else u.host;
@@ -293,7 +290,7 @@ headers budget left count acc pending conn = if count > 100 then (invalid "too m
       at = strIndexOf ":" raw;
       key = if at < 1 then "" else S.left at raw;
       value = if at < 0 then "" else S.dropLeft (at + 1) raw;
-      if at < 1 or not (token key) or not (fieldValue value 0) then (invalid "malformed HTTP header", rest, c) else
+      if at < 1 or not (token key) or not (fieldValue value) then (invalid "malformed HTTP header", rest, c) else
       headers budget (left - strlen raw - 2) (count + 1) ((S.toLower key, S.trim value) :: acc) rest c.
 readResponse : unsafe T.Budget -> Options -> String -> Int -> String -> T.Connection s -> (Result {status : Int, headers : List (String, String), body : String} T.Failure, T.Connection s) .
 readResponse budget options method interim pending conn = case line budget options.headerBytes pending conn of
@@ -303,7 +300,7 @@ readResponse budget options method interim pending conn = case line budget optio
           if (version != "HTTP/1.1" and version != "HTTP/1.0") or strlen code != 3 then invalid "malformed HTTP status" else decimal code
         | _ -> invalid "malformed HTTP status";
       case status of Err why -> (Err why, c) | Ok code ->
-        if code < 100 or code > 599 or controls statusLine 0 then (invalid "malformed HTTP status", c) else
+        if code < 100 or code > 599 or controls statusLine then (invalid "malformed HTTP status", c) else
         case headers budget (options.headerBytes - strlen statusLine - 2) 0 Nil rest c of
           (Err why, _, c2) -> (Err why, c2)
         | (Ok hs, body, c2) -> if code >= 100 and code < 200 then
@@ -336,11 +333,14 @@ untilEnd budget limit count acc conn = if count > limit then (invalid "HTTP body
 chunkSize text =
   semicolon = strIndexOf ";" text;
   digits = if semicolon < 0 then text else S.left semicolon text;
-  if strlen digits == 0 or not (fieldValue text 0) then invalid "invalid HTTP chunk size" else hexGo digits 0 0 (2 ^ 62 - 1).
-hexGo : unsafe String -> Int -> Int -> Int -> Result Int T.Failure .
-hexGo text i n hi = if i >= strlen text then Ok n else
-  d = E.hexVal (charAt text i);
-  if d < 0 or n > (hi - d) / 16 then invalid "invalid HTTP chunk size" else hexGo text (i + 1) (n * 16 + d) hi.
+  if strlen digits == 0 or not (fieldValue text) then invalid "invalid HTTP chunk size" else hexGo digits 0 (strlen digits) 0 (2 ^ 62 - 1).
+hexGo : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> Result Int T.Failure .
+hexGo text i rem n hi =
+  if rem <= 0 then Ok n
+  else
+    d = E.hexVal (charAt text i);
+    if d < 0 or n > (hi - d) / 16 then invalid "invalid HTTP chunk size"
+    else hexGo text (i + 1) (rem - 1) (n * 16 + d) hi.
 chunked : unsafe T.Budget -> Options -> Int -> Int -> List String -> String -> T.Connection s -> (Result String T.Failure, T.Connection s) .
 chunked budget options count chunks acc pending conn = if chunks >= 65536 then (invalid "too many HTTP chunks", conn) else
   case line budget options.headerBytes pending conn of

@@ -60,25 +60,30 @@ tCon = 10.
 tReal = 11.
 
 # ---- writing: pieces gathered in reverse, joined once --------------------------------
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
-# a varint, low seven bits first (n >= 0)
-varint : unsafe Int -> List String -> List String .
-varint n acc = if n < 128 then chr n :: acc else varint (BITSHIFTR n 7) (chr (bor (band n 127) 128) :: acc).
+# a varint, low seven bits first (n >= 0; 64-bit Int fits in <= 10 bytes)
+varint : Int -> List String -> List String .
+varint n acc = varintGo 10 n acc.
+varintGo : (fuel : Int | measure fuel) -> Int -> List String -> List String .
+varintGo fuel n acc =
+  if fuel <= 0 then chr n :: acc
+  else if n < 128 then chr n :: acc
+  else varintGo (fuel - 1) (BITSHIFTR n 7) (chr (bor (band n 127) 128) :: acc).
 
-bytes : unsafe String -> List String -> List String .
+bytes : String -> List String -> List String .
 bytes s acc = s :: varint (strlen s) acc.
 
-int : unsafe Int -> List String -> List String .
+int : Int -> List String -> List String .
 int n acc = if n >= 0 then varint n (chr tUint :: acc) else varint (0 - (n + 1)) (chr tNeg :: acc).
 
 # a string: inline, or numbered on first sight and referred to after
-str : unsafe Bool -> String -> Enc -> List String -> (List String, Enc) .
-str intern s e acc = case intern of
-    False -> (bytes s (chr tText :: acc), e)
-  | True -> strNumbered s e acc.
-strNumbered : unsafe String -> Enc -> List String -> (List String, Enc) .
+str : Bool -> String -> Enc -> List String -> (List String, Enc) .
+str intern s e acc =
+  if intern then strNumbered s e acc
+  else (bytes s (chr tText :: acc), e).
+strNumbered : String -> Enc -> List String -> (List String, Enc) .
 strNumbered s e acc = case e of
   Enc level seen next -> (case M.get s seen of
       O.Some i -> (varint i (chr tRef :: acc), e)
@@ -90,9 +95,9 @@ internStrings : Enc -> Bool .
 internStrings e = case e of Enc level _ _ -> (case level of Small -> True | _ -> False).
 
 # a name (record field, constructor) and a string value, at the encoder's level
-name : unsafe String -> Enc -> List String -> (List String, Enc) .
+name : String -> Enc -> List String -> (List String, Enc) .
 name s e acc = str (internNames e) s e acc.
-text : unsafe String -> Enc -> List String -> (List String, Enc) .
+text : String -> Enc -> List String -> (List String, Enc) .
 text s e acc = str (internStrings e) s e acc.
 
 # ---- a Wire ----
@@ -135,7 +140,7 @@ members kvs e acc = case kvs of
   | (k, v) :: r -> (case name k e acc of (acc2, e2) -> (case value v e2 acc2 of (acc3, e3) -> members r e3 acc3)).
 
 # the pieces of one payload, as a String (and the encoder after it)
-join : unsafe (List String, Enc) -> (String, Enc) .
+join : (List String, Enc) -> (String, Enc) .
 join got = case got of (acc, e) -> (strJoin "" (rev acc Nil), e).
 
 putWire : Enc -> Wire -> (String, Enc) .
@@ -152,45 +157,46 @@ putText e s = join (text s e Nil).
 # ---- reading: (value, next position, decoder), or why not ------------------------------
 Got a = Type (Got a Int Dec | Bad String).
 
-varAt : unsafe String -> Int -> Int -> Int -> Result (Int, Int) String .
-varAt s at shift acc = case at >= strlen s of
-    True -> Err "wire: truncated number"
-  | False -> varByte s at shift acc (charAt s at).
-varByte : unsafe String -> Int -> Int -> Int -> Int -> Result (Int, Int) String .
-varByte s at shift acc b = case shift > 56 or (shift == 56 and band b 127 > 63) of
-    True -> Err "wire: number too large"
-  | False -> (case b >= 128 of
-      True -> varAt s (at + 1) (shift + 7) (bor acc (BITSHIFTL (b - 128) shift))
-    | False -> Ok (bor acc (BITSHIFTL b shift), at + 1)).
+varAt : String -> Int -> Int -> Int -> Result (Int, Int) String .
+varAt s at shift acc = varAtGo 10 s at shift acc.
+varAtGo : (fuel : Int | measure fuel) -> String -> Int -> Int -> Int -> Result (Int, Int) String .
+varAtGo fuel s at shift acc =
+  if fuel <= 0 then Err "wire: number too large"
+  else if at >= strlen s then Err "wire: truncated number"
+  else
+    b = charAt s at;
+    if shift > 56 or (shift == 56 and band b 127 > 63) then Err "wire: number too large"
+    else if b >= 128 then varAtGo (fuel - 1) s (at + 1) (shift + 7) (bor acc (BITSHIFTL (b - 128) shift))
+    else Ok (bor acc (BITSHIFTL b shift), at + 1).
 
 # a string in one of its three forms (inline, defined here, referred to)
-strAt : unsafe String -> Int -> Dec -> Got String .
-strAt s at d = case at >= strlen s of
-    True -> Bad "wire: truncated string"
-  | False -> strTag s (at + 1) d (charAt s at).
-strTag : unsafe String -> Int -> Dec -> Int -> Got String .
+strAt : String -> Int -> Dec -> Got String .
+strAt s at d =
+  if at >= strlen s then Bad "wire: truncated string"
+  else strTag s (at + 1) d (charAt s at).
+strTag : String -> Int -> Dec -> Int -> Got String .
 strTag s at d tag = case varAt s at 0 0 of
     Err why -> Bad why
-  | Ok (n, p) -> (case tag == tRef of
-      True -> (case d of Dec seen next -> (case M.get n seen of
-          O.Some t -> Got t p d
-        | O.None -> Bad "wire: string {n} referred to before it was defined"))
-    | False -> (case p + n > strlen s of
-        True -> Bad "wire: truncated string"
-      | False -> strDef s p n d tag)).
+  | Ok (n, p) ->
+      if tag == tRef then
+        case d of Dec seen next -> (case M.get n seen of
+            O.Some t -> Got t p d
+          | O.None -> Bad "wire: string {n} referred to before it was defined")
+      else if p + n > strlen s then Bad "wire: truncated string"
+      else strDef s p n d tag.
 strDef : String -> Int -> Int -> Dec -> Int -> Got String .
-strDef s p n d tag = case tag == tText or tag == tReal of
-    True -> Got (substr s p n) (p + n) d
-  | False -> (case tag == tDef of
-      True -> (case d of Dec seen next -> Got (substr s p n) (p + n) (Dec (M.insert next (substr s p n) seen) (next + 1)))
-    | False -> Bad "wire: expected a string, found tag {tag}").
+strDef s p n d tag =
+  if tag == tText or tag == tReal then Got (substr s p n) (p + n) d
+  else if tag == tDef then
+    case d of Dec seen next -> Got (substr s p n) (p + n) (Dec (M.insert next (substr s p n) seen) (next + 1))
+  else Bad "wire: expected a string, found tag {tag}".
 
 getWire : Dec -> String -> Int -> Got Wire .
 getWire d s at = wireAt s at d.
 wireAt : unsafe String -> Int -> Dec -> Got Wire .
-wireAt s at d = case at >= strlen s of
-    True -> Bad "wire: truncated value"
-  | False -> wireTag s at d (charAt s at).
+wireAt s at d =
+  if at >= strlen s then Bad "wire: truncated value"
+  else wireTag s at d (charAt s at).
 wireTag : unsafe String -> Int -> Dec -> Int -> Got Wire .
 wireTag s at d tag = case tag of
     0 -> intGot (varAt s (at + 1) 0 0) False d WInt
@@ -202,34 +208,35 @@ wireTag s at d tag = case tag of
   | 10 -> (case strAt s (at + 1) d of
         Bad why -> Bad why
       | Got c p d2 -> (case varAt s p 0 0 of Err why -> Bad why | Ok (n, q) -> wireCon c s q d2 n Nil))
-  | _ -> (case tag == tText or tag == tRef or tag == tDef of
-        True -> (case strAt s at d of Bad why -> Bad why | Got t p d2 -> Got (WStr t) p d2)
-      | False -> Bad "wire: no Wire value has tag {tag}").
+  | _ ->
+      if tag == tText or tag == tRef or tag == tDef then
+        case strAt s at d of Bad why -> Bad why | Got t p d2 -> Got (WStr t) p d2
+      else Bad "wire: no Wire value has tag {tag}".
 intGot : Result (Int, Int) String -> Bool -> Dec -> (Int -> a) -> Got a .
 intGot r neg d k = case r of
     Err why -> Bad why
   | Ok (m, p) -> Got (k (if neg then 0 - m - 1 else m)) p d.
 wireList : unsafe String -> Int -> Dec -> Int -> List Wire -> Got Wire .
-wireList s at d n acc = case n == 0 of
-    True -> Got (WList (rev acc Nil)) at d
-  | False -> (case wireAt s at d of Bad why -> Bad why | Got w p d2 -> wireList s p d2 (n - 1) (w :: acc)).
+wireList s at d n acc =
+  if n == 0 then Got (WList (rev acc Nil)) at d
+  else case wireAt s at d of Bad why -> Bad why | Got w p d2 -> wireList s p d2 (n - 1) (w :: acc).
 wireCon : unsafe String -> String -> Int -> Dec -> Int -> List Wire -> Got Wire .
-wireCon c s at d n acc = case n == 0 of
-    True -> Got (WCon c (rev acc Nil)) at d
-  | False -> (case wireAt s at d of Bad why -> Bad why | Got w p d2 -> wireCon c s p d2 (n - 1) (w :: acc)).
+wireCon c s at d n acc =
+  if n == 0 then Got (WCon c (rev acc Nil)) at d
+  else case wireAt s at d of Bad why -> Bad why | Got w p d2 -> wireCon c s p d2 (n - 1) (w :: acc).
 wireFields : unsafe String -> Int -> Dec -> Int -> List (String, Wire) -> Got Wire .
-wireFields s at d n acc = case n == 0 of
-    True -> Got (WRec (rev acc Nil)) at d
-  | False -> (case strAt s at d of
+wireFields s at d n acc =
+  if n == 0 then Got (WRec (rev acc Nil)) at d
+  else case strAt s at d of
       Bad why -> Bad why
-    | Got k p d2 -> (case wireAt s p d2 of Bad why -> Bad why | Got w q d3 -> wireFields s q d3 (n - 1) ((k, w) :: acc))).
+    | Got k p d2 -> (case wireAt s p d2 of Bad why -> Bad why | Got w q d3 -> wireFields s q d3 (n - 1) ((k, w) :: acc)).
 
 getValue : Dec -> String -> Int -> Got J.Value .
 getValue d s at = valueAt s at d.
 valueAt : unsafe String -> Int -> Dec -> Got J.Value .
-valueAt s at d = case at >= strlen s of
-    True -> Bad "wire: truncated value"
-  | False -> valueTag s at d (charAt s at).
+valueAt s at d =
+  if at >= strlen s then Bad "wire: truncated value"
+  else valueTag s at d (charAt s at).
 valueTag : unsafe String -> Int -> Dec -> Int -> Got J.Value .
 valueTag s at d tag = case tag of
     0 -> intGot (varAt s (at + 1) 0 0) False d J.Integer
@@ -240,27 +247,28 @@ valueTag s at d tag = case tag of
   | 8 -> (case varAt s (at + 1) 0 0 of Err why -> Bad why | Ok (n, p) -> valueList s p d n Nil)
   | 9 -> (case varAt s (at + 1) 0 0 of Err why -> Bad why | Ok (n, p) -> valueMembers s p d n (M.empty S.compare))
   | 11 -> (case strAt s at d of Bad why -> Bad why | Got t p d2 -> Got (J.Real t) p d2)
-  | _ -> (case tag == tText or tag == tRef or tag == tDef of
-        True -> (case strAt s at d of Bad why -> Bad why | Got t p d2 -> Got (J.Text t) p d2)
-      | False -> Bad "wire: no Json value has tag {tag}").
+  | _ ->
+      if tag == tText or tag == tRef or tag == tDef then
+        case strAt s at d of Bad why -> Bad why | Got t p d2 -> Got (J.Text t) p d2
+      else Bad "wire: no Json value has tag {tag}".
 valueList : unsafe String -> Int -> Dec -> Int -> List J.Value -> Got J.Value .
-valueList s at d n acc = case n == 0 of
-    True -> Got (J.Sequence (rev acc Nil)) at d
-  | False -> (case valueAt s at d of Bad why -> Bad why | Got v p d2 -> valueList s p d2 (n - 1) (v :: acc)).
+valueList s at d n acc =
+  if n == 0 then Got (J.Sequence (rev acc Nil)) at d
+  else case valueAt s at d of Bad why -> Bad why | Got v p d2 -> valueList s p d2 (n - 1) (v :: acc).
 valueMembers : unsafe String -> Int -> Dec -> Int -> M.Map String J.Value -> Got J.Value .
-valueMembers s at d n m = case n == 0 of
-    True -> Got (J.Object m) at d
-  | False -> (case strAt s at d of
+valueMembers s at d n m =
+  if n == 0 then Got (J.Object m) at d
+  else case strAt s at d of
       Bad why -> Bad why
-    | Got k p d2 -> (case valueAt s p d2 of Bad why -> Bad why | Got v q d3 -> valueMembers s q d3 (n - 1) (M.insert k v m))).
+    | Got k p d2 -> (case valueAt s p d2 of Bad why -> Bad why | Got v q d3 -> valueMembers s q d3 (n - 1) (M.insert k v m)).
 
 getInt : String -> Int -> Got Int .
-getInt s at = case at >= strlen s of
-    True -> Bad "wire: truncated number"
-  | False -> (case charAt s at of
+getInt s at =
+  if at >= strlen s then Bad "wire: truncated number"
+  else case charAt s at of
       0 -> intGot (varAt s (at + 1) 0 0) False (decoder Unit) (fn n -> n)
     | 1 -> intGot (varAt s (at + 1) 0 0) True (decoder Unit) (fn n -> n)
-    | t -> Bad "wire: expected a number, found tag {t}").
+    | t -> Bad "wire: expected a number, found tag {t}".
 getString : Dec -> String -> Int -> Got String .
 getString d s at = strAt s at d.
 
@@ -268,12 +276,12 @@ getString d s at = strAt s at d.
 # Adler-32 of a String, as four bytes (little-endian)
 adler : String -> Int .
 adler s = adlerGo s 0 (strlen s) 1 0.
-adlerGo : unsafe String -> Int -> Int -> Int -> Int -> Int .
-adlerGo s i n a b = case i >= n of
-    True -> b * 65536 + a
-  | False -> adlerStep s (i + 1) n ((a + charAt s i) % 65521) b.
-adlerStep : unsafe String -> Int -> Int -> Int -> Int -> Int .
-adlerStep s i n a b = adlerGo s i n a ((b + a) % 65521).
+adlerGo : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> Int .
+adlerGo s i rem a b =
+  if rem <= 0 then b * 65536 + a
+  else
+    a1 = (a + charAt s i) % 65521;
+    adlerGo s (i + 1) (rem - 1) a1 ((b + a1) % 65521).
 u32 : Int -> String .
 u32 v = strJoin "" (chr (band v 255) :: chr (band (BITSHIFTR v 8) 255) :: chr (band (BITSHIFTR v 16) 255) :: chr (band (BITSHIFTR v 24) 255) :: Nil).
 u32At : String -> Int -> Int .
@@ -300,25 +308,25 @@ frame payload = strJoin "" (strJoin "" (rev (varint (strlen payload) Nil) Nil) :
 # many bytes after that prefix could not be read
 Stream = Type (Stream Level (List String) Int).
 frames : String -> Result Stream String .
-frames s = case isStream s of
-    False -> Err "wire: not a Wire stream (no FPRW header)"
-  | True -> (case charAt s 4 == version of
-      False -> Err "wire: unknown version {charAt s 4}"
-    | True -> (case levelOf (charAt s 5) of
-        Err why -> Err why
-      | Ok level -> Ok (framesGo s headerSize level Nil))).
+frames s =
+  if not (isStream s) then Err "wire: not a Wire stream (no FPRW header)"
+  else if charAt s 4 != version then Err "wire: unknown version {charAt s 4}"
+  else case levelOf (charAt s 5) of
+      Err why -> Err why
+    | Ok level -> Ok (framesGo s headerSize level Nil).
 framesGo : unsafe String -> Int -> Level -> List String -> Stream .
-framesGo s at level acc = case at >= strlen s of
-    True -> Stream level (rev acc Nil) 0
-  | False -> (case varAt s at 0 0 of
+framesGo s at level acc =
+  if at >= strlen s then Stream level (rev acc Nil) 0
+  else case varAt s at 0 0 of
       Err _ -> Stream level (rev acc Nil) (strlen s - at)
-    | Ok (n, p) -> (case p + n + 4 > strlen s of
-        True -> Stream level (rev acc Nil) (strlen s - at)
-      | False -> frameCheck s at p n level acc)).
+    | Ok (n, p) ->
+        if p + n + 4 > strlen s then Stream level (rev acc Nil) (strlen s - at)
+        else frameCheck s at p n level acc.
 frameCheck : unsafe String -> Int -> Int -> Int -> Level -> List String -> Stream .
-frameCheck s at p n level acc = case adler (substr s p n) == u32At s (p + n) of
-    True -> framesGo s (p + n + 4) level (substr s p n :: acc)
-  | False -> Stream level (rev acc Nil) (strlen s - at).
+frameCheck s at p n level acc =
+  chunk = substr s p n;
+  if adler chunk == u32At s (p + n) then framesGo s (p + n + 4) level (chunk :: acc)
+  else Stream level (rev acc Nil) (strlen s - at).
 
 # ---- one value, whole: a header and one frame ---------------------------------------------
 pickle : Level -> { enc : a -> Wire | r } -> a -> String .
@@ -329,11 +337,11 @@ unpickle : { dec : Wire -> Result a String | r } -> String -> Result a String .
 unpickle codec s = case frames s of
     Err why -> Err why
   | Ok (Stream _ fs bad) -> (case fs of
-      p :: Nil -> (case bad == 0 of
-          False -> Err "wire: {bad} damaged byte(s) after the value"
-        | True -> (case getWire (decoder Unit) p 0 of
+      p :: Nil ->
+        if bad != 0 then Err "wire: {bad} damaged byte(s) after the value"
+        else (case getWire (decoder Unit) p 0 of
             Bad why -> Err why
-          | Got w _ _ -> codec.dec w))
+          | Got w _ _ -> codec.dec w)
     | _ -> Err "wire: expected one value, found {listLen fs} (and {bad} damaged byte(s))").
 
 pickleValue : Level -> J.Value -> String .
@@ -344,9 +352,9 @@ unpickleValue : String -> Result J.Value String .
 unpickleValue s = case frames s of
     Err why -> Err why
   | Ok (Stream _ fs bad) -> (case fs of
-      p :: Nil -> (case bad == 0 of
-          False -> Err "wire: {bad} damaged byte(s) after the value"
-        | True -> (case getValue (decoder Unit) p 0 of Bad why -> Err why | Got v _ _ -> Ok v))
+      p :: Nil ->
+        if bad != 0 then Err "wire: {bad} damaged byte(s) after the value"
+        else (case getValue (decoder Unit) p 0 of Bad why -> Err why | Got v _ _ -> Ok v)
     | _ -> Err "wire: expected one value, found {listLen fs}").
 
 # an encoder that continues a stream a decoder has read to its end: the same

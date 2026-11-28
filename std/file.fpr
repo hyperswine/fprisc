@@ -13,12 +13,13 @@ IO = use "os".
 S = use "string".
 ST = use "stream".
 P = use "path".
+G = use "glob".
 
 # what `info` answers.  kind is "file", "dir" or "other"; modified is seconds
 # since 1970-01-01 UTC (std/clock formats it).
 infoOf : (Int, Int, Int) -> { kind : String, size : Int, modified : Int } .
 infoOf t = case t of (k, size, mtime) ->
-  { kind = (case k == 0 of True -> "file" | False -> (case k == 1 of True -> "dir" | False -> "other")),
+  { kind = if k == 0 then "file" else if k == 1 then "dir" else "other",
     size = size, modified = mtime }.
 
 readText : String -> Result String String .
@@ -93,8 +94,7 @@ withOpen path mode f = case open path mode of
 # Listings are SORTED by name: the same directory gives the same list on every
 # run and every file system.  Errors are the system's own words.
 
-
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 # the names in a directory (not paths), sorted; no "." or ".."
@@ -106,7 +106,7 @@ entries : String -> Result (List String) String .
 entries dir = case OS.listDir dir of
     Err e -> Err e
   | Ok names -> Ok (prefixGo dir names Nil).
-prefixGo : unsafe String -> List String -> List String -> List String .
+prefixGo : String -> (names : List String | measure names) -> List String -> List String .
 prefixGo dir names acc = case names of Nil -> rev acc Nil | n :: r -> prefixGo dir r (P.join dir n :: acc).
 
 # every FILE under a directory, depth first, sorted within each directory.
@@ -119,11 +119,11 @@ walkGo todo acc = case todo of
     Nil -> Ok acc
   | p :: rest -> (case OS.stat p of
         Err e -> Err (strJoin ": " (p :: e :: Nil))
-      | Ok (kind, _, _) -> (case kind == 1 of
-            False -> walkGo rest (p :: acc)
-          | True -> (case entries p of
-                Err e -> Err (strJoin ": " (p :: e :: Nil))
-              | Ok children -> walkGo (pushAll children rest) acc))).
+      | Ok (kind, _, _) ->
+          if kind != 1 then walkGo rest (p :: acc)
+          else case entries p of
+              Err e -> Err (strJoin ": " (p :: e :: Nil))
+            | Ok children -> walkGo (pushAll children rest) acc).
 # children in front of the rest, keeping their order
 pushAll : List String -> List String -> List String .
 pushAll children rest = rev (rev children Nil) rest.
@@ -131,39 +131,22 @@ pushAll children rest = rev (rev children Nil) rest.
 # a name against a pattern where "*" is any run of bytes and "?" any one:
 #   Dir.matches "*.fpr" "list.fpr"
 matches : String -> String -> Bool .
-matches pat name = matchGo pat 0 name 0.
-matchGo : unsafe String -> Int -> String -> Int -> Bool .
-matchGo pat i name j = case i >= strlen pat of
-    True -> j >= strlen name
-  | False -> (case charAt pat i == 42 of
-        True -> starGo pat (i + 1) name j
-      | False -> (case j >= strlen name of
-            True -> False
-          | False -> (case charAt pat i == 63 of
-                True -> matchGo pat (i + 1) name (j + 1)
-              | False -> (case charAt pat i == charAt name j of
-                    True -> matchGo pat (i + 1) name (j + 1)
-                  | False -> False)))).
-# "*" tries every suffix of the name, shortest skip first
-starGo : unsafe String -> Int -> String -> Int -> Bool .
-starGo pat i name j = case matchGo pat i name j of
-    True -> True
-  | False -> (case j >= strlen name of True -> False | False -> starGo pat i name (j + 1)).
+matches pat name = G.match pat name.
 
 # the entries of ONE directory whose NAME matches: Dir.glob "*.md" "docs"
 glob : String -> String -> Result (List String) String .
 glob pat dir = case OS.listDir dir of
     Err e -> Err e
   | Ok names -> Ok (globGo pat dir names Nil).
-globGo : unsafe String -> String -> List String -> List String -> List String .
+globGo : String -> String -> (names : List String | measure names) -> List String -> List String .
 globGo pat dir names acc = case names of
     Nil -> rev acc Nil
-  | n :: r -> (case matches pat n of True -> globGo pat dir r (P.join dir n :: acc) | False -> globGo pat dir r acc).
+  | n :: r -> if matches pat n then globGo pat dir r (P.join dir n :: acc) else globGo pat dir r acc.
 
 # the directory and every missing parent; existing is fine
 create : String -> Result Unit String .
-create dir = createGo (P.parts dir) (case P.isAbsolute dir of True -> "/" | False -> "").
-createGo : unsafe List String -> String -> Result Unit String .
+create dir = createGo (P.parts dir) (if P.isAbsolute dir then "/" else "").
+createGo : (ps : List String | measure ps) -> String -> Result Unit String .
 createGo ps sofar = case ps of
     Nil -> Ok Unit
   | p :: r -> (case OS.mkdir (P.join sofar p) of
@@ -177,11 +160,11 @@ remove dir = OS.remove dir.
 removeAll : String -> Result Unit String .
 removeAll dir = case OS.stat dir of
     Err e -> Err e
-  | Ok (kind, _, _) -> (case kind == 1 of
-        False -> OS.remove dir
-      | True -> (case entries dir of
-            Err e -> Err e
-          | Ok children -> (case removeEach children of Err e -> Err e | Ok _ -> OS.remove dir))).
+  | Ok (kind, _, _) ->
+      if kind != 1 then OS.remove dir
+      else case entries dir of
+          Err e -> Err e
+        | Ok children -> (case removeEach children of Err e -> Err e | Ok _ -> OS.remove dir).
 removeEach : unsafe List String -> Result Unit String .
 removeEach ps = case ps of
     Nil -> Ok Unit
