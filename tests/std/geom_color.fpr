@@ -1,0 +1,27 @@
+G = use "std/geom".
+C = use "std/color".
+O = use "std/option".
+R = use "std/result".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+main =
+  # std/geom
+  _ = check "clampF + lerp" (G.clampF 0.0 10.0 15.0 == 10.0 and G.lerp 0.0 100.0 0.25 == 25.0);
+  _ = check "lerpInt" (G.lerpInt 10 20 1 2 == 15);
+  _ = check "point ops" (G.ptAdd (G.pt 3 4) (G.pt 1 2) == G.pt 4 6 and G.manhattan (G.pt 1 2) (G.pt 4 6) == 7 and G.ptDistSq (G.pt 0 0) (G.pt 3 4) == 25);
+  _ = check "vec2 dot/len/norm" (G.dot (G.vec2 3.0 4.0) (G.vec2 2.0 1.0) == 10.0 and G.len (G.vec2 3.0 4.0) == 5.0 and G.norm (G.vec2 0.0 0.0) == G.vec2 0.0 0.0);
+  r1 = G.rect 10 10 20 20;
+  r2 = G.rect 20 15 20 20;
+  _ = check "rect contains" (G.contains 10 10 r1 and G.contains 29 29 r1 and not (G.contains 30 10 r1));
+  _ = check "rect intersects + intersection" (G.intersects r1 r2 and G.intersection r1 r2 == O.Some (G.rect 20 15 10 15));
+  _ = check "rect union + inset + offset" (G.union r1 r2 == G.rect 10 10 30 25 and G.inset 3 r1 == G.rect 13 13 14 14 and G.offset 5 (0 - 5) r1 == G.rect 15 5 20 20);
+
+  # std/color
+  blue = C.rgb 30 144 255;
+  _ = check "rgb pack/unpack" (C.red blue == 30 and C.green blue == 144 and C.blue blue == 255 and C.alpha blue == 255);
+  _ = check "withAlpha + pack/unpack roundtrip" (C.pack (C.unpack (C.withAlpha 128 blue)) == C.rgba 30 144 255 128);
+  _ = check "toHex + fromHex" (C.toHex blue == "#1e90ff" and C.fromHex "#1e90ff" == Ok blue and C.fromHex "1e90ff80" == Ok (C.rgba 30 144 255 128));
+  _ = check "fromHex rejects bad input" (R.isErr (C.fromHex "#12345"));
+  _ = check "blend / darken / lighten" (C.blend 0 blue (C.rgb 0 0 0) == blue and C.blend 255 blue (C.rgb 0 0 0) == C.rgb 0 0 0 and C.red (C.darken 255 blue) == 0 and C.red (C.lighten 255 blue) == 255);
+  print "std/geom + std/color checks passed".

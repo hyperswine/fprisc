@@ -1,0 +1,13 @@
+PASS clampF + lerp
+PASS lerpInt
+PASS point ops
+PASS vec2 dot/len/norm
+PASS rect contains
+PASS rect intersects + intersection
+PASS rect union + inset + offset
+PASS rgb pack/unpack
+PASS withAlpha + pack/unpack roundtrip
+PASS toHex + fromHex
+PASS fromHex rejects bad input
+PASS blend / darken / lighten
+std/geom + std/color checks passed
