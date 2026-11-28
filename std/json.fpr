@@ -27,7 +27,7 @@ S = use "string".
 
 Value = Type (Null | Boolean Bool | Integer Int | Real String | Text String | Sequence (List Value) | Object (M.Map String Value)).
 
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 # ---- reading a Value -------------------------------------------------------------
@@ -57,13 +57,55 @@ isNull v = case v of Null -> True | _ -> False.
 field : String -> Value -> O.Option Value .
 field k v = case v of Object m -> M.get k m | _ -> O.None.
 
+# typed field accessors (subject Value last, for chaining with |>)
+stringField : String -> Value -> O.Option String .
+stringField k v = field k v |> O.andThen asString.
+
+stringOr : String -> String -> Value -> String .
+stringOr dflt k v = stringField k v |> O.withDefault dflt.
+
+stringIs : String -> String -> Value -> Bool .
+stringIs want k v = stringField k v == O.Some want.
+
+intField : String -> Value -> O.Option Int .
+intField k v = field k v |> O.andThen asInt.
+
+intOr : Int -> String -> Value -> Int .
+intOr dflt k v = intField k v |> O.withDefault dflt.
+
+boolField : String -> Value -> O.Option Bool .
+boolField k v = field k v |> O.andThen asBool.
+
+boolOr : Bool -> String -> Value -> Bool .
+boolOr dflt k v = boolField k v |> O.withDefault dflt.
+
+listField : String -> Value -> O.Option (List Value) .
+listField k v = field k v |> O.andThen asList.
+
+objectField : String -> Value -> O.Option (M.Map String Value) .
+objectField k v = field k v |> O.andThen asObject.
+
+stringListField : String -> Value -> List String .
+stringListField k v = case listField k v of
+    O.Some xs -> filterStrings xs Nil
+  | O.None -> Nil.
+filterStrings : (xs : List Value | measure xs) -> List String -> List String .
+filterStrings xs acc = case xs of
+    Nil -> rev acc Nil
+  | Text s :: r -> filterStrings r (s :: acc)
+  | _ :: r -> filterStrings r acc.
+
 # a path of keys: Json.at ("a" :: "b" :: Nil) v
-at : List String -> Value -> O.Option Value .
-at path v = atGo path v.
-atGo : unsafe List String -> Value -> O.Option Value .
-atGo path v = case path of
+at : (path : List String | measure path) -> Value -> O.Option Value .
+at path v = case path of
     Nil -> O.Some v
-  | k :: r -> (case field k v of O.None -> O.None | O.Some inner -> atGo r inner).
+  | k :: r -> (case field k v of O.None -> O.None | O.Some inner -> at r inner).
+
+stringAt : List String -> Value -> O.Option String .
+stringAt path v = at path v |> O.andThen asString.
+
+intAt : List String -> Value -> O.Option Int .
+intAt path v = at path v |> O.andThen asInt.
 
 # the same JSON, whatever order an object's keys were written in (`==` would
 # compare the Maps' trees: std/map.fpr)
@@ -85,7 +127,7 @@ object kvs = Object (M.fromList S.compare kvs).
 
 strings : List String -> Value .
 strings xs = Sequence (textsGo xs Nil).
-textsGo : unsafe List String -> List Value -> List Value .
+textsGo : (xs : List String | measure xs) -> List Value -> List Value .
 textsGo xs acc = case xs of Nil -> rev acc Nil | x :: r -> textsGo r (Text x :: acc).
 
 # ---- rendering ---------------------------------------------------------------------

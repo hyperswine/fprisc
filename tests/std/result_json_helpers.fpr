@@ -1,0 +1,41 @@
+R = use "std/result".
+J = use "std/json".
+O = use "std/option".
+M = use "std/map".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+positive n = if n > 0 then Ok (n * 2) else Err "non-positive {n}".
+
+main =
+  # std/result
+  _ = check "R.check ok/err" (R.check True "bad" == Ok Unit and R.check False "bad" == Err "bad");
+  _ = check "R.traverse ok" (R.traverse positive [1, 2, 3] == Ok [2, 4, 6]);
+  _ = check "R.traverse short-circuits" (R.traverse positive [1, 0, 3] == Err "non-positive 0");
+  _ = check "R.each ok/err" (R.each positive [1, 2] == Ok Unit and R.each positive [1, 0 - 1, 2] == Err "non-positive -1");
+  _ = check "R.foldM ok" (R.foldM (fn acc x -> if x > 0 then Ok (acc + x) else Err "bad") 0 [1, 2, 3] == Ok 6);
+  _ = check "R.foldM err" (R.foldM (fn acc x -> if x > 0 then Ok (acc + x) else Err "bad") 0 [1, 0, 3] == Err "bad");
+  _ = check "R.firstErr" (R.firstErr [Ok Unit, Ok Unit] == Ok Unit and R.firstErr [Ok Unit, Err "a", Err "b"] == Err "a");
+
+  # std/json typed field accessors
+  v = case J.parse "\{\"name\":\"qos\",\"port\":6720,\"ok\":true,\"tags\":[\"a\",1,\"b\"],\"nested\":\{\"x\":42,\"s\":\"hi\"\}\}" of
+      Ok parsed -> parsed
+    | Err e -> error e;
+  _ = check "J.stringField / stringOr / stringIs" (
+        J.stringField "name" v == O.Some "qos"
+        and J.stringOr "def" "name" v == "qos"
+        and J.stringOr "def" "missing" v == "def"
+        and J.stringIs "qos" "name" v
+        and not (J.stringIs "other" "name" v));
+  _ = check "J.intField / intOr" (
+        J.intField "port" v == O.Some 6720
+        and J.intOr 80 "port" v == 6720
+        and J.intOr 80 "missing" v == 80);
+  _ = check "J.boolField / boolOr" (
+        J.boolField "ok" v == O.Some True
+        and J.boolOr False "ok" v == True
+        and J.boolOr False "missing" v == False);
+  _ = check "J.stringListField" (J.stringListField "tags" v == ["a", "b"] and J.stringListField "missing" v == Nil);
+  _ = check "J.objectField" (case J.objectField "nested" v of O.Some m -> M.size m == 2 | O.None -> False);
+  _ = check "J.stringAt / intAt" (J.stringAt ["nested", "s"] v == O.Some "hi" and J.intAt ["nested", "x"] v == O.Some 42);
+  print "std/result + std/json helper checks passed".

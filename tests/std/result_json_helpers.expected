@@ -1,0 +1,14 @@
+PASS R.check ok/err
+PASS R.traverse ok
+PASS R.traverse short-circuits
+PASS R.each ok/err
+PASS R.foldM ok
+PASS R.foldM err
+PASS R.firstErr
+PASS J.stringField / stringOr / stringIs
+PASS J.intField / intOr
+PASS J.boolField / boolOr
+PASS J.stringListField
+PASS J.objectField
+PASS J.stringAt / intAt
+std/result + std/json helper checks passed

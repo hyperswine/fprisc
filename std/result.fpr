@@ -48,3 +48,35 @@ oksGo : (rs : List (Result a e) | measure rs) -> List a -> List a .
 oksGo rs acc = case rs of
     Nil -> rev acc Nil
   | r :: rest -> (case r of Ok x -> oksGo rest (x :: acc) | Err _ -> oksGo rest acc).
+
+# turn a boolean condition into a Result guard
+check : Bool -> e -> Result Unit e .
+check True _ = Ok Unit.
+check False why = Err why.
+
+# map a fallible function over a list, stopping at the first failure
+traverse : (a -> Result b e) -> List a -> Result (List b) e .
+traverse f xs = traverseGo f xs Nil.
+traverseGo : (a -> Result b e) -> (xs : List a | measure xs) -> List b -> Result (List b) e .
+traverseGo f xs acc = case xs of
+    Nil -> Ok (rev acc Nil)
+  | x :: rest -> (case f x of Ok v -> traverseGo f rest (v :: acc) | Err e -> Err e).
+
+# run a fallible step over each element, stopping at the first failure
+each : (a -> Result b e) -> (xs : List a | measure xs) -> Result Unit e .
+each f xs = case xs of
+    Nil -> Ok Unit
+  | x :: rest -> (case f x of Ok _ -> each f rest | Err e -> Err e).
+
+# fallible left fold, stopping at the first failure
+foldM : (b -> a -> Result b e) -> b -> (xs : List a | measure xs) -> Result b e .
+foldM f acc xs = case xs of
+    Nil -> Ok acc
+  | x :: rest -> (case f acc x of Ok next -> foldM f next rest | Err e -> Err e).
+
+# first failure in a list of unit checks, or Ok Unit
+firstErr : (rs : List (Result Unit e) | measure rs) -> Result Unit e .
+firstErr rs = case rs of
+    Nil -> Ok Unit
+  | Err e :: _ -> Err e
+  | Ok _ :: rest -> firstErr rest.
