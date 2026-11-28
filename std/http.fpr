@@ -192,16 +192,16 @@ Options = { headerBytes : Int, bodyBytes : Int, timeoutMs : Int, trust : TLS.Tru
 defaults = {headerBytes = 16384, bodyBytes = 4194304, timeoutMs = 60000, trust = TLS.DefaultRoots, minimum = TLS.TLS12}.
 clientDefaults = defaults.
 invalid why = Err (T.Invalid why).
-controls : String -> Bool .
-controls text = not (S.allChars (fn c -> c >= 32 and c != 127) text).
+controls : String -> Int -> Bool .
+controls text at = not (S.allChars (fn c -> c >= 32 and c != 127) (if at <= 0 then text else S.dropLeft at text)).
 isTokenChar : Int -> Bool .
 isTokenChar c =
   (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
   strIndexOf (chr c) "!#$%&'*+-.^_`|~" >= 0.
 token : String -> Bool .
 token s = strlen s > 0 and S.allChars isTokenChar s.
-fieldValue : String -> Bool .
-fieldValue s = S.allChars (fn c -> c == 9 or (c >= 32 and c != 127)) s.
+fieldValue : String -> Int -> Bool .
+fieldValue s i = S.allChars (fn c -> c == 9 or (c >= 32 and c != 127)) (if i <= 0 then s else S.dropLeft i s).
 decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 (strlen text) 0 (2 ^ 62 - 1).
 digits : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> Result Int T.Failure .
 digits text i rem n hi =
@@ -228,7 +228,7 @@ parseUrl url =
   suffix = S.dropLeft cut rest;
   target = if suffix == "" then "/" else if S.startsWith "?" suffix then "/{suffix}" else suffix;
   if scheme != "http" and scheme != "https" then Err "unsupported scheme: {scheme}" else
-  if strlen authority == 0 or controls url or strIndexOf " " url >= 0 or strIndexOf "#" url >= 0 or strIndexOf "@" authority >= 0 then Err "invalid HTTP URL" else
+  if strlen authority == 0 or controls url 0 or strIndexOf " " url >= 0 or strIndexOf "#" url >= 0 or strIndexOf "@" authority >= 0 then Err "invalid HTTP URL" else
   parts = if S.startsWith "[" authority then
       end = strIndexOf "]" authority;
       if end < 2 then Err "invalid bracketed host" else
@@ -243,7 +243,7 @@ parseUrl url =
     port = if portText == "" then Ok (if scheme == "https" then 443 else 80) else decimal portText;
     case port of Err _ -> Err "bad port in the URL" | Ok p ->
       if host == "" or p < 1 or p > 65535 then Err "invalid host or port" else Ok {scheme = scheme, host = host, port = p, target = target}.
-validHeaders hs = L.all (fn pair -> case pair of (key, value) -> token key and fieldValue value and
+validHeaders hs = L.all (fn pair -> case pair of (key, value) -> token key and fieldValue value 0 and
   not (L.member (S.toLower key) ["host", "content-length", "transfer-encoding", "connection", "accept-encoding", "expect"])) hs.
 requestHead q u =
   host = if strIndexOf ":" u.host >= 0 then "[{u.host}]" else u.host;
@@ -290,7 +290,7 @@ headers budget left count acc pending conn = if count > 100 then (invalid "too m
       at = strIndexOf ":" raw;
       key = if at < 1 then "" else S.left at raw;
       value = if at < 0 then "" else S.dropLeft (at + 1) raw;
-      if at < 1 or not (token key) or not (fieldValue value) then (invalid "malformed HTTP header", rest, c) else
+      if at < 1 or not (token key) or not (fieldValue value 0) then (invalid "malformed HTTP header", rest, c) else
       headers budget (left - strlen raw - 2) (count + 1) ((S.toLower key, S.trim value) :: acc) rest c.
 readResponse : unsafe T.Budget -> Options -> String -> Int -> String -> T.Connection s -> (Result {status : Int, headers : List (String, String), body : String} T.Failure, T.Connection s) .
 readResponse budget options method interim pending conn = case line budget options.headerBytes pending conn of
@@ -300,7 +300,7 @@ readResponse budget options method interim pending conn = case line budget optio
           if (version != "HTTP/1.1" and version != "HTTP/1.0") or strlen code != 3 then invalid "malformed HTTP status" else decimal code
         | _ -> invalid "malformed HTTP status";
       case status of Err why -> (Err why, c) | Ok code ->
-        if code < 100 or code > 599 or controls statusLine then (invalid "malformed HTTP status", c) else
+        if code < 100 or code > 599 or controls statusLine 0 then (invalid "malformed HTTP status", c) else
         case headers budget (options.headerBytes - strlen statusLine - 2) 0 Nil rest c of
           (Err why, _, c2) -> (Err why, c2)
         | (Ok hs, body, c2) -> if code >= 100 and code < 200 then
@@ -333,7 +333,7 @@ untilEnd budget limit count acc conn = if count > limit then (invalid "HTTP body
 chunkSize text =
   semicolon = strIndexOf ";" text;
   digits = if semicolon < 0 then text else S.left semicolon text;
-  if strlen digits == 0 or not (fieldValue text) then invalid "invalid HTTP chunk size" else hexGo digits 0 (strlen digits) 0 (2 ^ 62 - 1).
+  if strlen digits == 0 or not (fieldValue text 0) then invalid "invalid HTTP chunk size" else hexGo digits 0 (strlen digits) 0 (2 ^ 62 - 1).
 hexGo : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> Result Int T.Failure .
 hexGo text i rem n hi =
   if rem <= 0 then Ok n
