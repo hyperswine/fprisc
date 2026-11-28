@@ -2,11 +2,13 @@
 import argparse
 import re
 import time
+from pathlib import Path
 
 from serial import Serial
 
 OK = b"00000000"
 SAMPLE_SECONDS = 60
+UPTIME = rb"FPR P4 UPTIME ms ([0-9a-f]{8})"
 
 
 class Console:
@@ -27,7 +29,7 @@ class Console:
                     print(line.decode(errors="replace"), flush=True)
                 return line
             self.pending += self.serial.read(512)
-        raise RuntimeError("Timed out waiting for P4 UART output")
+        raise TimeoutError("Timed out waiting for P4 UART output")
 
     def until(self, pattern, seconds=20):
         deadline = time.monotonic() + seconds
@@ -38,11 +40,24 @@ class Console:
                 return match
             if b"FAIL" in line:
                 raise RuntimeError(line.decode(errors="replace"))
-        raise RuntimeError(f"Did not receive {pattern!r}")
+        raise TimeoutError(f"Did not receive {pattern!r}")
 
     def send(self, letter, pattern):
         self.serial.write(letter)
         return self.until(pattern)
+
+    def wait_ready(self):
+        # The CH343's modem control lines can reset the target when the
+        # serial device opens. Retry this read-only query through boot.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            self.serial.write(b"H")
+            try:
+                self.until(UPTIME, seconds=1)
+                return
+            except TimeoutError:
+                continue
+        raise TimeoutError("P4 journal console did not become ready")
 
     def reset_and_check(self):
         self.serial.rts = True
@@ -84,7 +99,7 @@ def check_endurance(console, seconds):
     first = last = None
     while True:
         sample = time.monotonic()
-        now = int(console.send(b"H", rb"FPR P4 UPTIME ms ([0-9a-f]{8})")[1], 16)
+        now = int(console.send(b"H", UPTIME)[1], 16)
         if first is None:
             first = now
         if last is not None and not 0 < now - last <= (SAMPLE_SECONDS + 5) * 1000:
@@ -106,25 +121,61 @@ def check_endurance(console, seconds):
     print(f"Journal endurance PASS {elapsed:.3f} s, {seen} verified appends", flush=True)
 
 
+def arm_power_cut(console):
+    console.reset_and_check()
+    if console.records():
+        raise RuntimeError("Expected an empty journal after staging")
+    console.send(b"E", rb"FPR P4 SCRATCH " + OK)
+    console.send(b"1", rb"FPR P4 APPEND " + OK)
+    if console.records() != [1]:
+        raise RuntimeError("Expected one committed journal record")
+    console.send(b"2", rb"FPR P4 CUT READY")
+
+
+def wait_for_usb_cycle(port):
+    print("Disconnect all power from the P4 for at least two seconds, then reconnect.", flush=True)
+    device = Path(port)
+    deadline = time.monotonic() + 1800
+    detached = None
+    while time.monotonic() < deadline:
+        if not device.exists():
+            if detached is None:
+                detached = time.monotonic()
+                print("P4 USB-UART detached", flush=True)
+        elif detached is not None:
+            elapsed = time.monotonic() - detached
+            if elapsed < 1.6:
+                raise RuntimeError(f"P4 USB detach was too brief ({elapsed:.2f} s)")
+            print(f"P4 USB-UART reattached after {elapsed:.2f} s", flush=True)
+            return
+        time.sleep(0.1)
+    raise TimeoutError("No P4 USB disconnect and reconnect observed")
+
+
+def verify_recovery(console):
+    if console.records() != [1]:
+        raise RuntimeError("Expected only the committed record after power loss")
+    console.send(b"3", rb"FPR P4 APPEND " + OK)
+    if console.records() != [1, 3]:
+        raise RuntimeError("The journal did not resume after the torn append")
+    print("Journal power-cut recovery PASS", flush=True)
+
+
 def check(port, phase, seconds):
+    if phase in ("begin", "power-cycle"):
+        console = Console(port)
+        with console.serial:
+            arm_power_cut(console)
+            if phase == "power-cycle":
+                wait_for_usb_cycle(port)
+        if phase == "begin":
+            return
+
     console = Console(port)
     with console.serial:
-        if phase == "begin":
-            console.reset_and_check()
-            if console.records():
-                raise RuntimeError("Expected an empty journal after staging")
-            console.send(b"E", rb"FPR P4 SCRATCH " + OK)
-            console.send(b"1", rb"FPR P4 APPEND " + OK)
-            if console.records() != [1]:
-                raise RuntimeError("Expected one committed journal record")
-            console.send(b"2", rb"FPR P4 CUT READY")
-        elif phase == "recover":
-            if console.records() != [1]:
-                raise RuntimeError("Expected only the committed record after power loss")
-            console.send(b"3", rb"FPR P4 APPEND " + OK)
-            if console.records() != [1, 3]:
-                raise RuntimeError("The journal did not resume after the torn append")
-            print("Journal power-cut recovery PASS", flush=True)
+        console.wait_ready()
+        if phase in ("recover", "power-cycle"):
+            verify_recovery(console)
         elif phase == "endurance":
             check_endurance(console, seconds)
 
@@ -132,7 +183,7 @@ def check(port, phase, seconds):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port")
-    parser.add_argument("phase", choices=("begin", "recover", "endurance"))
+    parser.add_argument("phase", choices=("power-cycle", "begin", "recover", "endurance"))
     parser.add_argument("--seconds", type=int, default=7200)
     args = parser.parse_args()
     if args.seconds <= 0:

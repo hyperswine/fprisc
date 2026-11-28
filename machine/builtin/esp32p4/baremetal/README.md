@@ -117,9 +117,7 @@ outside its test ranges.
         --image build/p4-flash/selfcheck.bin
     python3 machine/builtin/esp32p4/baremetal/flash_bench.py install BACKUP SHA256 \
         --port PORT --mac MAC --image build/p4-flash/selfcheck.bin
-    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT begin
-    # Power-cycle the ESP32-P4 after the CUT READY marker.
-    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT recover
+    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT power-cycle
     python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT endurance
     python3 machine/builtin/esp32p4/baremetal/flash_bench.py restore BACKUP SHA256 \
         --port PORT --mac MAC
@@ -129,7 +127,10 @@ executes from internal SRAM. It exercises `lib/journal.fpr` during
 startup. The timed check programs and erases the scratch sector,
 confirms that a committed record survives power loss, and checks that
 the next record is skipped when power fails after its body is verified
-but before the commit marker is programmed. Endurance appends once per
+but before the commit marker is programmed. The checker holds the CH343
+serial session open until it sees the USB disconnect and reconnect. This
+prevents reopening the port from resetting the P4 before power is cut.
+Endurance appends once per
 minute for at least two hours and replays the complete log after reset.
 
 The journal shares the C3 raw record format. Its flash driver validates
