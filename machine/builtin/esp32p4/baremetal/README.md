@@ -151,3 +151,15 @@ for 5.23 seconds. The flash boot replayed committed record 1 and skipped
 record 2, whose body had been verified before the cut but whose commit
 marker was still erased. The next append succeeded and replay returned
 records 1 and 3 in order.
+
+The endurance run passed on the same P4 after 7,200.101 seconds, with
+121 acknowledged appends and a maximum sample interval of 60.015
+seconds. All 123 committed records matched before and after reset.
+
+The restore audit matched the original bootloader, factory app, NVS,
+PHY data and storage against the verified 32 MiB backup. It restored
+the original partition table, erased and checked the temporary
+allocation, and verified that flash outside the test ranges stayed
+unchanged through the restore. The bootloader confirmed the original
+factory app at `0x10000` over UART. The onboard C6 retained its
+installed firmware.
