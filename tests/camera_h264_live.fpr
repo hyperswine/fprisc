@@ -1,0 +1,18 @@
+# Manual live check of the H.264 camera service against a real X1C/X2D, without
+# the gateway: prints "camera-ready PORT GATE", then serves until killed. Read the
+# stream with:  curl -H "x-fpr-camera: GATE" http://127.0.0.1:PORT/stream
+#   CAMERA_CODE=... camera_h264_live HOST SERIAL CAFILE
+unsafe base.
+Camera = use "examples/printer-dashboard/cameraservice".
+P = use "../std/program".
+O = use "../std/option".
+main = case P.args Unit of
+    [host, serial, ca] ->
+      code = O.withDefault "" (P.env "CAMERA_CODE");
+      _ = if code == "" then P.fail 2 "CAMERA_CODE is not set" else Unit;
+      gate = "live-check-{Sys.nextId Unit}";
+      service = Camera.startH264 {host = host, port = 322, peer = serial, ca = ca, code = code, gate = gate, maxFrame = 4194304};
+      _ = print "camera-ready {service.port} {gate}";
+      _ = receive (myself 0);
+      0
+  | _ -> P.fail 2 "usage: CAMERA_CODE=... camera_h264_live HOST SERIAL CAFILE".

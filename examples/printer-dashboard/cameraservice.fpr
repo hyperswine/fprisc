@@ -16,8 +16,10 @@ S = use "std/string".
 O = use "std/option".
 Clock = use "std/clock".
 F = use "cameraframe".
-Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Captured Int Int String | Fault Int | Inspect).
-Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value).
+V = use "rtsph264".
+Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Captured Int Int String | Fault Int | Inspect
+  | Video Int Bool String String | NextVideo Int Int).
+Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value | Records Int (List String) String).
 now u = Sys.timeUs Unit / 1000.
 firstFrameMs = 12000.
 snapshotRequestMs = 18000.
@@ -26,10 +28,11 @@ snapshotFirstFrameMs = 22000.
 headerBudgetMs = snapshotFirstFrameMs + 2000.
 budget ms = case T.forMs ms of Ok b -> b | Err _ -> error "camera: invalid duration".
 ask me manager command = A.callWithin 500 me manager command.
-initial = {tickets = Nil, viewers = Nil, source = 0, epoch = 0, seq = 0, frame = "", error = False, last = 0, wall = 0, buckets = Nil, starts = 0}.
+initial = {tickets = Nil, viewers = Nil, source = 0, epoch = 0, seq = 0, frame = "", error = False, last = 0, wall = 0, buckets = Nil, starts = 0,
+  gop = Nil, gopBytes = 0, codec = ""}.
 stopSource state =
   _ = if state.source == 0 then Unit else _ = kill state.source; Unit;
-  {state | source = 0, epoch = state.epoch + 1, frame = "", error = False, last = 0, wall = 0, buckets = Nil}.
+  {state | source = 0, epoch = state.epoch + 1, frame = "", error = False, last = 0, wall = 0, buckets = Nil, gop = Nil, gopBytes = 0}.
 expire state =
   tickets = L.filter (fn pair -> case pair of (_, until) -> until > now Unit) state.tickets;
   viewers = L.filter (fn ticket -> L.any (fn pair -> case pair of (id, _) -> id == ticket) tickets) state.viewers;
@@ -67,8 +70,29 @@ dispatch cfg pool watcher manager from command state = case command of
   | Captured epoch wall bytes -> if epoch != state.epoch or from != state.source or state.viewers == Nil then (Refused, state) else
       (Accepted, {observed bytes state | wall = wall})
   | Fault epoch -> if epoch != state.epoch or from != state.source then (Refused, state) else (Accepted, {state | error = True, source = 0, frame = ""})
+  | Video epoch key record codec -> if epoch != state.epoch or from != state.source or state.viewers == Nil then (Refused, state) else
+      (Accepted, video key record codec (observed "" state))
+  | NextVideo ticket seq -> if not (L.member ticket state.viewers) then (Refused, state) else
+      fresh = renew ticket state;
+      (if state.error then (Broken, fresh) else
+        records = L.take 90 (L.reverse (L.filter (fn pair -> case pair of (n, _) -> n > seq) state.gop));
+        (case records of
+          Nil -> (Waiting, fresh)
+        | _ -> last = L.fold (fn m pair -> case pair of (n, _) -> if n > m then n else m) seq records;
+            (Records last (L.map (fn pair -> case pair of (_, r) -> r) records) state.codec, fresh)))
   | Inspect -> (Snapshot (statsWith cfg.staleMs state), state).
 stats state = statsWith 10000 state.
+# The current group of pictures, newest first: the latest keyframe and every frame
+# after it. A viewer joins at that keyframe; deltas before the first keyframe are
+# useless and dropped. Past the bound, wait for the next keyframe.
+gopFrames = 240.
+gopLimit = 8388608.
+video key record codec state =
+  entry = (state.seq, record);
+  if key then {state | gop = [entry], gopBytes = strlen record, codec = codec}
+  else if state.gop == Nil then state
+  else if L.length state.gop >= gopFrames or state.gopBytes + strlen record > gopLimit then {state | gop = Nil, gopBytes = 0}
+  else {state | gop = entry :: state.gop, gopBytes = state.gopBytes + strlen record}.
 managerStep cfg pool watcher me state =
   fresh = expire state;
   case receiveNow me of
@@ -125,6 +149,106 @@ snapshotWorker cfg pool watcher manager epoch me =
     # immediately poll that cache and publish the same capture as a new frame.
     _ = Clock.sleepMs (if remaining > 2500 then remaining else 2500);
     (True, Unit)); Unit.
+# ---- H.264 over RTSPS (X1C/X2D; see rtsph264.fpr) -----------------------------------
+# One reply to one request. Interleaved packets are not expected before PLAY's
+# reply; any that arrive with it are dropped (the stream starts at a keyframe anyway).
+replyStep deadline state =
+  (conn, buffer, found) = state;
+  (items, rest) = V.split buffer;
+  answers = L.filterMap (fn item -> case item of V.Answer r -> O.Some r | _ -> O.None) items;
+  case answers of
+    r :: _ -> (False, (conn, rest, [r]))
+  | Nil -> if now Unit >= deadline then (False, (conn, rest, Nil)) else
+      (result, next) = OT.readSome (budget 5000) 65536 conn;
+      (case result of
+        Err _ -> (False, (next, rest, Nil))
+      | Ok bytes -> (strlen bytes > 0, (next, rest + bytes, Nil))).
+exchange text conn =
+  (sent, written) = OT.writeAll (budget 3000) text conn;
+  case sent of
+    Err _ -> (Err "write failed", written)
+  | Ok _ -> (case Sys.loop (written, "", Nil) (replyStep (now Unit + 5000)) of
+      (next, rest, [r]) -> (Ok (r, rest), next)
+    | (next, _, _) -> (Err "no reply", next)).
+authLine cfg chal method uri = case chal of
+    [c] -> ["Authorization: " + V.digest "bblp" cfg.code c method uri]
+  | _ -> Nil.
+# DESCRIBE (with the Digest challenge), SETUP over TCP, PLAY.
+handshake cfg conn =
+  url = "rtsps://{cfg.host}:{cfg.port}/streaming/live/1";
+  (first, c1) = exchange (V.render "DESCRIBE" url 1 ["Accept: application/sdp"]) conn;
+  case first of
+    Err why -> (Err why, c1)
+  | Ok (r1, _) ->
+      chal = if V.status r1 == 401 then (case O.andThen V.challenge (V.header "www-authenticate" r1) of O.Some c -> [c] | O.None -> Nil) else Nil;
+      (second, c2) = if V.status r1 == 401 then exchange (V.render "DESCRIBE" url 2 (L.append ["Accept: application/sdp"] (authLine cfg chal "DESCRIBE" url))) c1 else (Ok (r1, ""), c1);
+      (case second of
+        Err why -> (Err why, c2)
+      | Ok (r2, _) -> if V.status r2 != 200 then (Err "DESCRIBE {V.status r2}", c2) else
+          base = O.withDefault url (V.header "content-base" r2);
+          (V.Sdp control profile sets) = V.sdp (V.body r2);
+          track = V.trackUrl base control;
+          (third, c3) = exchange (V.render "SETUP" track 3 (L.append ["Transport: RTP/AVP/TCP;unicast;interleaved=0-1"] (authLine cfg chal "SETUP" track))) c2;
+          (case third of
+            Err why -> (Err why, c3)
+          | Ok (r3, _) -> if V.status r3 != 200 then (Err "SETUP {V.status r3}", c3) else
+              session = O.withDefault "" (O.map (fn v -> O.withDefault v (L.head (S.split ";" v))) (V.header "session" r3));
+              (fourth, c4) = exchange (V.render "PLAY" base 4 (L.append ["Session: {session}", "Range: npt=0.000-"] (authLine cfg chal "PLAY" base))) c3;
+              (case fourth of
+                Err why -> (Err why, c4)
+              | Ok (r4, rest) -> if V.status r4 != 200 then (Err "PLAY {V.status r4}", c4) else
+                  (Ok {base = base, session = session, chal = chal, codec = V.codec profile, sets = sets, rest = rest}, c4)))).
+# Read, split, assemble frames, hand them to the manager; a keepalive every 4 s
+# (the X1C's session times out after 10 s).
+videoStep manager epoch me cfg setup state =
+  (conn, buffer, st, cseq, kept) = state;
+  (items, rest) = V.split buffer;
+  junk = L.any (fn item -> case item of V.Junk -> True | _ -> False) items;
+  (st2, frames) = L.fold (fn acc item -> case acc of (d, fs) -> (case item of
+      V.Packet 0 packet -> (case V.rtp d packet of (d2, more) -> (d2, L.append fs more))
+    | _ -> (d, fs))) (st, Nil) items;
+  delivered = L.all (fn f -> case f of V.Frame key _ _ -> (case ask me manager (Video epoch key (V.frameRecord f) setup.codec) of Ok Accepted -> True | _ -> False)) frames;
+  if junk or not delivered then (False, (conn, rest, st2, cseq, kept)) else
+  due = now Unit - kept >= 4000;
+  (pinged, c1) = if not due then (Ok 0, conn) else
+    OT.writeAll (budget 2000) (V.render "GET_PARAMETER" setup.base cseq (L.append ["Session: {setup.session}"] (authLine cfg setup.chal "GET_PARAMETER" setup.base))) conn;
+  (case pinged of
+    Err _ -> (False, (c1, rest, st2, cseq, kept))
+  | Ok _ ->
+      (cseq2, kept2) = if due then (cseq + 1, now Unit) else (cseq, kept);
+      (result, c2) = OT.attemptRead (budget 1000) 65536 c1;
+      (case result of
+        Ok (T.Data bytes) -> (True, (c2, rest + bytes, st2, cseq2, kept2))
+      | Ok (T.ReadWait interest) -> (case OT.pause (budget 200) interest c2 of (_, c3) -> (True, (c3, rest, st2, cseq2, kept2)))
+      | _ -> (False, (c2, rest, st2, cseq2, kept2)))).
+h264Worker cfg pool watcher manager epoch me =
+  limit = budget 5000;
+  _ = case OT.connectWith (T.watchWait watcher) limit pool cfg.host cfg.port 65536 of
+      OT.OpenFailed _ -> Unit
+    | OT.Opened tcp -> (case OT.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
+        OT.OpenFailed _ -> Unit
+      | OT.Opened secure ->
+          (ready, conn) = handshake cfg secure;
+          final = case ready of
+              Err _ -> conn
+            | Ok setup -> (case Sys.loop (conn, setup.rest, V.initialDepacketizer setup.sets, 5, now Unit) (videoStep manager epoch me cfg setup) of
+                (last, _, _, _, _) -> last);
+          _ = OT.close final;
+          Unit);
+  _ = ask me manager (Fault epoch);
+  Unit.
+videoHead = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n".
+videoViewerStep waitMs me manager ticket state =
+  (conn, seq, begun, until) = state;
+  (alive, checked) = connected conn;
+  if not alive or now Unit >= until then (False, (checked, seq, begun, until)) else
+  case ask me manager (NextVideo ticket seq) of
+    Ok (Records last records codec) ->
+      pieces = if begun then records else videoHead :: V.record 0 0 codec :: records;
+      (sent, next) = ownedParts (budget 3000) pieces checked;
+      (case sent of Ok _ -> True | Err _ -> False, (next, last, True, now Unit + waitMs))
+  | Ok Waiting -> _ = Clock.sleepMs 15; (True, (checked, seq, begun, until))
+  | _ -> (False, (checked, seq, begun, until)).
 respond status body connection =
   (_, next) = ownedParts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
 respondStats value connection =
@@ -166,7 +290,8 @@ handle cfg manager ticket raw me =
             | _ -> respond 503 "Camera unavailable\n" next)
           | Ok _ -> (case ask me manager (Join ticket) of
               Ok Accepted ->
-                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + cfg.firstFrameMs) (viewerStep cfg.waitMs me manager ticket cfg.maxFrame);
+                (last, _, begun, _) = if cfg.video then Sys.loop (next, 0, False, now Unit + cfg.firstFrameMs) (videoViewerStep cfg.waitMs me manager ticket)
+                  else Sys.loop (next, 0, False, now Unit + cfg.firstFrameMs) (viewerStep cfg.waitMs me manager ticket cfg.maxFrame);
                 if begun then last else respond 503 "Camera unavailable\n" last
             | _ -> respond 503 "Camera busy\n" next));
       _ = OT.close final;
@@ -182,9 +307,10 @@ acceptStep cfg manager listener me count = case IO.ready listener of
           Ok Accepted -> _ = A.spawnWith (A.Static 16) (handle cfg manager ticket fd); Unit
         | _ -> _ = IO.close fd; Unit);
         (True, count + 1)).
-start cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = worker cfg, staleMs = 10000, waitMs = 12000, firstFrameMs = firstFrameMs}.
+start cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = worker cfg, staleMs = 10000, waitMs = 12000, firstFrameMs = firstFrameMs, video = False}.
+startH264 cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = h264Worker cfg, staleMs = 5000, waitMs = 6000, firstFrameMs = 10000, video = True}.
 startSnapshot cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = snapshotWorker cfg,
-  staleMs = cfg.intervalMs + snapshotRequestMs, waitMs = cfg.intervalMs + snapshotFirstFrameMs, firstFrameMs = snapshotFirstFrameMs}.
+  staleMs = cfg.intervalMs + snapshotRequestMs, waitMs = cfg.intervalMs + snapshotFirstFrameMs, firstFrameMs = snapshotFirstFrameMs, video = False}.
 startUsing cfg =
   pool = case T.resolverCreate 1 of Ok p -> p | Err _ -> error "camera: resolver unavailable";
   watcher = R.start Unit;
