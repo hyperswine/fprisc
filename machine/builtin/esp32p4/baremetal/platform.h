@@ -19,3 +19,10 @@ static inline void p4_wait_interrupt(void) {
        the interrupt window after WFI to dispatch it. */
     __asm__ volatile("wfi\ncsrsi mstatus, 8\ncsrci mstatus, 8" ::: "memory");
 }
+
+void p4_sdio_probe(void);
+bool p4_sdio_start(void);
+bool p4_sdio_ready(void);
+void p4_sdio_reset_companion(void);
+void p4_sdio_pulse_companion_en(void);
+int p4_sdio_hci(unsigned step, const uint8_t *command, unsigned size);

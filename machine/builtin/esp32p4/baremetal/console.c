@@ -58,7 +58,6 @@ void p4_hex(uint32_t value) {
     write_bytes(output, sizeof(output));
 }
 
-extern void p4_sdio_probe(void);
 static uint8_t wait_for_query(void) {
     const volatile uint32_t *const fifo = (const volatile uint32_t *)UART0;
     const volatile uint32_t *const status = (const volatile uint32_t *)STATUS;
@@ -69,17 +68,55 @@ static uint8_t wait_for_query(void) {
     }
 }
 
+static V try_read_byte(V unit) {
+    (void)unit;
+    const volatile uint32_t *const fifo = (const volatile uint32_t *)UART0;
+    const volatile uint32_t *const status = (const volatile uint32_t *)STATUS;
+    return TAG((*status & 0xffu) ? (int)(uint8_t)*fifo : -1);
+}
+FPR_FN(fpr_g_EspIO_x2etryReadByte, try_read_byte, 1);
+
+static V reset_companion(V unit) {
+    (void)unit;
+    /* Exercise recovery by pulsing EN without changing host transport state. */
+    p4_sdio_pulse_companion_en();
+    return V_UNIT;
+}
+FPR_FN(fpr_g_P4Test_x2eresetCompanion, reset_companion, 1);
+
+static V stats(V unit) {
+    (void)unit;
+    fpr_builtin_heap_stats heap;
+    fpr_builtin_heap_get_stats(&heap);
+    p4_puts("FPR P4 BLE STATS ms=");
+    p4_hex((uint32_t)(p4_clock_now_us() / 1000));
+    p4_puts(" live=");
+    p4_hex(heap.live_bytes);
+    p4_puts(" peak=");
+    p4_hex(heap.peak_bytes);
+    p4_puts("\n");
+    return V_UNIT;
+}
+FPR_FN(fpr_g_P4Test_x2estats, stats, 1);
+
 extern V fpr_fn_main(void);
 void p4_main(void) {
     static _Alignas(16) unsigned char heap[8192];
     fpr_set_tp(&fpr_harts[0]);
     fpr_builtin_heap_init(heap, heap + sizeof(heap));
     uint8_t query = wait_for_query();
-    fpr_fn_main();
-    if (query == 'B') p4_sdio_probe();
-    if (query == 'T' || query == 'G') {
+    if (query != 'B') {
         p4_clock_init();
         p4_irq_init();
+    }
+    V result = fpr_fn_main();
+    if (ISINT(result) && UNTAG(result) != 0) {
+        p4_puts("P4 Builtin main failed ");
+        p4_hex((uint32_t)UNTAG(result));
+        p4_puts("\n");
+    }
+    if (query == 'B') p4_sdio_probe();
+    if (query == 'T' || query == 'G') {
         write_string(p4_trap_check() ? "P4 machine trap PASS\n" : "P4 machine trap FAIL\n");
         write_string(p4_clock_check() ? "P4 monotonic deadline IRQ PASS\n" :
                                        "P4 monotonic deadline IRQ FAIL\n");

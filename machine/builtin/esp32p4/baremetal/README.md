@@ -59,3 +59,44 @@ wiring. It drives the same active-low GPIO35 input as BOOT using DTR,
 with RTS deasserted. A synthetic 7 ms bounce on both edges produced six
 hardware IRQs and two transitions after 25 ms of stability. The check
 returns the board to normal flash boot.
+
+## Standalone Builtin BLE advertising
+
+Set `P4_SOURCE` to the path of a custom Builtin program when building a
+RAM image. Import the port's `lib/ble.fpr` from that program. `start` takes a
+canonical 128-bit UUID string and returns zero on success. An active
+advertiser can be started again with the same UUID. Call `service`
+regularly so the P4 can detect and recover from companion resets.
+`stop` disables advertising. This board profile uses the installed
+ESP-Hosted controller firmware on the C6 and the P4's native SDIO
+driver. The advertiser shares HCI command construction and response
+checking with ESP32-C3.
+
+The sample exposes serial commands for start, stop, statistics, and a
+physical C6 EN pulse. On macOS, build the shared CoreBluetooth observer
+and run:
+
+    P4_BLE_SAMPLE=1 machine/builtin/esp32p4/baremetal/build.sh build/p4-ble
+    swiftc machine/builtin/esp32c3/baremetal/radio/observe.swift \
+        -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist \
+        -Xlinker machine/builtin/esp32c3/baremetal/radio/BluetoothInfo.plist \
+        -o build/p4-ble/observe
+    python3 machine/builtin/esp32p4/baremetal/check_ble.py PORT \
+        build/p4-ble/selfcheck.bin build/p4-ble/observe --seconds 1800
+
+The check requires discovery of `ACAF3791-694C-4F66-AC82-12C4D04D35D9`,
+a full 30-second scan with no matching advertisement after stop, and
+rediscovery after three stop/start cycles and after the EN pulse. The
+endurance option samples the P4 Builtin heap and repeats discovery once
+per minute. It measures the P4 host heap. The C6 controller's internal
+allocator is outside its instrumentation.
+
+On the attached board the RAM prototype passed 1,800.340 seconds of
+endurance with 31 Mac discoveries and zero live or peak P4 Builtin heap
+bytes. The release build repeated discovery, silence, restart and
+recovery after a physical C6 EN pulse with host state left intact.
+It also passed the arithmetic, GPIO and HCI Reset checks again.
+
+Custom Builtin code can use `lib/clock.fpr` for millisecond timestamps
+and absolute deadlines. The release image verified a 75 ms sleep
+through the FP-RISC clock API.

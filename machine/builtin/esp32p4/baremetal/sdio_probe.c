@@ -1,4 +1,7 @@
 #include <stdbool.h>
+#include <errno.h>
+#include "hci.h"
+#include "platform.h"
 #include <stdint.h>
 
 #define REG(address) (*(volatile uint32_t *)(uintptr_t)(address))
@@ -109,7 +112,7 @@ enum {
     DATA_ERRORS = BIT(7) | BIT(9) | BIT(10) | BIT(11) | BIT(12) | BIT(13) | BIT(15),
     SDIO_FN1 = BIT(28), INCREMENT = BIT(26),
     TOKEN = 0x44, PACKET_LEN = 0x60, OPEN_PATH = 0x8c, PACKET_END = 0x1f800,
-    HOSTED_HEADER = 12, IF_HCI = 4, IF_PRIVATE = 5, H4_EVENT = 4
+    HOSTED_HEADER = 12, IF_HCI = 4, IF_PRIVATE = 5
 };
 
 static bool enable_function(void) {
@@ -250,66 +253,83 @@ static bool identify_companion(const uint8_t *packet, unsigned count) {
     return false;
 }
 
-static bool hci_reset(void) {
+static unsigned read_count, write_count;
+static bool linked;
+
+static bool startup_frame(void) {
     if (!enable_function() || !open_data_path()) {
         line("P4 SDIO function or data path status ", REG(RAW));
         return false;
     }
-    unsigned read_count = 0, count;
-    uint8_t bytes[512] = {0};
-    for (unsigned tries = 0; tries < 50 && !read_count; ++tries) {
+    unsigned count;
+    uint8_t bytes[512];
+    for (unsigned tries = 0; tries < 50; ++tries) {
         delay(20000);
         if (!receive_packet(bytes, &count, &read_count)) return false;
+        if (count) return identify_companion(bytes, count);
     }
-    if (!read_count || !identify_companion(bytes, count)) {
-        p4_puts("P4 SDIO expected ESP32-C6 startup frame\n");
-        return false;
-    }
+    p4_puts("P4 SDIO expected ESP32-C6 startup frame\n");
+    return false;
+}
 
+/* Command type is in the host TX header and in the companion RX payload. */
+int p4_sdio_hci(unsigned step, const uint8_t *command_packet, unsigned command_size) {
+    if (!linked || command_size < 4 || command_size > C3_HCI_MAX_COMMAND) return -EINVAL;
     uint32_t token;
-    if (!read_register(TOKEN, &token) || !((token >> 16) & 0xfffu)) {
-        line("P4 SDIO token read status ", REG(RAW));
-        return false;
-    }
-    line("P4 SDIO tokens ", token);
-    /* TX carries the H4 type in the header. This companion sends it in RX payload. */
-    uint8_t reset[] = {IF_HCI, 0, 3, 0, HOSTED_HEADER, 0, 0, 0, 0, 0, 0, 1, 3, 0x0c, 0, 0};
-    if (!transfer(true, PACKET_END - 15, reset, sizeof(reset))) {
-        line("P4 SDIO HCI TX status ", REG(RAW));
-        return false;
-    }
-    p4_puts("P4 SDIO HCI Reset submitted\n");
-    for (unsigned tries = 0; tries < 150; ++tries) {
-        if (!receive_packet(bytes, &count, &read_count)) return false;
-        if (!count) {
-            delay(20000);
-            continue;
+    bool ready = false;
+    for (unsigned tries = 0; tries < 50; ++tries) {
+        if (!read_register(TOKEN, &token)) return -EIO;
+        unsigned available = ((token >> 16) - write_count) & 0xfffu;
+        if (available && available <= 0x7ffu) {
+            ready = true;
+            break;
         }
+        delay(2000);
+    }
+    if (!ready) return -ETIMEDOUT;
+    unsigned payload = command_size - 1;
+    unsigned size = HOSTED_HEADER + payload;
+    uint8_t frame[HOSTED_HEADER + C3_HCI_MAX_COMMAND + 3] = {IF_HCI, 0};
+    frame[2] = payload;
+    frame[4] = HOSTED_HEADER;
+    frame[11] = command_packet[0];
+    for (unsigned i = 0; i < payload; ++i) frame[HOSTED_HEADER + i] = command_packet[i + 1];
+    if (!transfer(true, PACKET_END - size, frame, (size + 3u) & ~3u)) {
+        line("P4 SDIO HCI TX status ", REG(RAW));
+        return -EIO;
+    }
+    write_count = (write_count + 1) & 0xfffu;
+
+    uint8_t bytes[512];
+    for (unsigned tries = 0; tries < 150; ++tries) {
+        unsigned count;
+        if (!receive_packet(bytes, &count, &read_count)) return -EIO;
         for (unsigned at = 0; at + HOSTED_HEADER <= count;) {
             const uint8_t *p = bytes + at;
             unsigned length = p[2] | (p[3] << 8);
             unsigned offset = p[4] | (p[5] << 8);
             if (offset < HOSTED_HEADER || offset > count - at ||
-                length > count - at - offset) return false;
+                length > count - at - offset) return -EIO;
             const uint8_t *event = p + offset;
-            line("P4 SDIO RX interface ", p[0] & 15);
             if ((p[0] & 15) == IF_HCI) {
-                if (length == 7 && event[0] == H4_EVENT &&
-                    event[1] == 0x0e && event[2] == 4 && event[4] == 3 &&
-                    event[5] == 0x0c && event[6] == 0) {
-                    p4_puts("P4 HCI RX 04 0e 04 ");
-                    p4_hex(event[3]);
-                    p4_puts(" 03 0c 00\n");
-                    return true;
+                int rc = c3_hci_adv_complete(step, event, length);
+                if (rc) {
+                    if (rc == 1 && step == 0) {
+                        p4_puts("P4 HCI RX 04 0e 04 ");
+                        p4_hex(event[3]);
+                        p4_puts(" 03 0c 00\n");
+                    }
+                    return rc == 1 ? 0 : rc;
                 }
             }
             at += offset + length;
         }
+        delay(20000);
     }
-    return false;
+    return -ETIMEDOUT;
 }
 
-static void reset_companion(void) {
+void p4_sdio_pulse_companion_en(void) {
     enum { ENABLE_PIN = 54 };
     uint32_t pad = IOMUX + (ENABLE_PIN + 1) * 4;
     REG(pad) = (REG(pad) & ~(7u << 12)) | BIT(12);
@@ -323,8 +343,14 @@ static void reset_companion(void) {
     delay(1500000);
 }
 
-void p4_sdio_probe(void) {
-    reset_companion();
+void p4_sdio_reset_companion(void) {
+    linked = false;
+    p4_sdio_pulse_companion_en();
+}
+
+bool p4_sdio_start(void) {
+    p4_sdio_reset_companion();
+    read_count = write_count = 0;
     int init = init_host();
     if (init) {
         line("P4 SDIO init phase ", init);
@@ -333,16 +359,16 @@ void p4_sdio_probe(void) {
         line("P4 SDIO bus clock gate ", REG(CLKRST + 0x18));
         line("P4 SDIO root ", REG(CLKRST + 0x34));
         line("P4 SDIO divider ", REG(CLKRST + 0x38));
-        return;
+        return false;
     }
     if (!command(0, 0, INIT_CLOCKS, 0)) {
         line("P4 SDIO CMD0 status ", REG(RAW));
-        return;
+        return false;
     }
     uint32_t ocr;
     if (!command(5, 0, SHORT_RESPONSE, &ocr)) {
         line("P4 SDIO CMD5 status ", REG(RAW));
-        return;
+        return false;
     }
     line("P4 SDIO OCR ", ocr);
     uint32_t voltage = ocr & 0x00ff8000u;
@@ -352,16 +378,28 @@ void p4_sdio_probe(void) {
     }
     if (!(ocr & CARD_READY)) {
         line("P4 SDIO card ready timeout ", ocr);
-        return;
+        return false;
     }
     uint32_t rca, revision;
     if (!command(3, 0, SHORT_RESPONSE | CHECK_CRC, &rca) ||
         !command(7, rca & 0xffff0000u, SHORT_RESPONSE | CHECK_CRC | WAIT_DATA, 0) ||
         !read_direct(0, &revision)) {
         line("P4 SDIO select or CCCR status ", REG(RAW));
-        return;
+        return false;
     }
     line("P4 SDIO CCCR revision ", revision & 0xff);
-    p4_puts(hci_reset() ? "P4 SDIO HCI Reset Command Complete PASS\n" :
-                        "P4 SDIO HCI Reset failed\n");
+    linked = startup_frame();
+    return linked;
+}
+
+bool p4_sdio_ready(void) {
+    uint32_t ready;
+    return linked && read_direct(3, &ready) && (ready & 2);
+}
+
+void p4_sdio_probe(void) {
+    const uint8_t reset[] = {1, 3, 0x0c, 0};
+    bool passed = p4_sdio_start() && !p4_sdio_hci(0, reset, sizeof(reset));
+    p4_puts(passed ? "P4 SDIO HCI Reset Command Complete PASS\n" :
+                     "P4 SDIO HCI Reset failed\n");
 }

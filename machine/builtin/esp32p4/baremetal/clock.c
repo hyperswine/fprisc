@@ -1,3 +1,5 @@
+#include "bytes.h"
+#include <errno.h>
 #include "platform.h"
 
 #define REG(address) (*(volatile uint32_t *)(uintptr_t)(address))
@@ -75,3 +77,40 @@ bool p4_clock_check(void) {
     p4_puts("\n");
     return elapsed >= 150000 && elapsed < 160000 && alarms == 3;
 }
+
+static uint64_t load_stamp(V address) {
+    const uint8_t *bytes = buffer_ptr(address);
+    uint64_t stamp = 0;
+    for (unsigned i = 0; i < 8; ++i) stamp |= (uint64_t)bytes[i] << (8 * i);
+    return stamp;
+}
+
+static void store_stamp(V address, uint64_t stamp) {
+    uint8_t *bytes = buffer_ptr(address);
+    for (unsigned i = 0; i < 8; ++i) {
+        bytes[i] = (uint8_t)stamp;
+        stamp >>= 8;
+    }
+}
+
+static V now_ms(V address) {
+    store_stamp(address, p4_clock_now_us() / 1000);
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspClock_x2enowMs, now_ms, 1);
+
+static V after_ms(V address, V delta, V dest) {
+    if (!ISINT(delta) || UNTAG(delta) < 0) return TAG(-EINVAL);
+    uint64_t stamp = load_stamp(address);
+    if (stamp > (uint64_t)INT64_MAX - UNTAG(delta)) return TAG(-EINVAL);
+    store_stamp(dest, stamp + UNTAG(delta));
+    return TAG(0);
+}
+FPR_FN(fpr_g_EspClock_x2eafterMs, after_ms, 3);
+
+static V sleep_until(V address) {
+    uint64_t stamp = load_stamp(address);
+    if (stamp <= max_us / 1000) p4_clock_sleep_until(stamp * 1000);
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspClock_x2esleepUntil, sleep_until, 1);
