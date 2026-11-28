@@ -99,11 +99,18 @@ resolveModuleParsedWith record prefExt baseDir spec = do
       mkPath f = if take 1 f == "/" then f else baseDir </> f
   hits <- filterM (doesFileExist . mkPath) cands
   -- importer-relative first; then the toolchain home (Home.hs), so a
-  -- script anywhere can `use "sol/lib/base"` against the installed lib
+  -- script anywhere can `use "sol/lib/base"` against the installed lib,
+  -- and bare names like `use "proc"` fall back to `sol/lib/proc.sol`
   homeHits <- if null hits && take 1 name /= "/" then mapM underHome cands else pure []
-  let path = case (hits, [h | Just h <- homeHits]) of
-        (f : _, _) -> mkPath f
-        ([], h : _) -> h
+  let homeFound = [h | Just h <- homeHits]
+  libHits <-
+    if null hits && null homeFound && not ('/' `elem` name)
+      then mapM (underHome . ("sol/lib" </>)) cands
+      else pure []
+  let path = case (hits, homeFound, [h | Just h <- libHits]) of
+        (f : _, _, _) -> mkPath f
+        ([], h : _, _) -> h
+        ([], [], l : _) -> l
         _ -> case cands of (c : _) -> mkPath c; [] -> mkPath ""
   r <- parseModuleSourceWith record path
   pure $ case r of
