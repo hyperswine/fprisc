@@ -1,0 +1,29 @@
+profile builtin.
+Journal = use "../lib/journal".
+Serial.result : I32 -> Int -> Unit .
+
+verify p cursor =
+  if cursor <= 0 then 0 else
+    lengthByte = Addr.add p 64;
+    length = Mem.read8 lengthByte;
+    _ = Rc.release lengthByte;
+    if length == 4 and Mem.read32 p == I32.trunc 98765 then 1 else 0.
+
+record p =
+  rc = Journal.mount Unit;
+  if rc != 0 then 0 else
+    first = Journal.next "p4api" 0 p;
+    if first != 0 then verify p first else
+      _ = Mem.write32 p (I32.trunc 98765);
+      append = Journal.append "p4api" p 4;
+      if append != 0 then 0 else verify p (Journal.next "p4api" 0 p).
+
+main =
+  x = I32.trunc 12345;
+  y = I32.trunc 67;
+  actual = x * y + I32.trunc 89;
+  p = Mem.alloc 65;
+  journal = record p;
+  _ = Mem.free p;
+  _ = Rc.release p;
+  Serial.result actual (if actual == I32.trunc 827204 and journal == 1 then 1 else 0).

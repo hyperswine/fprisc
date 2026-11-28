@@ -1,0 +1,12 @@
+# Dedicated raw journal used by the ESP32-P4 flash configuration.
+EspFlashLog.mount : Unit -> Int .
+EspFlashLog.append : String -> Addr -> Int -> Int .
+EspFlashLog.next : String -> Int -> Addr -> Int .
+
+mount u = EspFlashLog.mount u.
+append name payload bytes = EspFlashLog.append name payload bytes.
+
+# Pass cursor 0 to start a scan. An output buffer needs 65 bytes.
+# The payload starts at byte 0 and its length is at byte 64.
+# Returns the next cursor, 0 at EOF, or an error below zero.
+next name cursor output = EspFlashLog.next name cursor output.

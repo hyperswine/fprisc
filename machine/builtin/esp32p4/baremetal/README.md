@@ -100,3 +100,47 @@ It also passed the arithmetic, GPIO and HCI Reset checks again.
 Custom Builtin code can use `lib/clock.fpr` for millisecond timestamps
 and absolute deadlines. The release image verified a 75 ms sleep
 through the FP-RISC clock API.
+
+## Cold-boot journal qualification
+
+The board's original flash layout contains a factory app and storage.
+The qualification tool adds one test OTA slot, an OTA selector, a
+64 KiB append-only journal, and a separate 4 KiB erase test sector.
+They use verified-erased space beyond the original partitions. The
+original partition-table sector and full flash image must be backed
+up before staging. The tool checks the original bootloader and factory
+app digests, verifies every write and, during restore, compares flash
+outside its test ranges.
+
+    P4_FLASH_CHECK=1 machine/builtin/esp32p4/baremetal/build.sh build/p4-flash
+    python3 machine/builtin/esp32p4/baremetal/flash_bench.py plan BACKUP SHA256 \
+        --image build/p4-flash/selfcheck.bin
+    python3 machine/builtin/esp32p4/baremetal/flash_bench.py install BACKUP SHA256 \
+        --port PORT --mac MAC --image build/p4-flash/selfcheck.bin
+    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT begin
+    # Power-cycle the ESP32-P4 after the CUT READY marker.
+    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT recover
+    python3 machine/builtin/esp32p4/baremetal/check_flash.py PORT endurance
+    python3 machine/builtin/esp32p4/baremetal/flash_bench.py restore BACKUP SHA256 \
+        --port PORT --mac MAC
+
+The flash image uses the board's existing second-stage bootloader and
+executes from internal SRAM. It exercises `lib/journal.fpr` during
+startup. The timed check programs and erases the scratch sector,
+confirms that a committed record survives power loss, and checks that
+the next record is skipped when power fails after its body is verified
+but before the commit marker is programmed. Endurance appends once per
+minute for at least two hours and replays the complete log after reset.
+
+The journal shares the C3 raw record format. Its flash driver validates
+both data partitions and bounds each transfer to the requested region.
+The scratch erase routine has a fixed, separate sector. After testing,
+restore puts back the original table, verifies the test allocation is
+erased, and checks the bootloader's factory app load message on UART.
+
+The P4 loader requires both mapped segments even for an SRAM-only
+application. The 65,616-byte bench image supplies them and starts at
+`0x4ff10000`. On the target, the bootloader selected `0xd10000`,
+the Builtin journal API and integer self-check passed, and the
+scratch sector passed program, full readback, erase, and full erased
+readback.

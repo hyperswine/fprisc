@@ -1,6 +1,9 @@
 #include "builtin.h"
 #include "i32.h"
 #include "platform.h"
+#if P4_FLASH_CHECK
+#include "flash.h"
+#endif
 
 enum { UART0 = 0x500ca000, STATUS = UART0 + 0x1c, FIFO_CAPACITY = 128 };
 
@@ -68,11 +71,15 @@ static uint8_t wait_for_query(void) {
     }
 }
 
-static V try_read_byte(V unit) {
-    (void)unit;
+int p4_uart_read_byte(void) {
     const volatile uint32_t *const fifo = (const volatile uint32_t *)UART0;
     const volatile uint32_t *const status = (const volatile uint32_t *)STATUS;
-    return TAG((*status & 0xffu) ? (int)(uint8_t)*fifo : -1);
+    return (*status & 0xffu) ? (int)(uint8_t)*fifo : -1;
+}
+
+static V try_read_byte(V unit) {
+    (void)unit;
+    return TAG(p4_uart_read_byte());
 }
 FPR_FN(fpr_g_EspIO_x2etryReadByte, try_read_byte, 1);
 
@@ -104,6 +111,14 @@ void p4_main(void) {
     static _Alignas(16) unsigned char heap[8192];
     fpr_set_tp(&fpr_harts[0]);
     fpr_builtin_heap_init(heap, heap + sizeof(heap));
+#if P4_FLASH_CHECK
+    p4_flash_init();
+    p4_clock_init();
+    p4_irq_init();
+    p4_puts("FPR P4 FLASH BOOT\n");
+    fpr_fn_main();
+    p4_flash_check();
+#else
     uint8_t query = wait_for_query();
     if (query != 'B') {
         p4_clock_init();
@@ -123,5 +138,6 @@ void p4_main(void) {
         if (query == 'G')
             write_string(p4_button_check() ? "P4 GPIO debounce PASS\n" : "P4 GPIO debounce FAIL\n");
     }
+#endif
     write_string("FPR DONE\n");
 }
