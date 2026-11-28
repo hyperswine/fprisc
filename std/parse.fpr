@@ -1,0 +1,330 @@
+# std/parse.fpr -- Safe, zero-copy parser combinators over strings.
+#
+#   P = use "std/parse".
+#   S = use "std/string".
+#
+#   header =
+#     P.succeed (fn tag pages size key -> { tag = tag, pages = pages, size = size, key = key })
+#     |> P.andMap (P.oneOf [P.literal "QREC", P.literal "QDEL", P.literal "QBLK"])
+#     |> P.skip (P.char 32) |> P.andMap P.natNoLeadZero
+#     |> P.skip (P.char 32) |> P.andMap P.natNoLeadZero
+#     |> P.skip (P.char 32) |> P.andMap (P.takeWhile1 (fn c -> c > 32) "key").
+#
+#   P.run header "QREC 1 42 hello"
+#     -- Ok { tag = "QREC", pages = 1, size = 42, key = "hello" }
+#     -- Err "line 1, column 6: expected a non-negative integer"
+#
+# Mirrors std/decode's pipeline style (`succeed` / `andMap` / `skip` / `andThen`
+# / `oneOf` / `check`) for raw text. Every combinator is total and verified
+# safe with explicit termination measures; repetition (`many`, `sepBy`) stops
+# cleanly if an iteration consumes zero bytes so zero-width parsers cannot loop.
+
+L = use "list".
+O = use "option".
+R = use "result".
+S = use "string".
+
+State = { src : String, pos : Int }.
+Parser a = Type (Parser (State -> Result (a, State) (Int, String))).
+
+apply : Parser a -> State -> Result (a, State) (Int, String) .
+apply (Parser f) st = f st.
+
+# ---- error location ---------------------------------------------------------------
+
+lineCol : String -> Int -> (Int, Int) .
+lineCol src target =
+  limit = if target < 0 then 0 else if target > strlen src then strlen src else target;
+  lineColGo src 0 limit 1 1.
+
+lineColGo : String -> Int -> (rem : Int | measure rem) -> Int -> Int -> (Int, Int) .
+lineColGo src i rem line col =
+  if rem <= 0 then (line, col)
+  else if charAt src i == 10 then lineColGo src (i + 1) (rem - 1) (line + 1) 1
+  else lineColGo src (i + 1) (rem - 1) line (col + 1).
+
+formatError : String -> Int -> String -> String .
+formatError src pos why =
+  (line, col) = lineCol src pos;
+  "line {line}, column {col}: {why}".
+
+# ---- running ----------------------------------------------------------------------
+
+# Run a parser and require it to consume the entire input string.
+run : Parser a -> String -> Result a String .
+run p src =
+  case apply (skip end p) { src = src, pos = 0 } of
+      Ok (v, _) -> Ok v
+    | Err (pos, why) -> Err (formatError src pos why).
+
+# Run a parser on a prefix of the input, returning `(value, remaining)`.
+runPrefix : Parser a -> String -> Result (a, String) String .
+runPrefix p src =
+  case apply p { src = src, pos = 0 } of
+      Ok (v, st) -> Ok (v, substr st.src st.pos (strlen st.src - st.pos))
+    | Err (pos, why) -> Err (formatError src pos why).
+
+# ---- primitives -------------------------------------------------------------------
+
+succeed : a -> Parser a .
+succeed x = Parser (fn st -> Ok (x, st)).
+
+fail : String -> Parser a .
+fail why = Parser (fn st -> Err (st.pos, why)).
+
+end : Parser Unit .
+end = Parser (fn st ->
+  if st.pos >= strlen st.src then Ok (Unit, st)
+  else Err (st.pos, "expected end of input")).
+
+atEnd : Parser Bool .
+atEnd = Parser (fn st -> Ok (st.pos >= strlen st.src, st)).
+
+peek : Parser (O.Option Int) .
+peek = Parser (fn st ->
+  if st.pos >= strlen st.src then Ok (O.None, st)
+  else Ok (O.Some (charAt st.src st.pos), st)).
+
+anyChar : Parser Int .
+anyChar = Parser (fn st ->
+  if st.pos >= strlen st.src then Err (st.pos, "unexpected end of input")
+  else Ok (charAt st.src st.pos, { st | pos = st.pos + 1 })).
+
+satisfy : (Int -> Bool) -> String -> Parser Int .
+satisfy pred want = Parser (fn st ->
+  if st.pos >= strlen st.src then Err (st.pos, "expected {want}")
+  else
+    c = charAt st.src st.pos;
+    if pred c then Ok (c, { st | pos = st.pos + 1 })
+    else Err (st.pos, "expected {want}")).
+
+char : Int -> Parser Int .
+char c = satisfy (fn b -> b == c) "'{chr c}'".
+
+literal : String -> Parser String .
+literal lit = Parser (fn st ->
+  n = strlen lit;
+  if st.pos + n <= strlen st.src and substr st.src st.pos n == lit
+    then Ok (lit, { st | pos = st.pos + n })
+    else Err (st.pos, "expected \"{lit}\"")).
+
+# ---- spans and whitespace ---------------------------------------------------------
+
+scanWhile : (Int -> Bool) -> String -> Int -> (rem : Int | measure rem) -> Int .
+scanWhile pred s i rem =
+  if rem <= 0 then i
+  else if pred (charAt s i) then scanWhile pred s (i + 1) (rem - 1)
+  else i.
+
+takeWhile : (Int -> Bool) -> Parser String .
+takeWhile pred = Parser (fn st ->
+  j = scanWhile pred st.src st.pos (strlen st.src - st.pos);
+  Ok (substr st.src st.pos (j - st.pos), { st | pos = j })).
+
+takeWhile1 : (Int -> Bool) -> String -> Parser String .
+takeWhile1 pred want = Parser (fn st ->
+  j = scanWhile pred st.src st.pos (strlen st.src - st.pos);
+  if j > st.pos then Ok (substr st.src st.pos (j - st.pos), { st | pos = j })
+  else Err (st.pos, "expected {want}")).
+
+skipWhile : (Int -> Bool) -> Parser Unit .
+skipWhile pred = Parser (fn st ->
+  j = scanWhile pred st.src st.pos (strlen st.src - st.pos);
+  Ok (Unit, { st | pos = j })).
+
+spaces : Parser Unit .
+spaces = skipWhile (fn c -> c == 32 or c == 9).
+
+whitespace : Parser Unit .
+whitespace = skipWhile S.isSpace.
+
+newline : Parser Unit .
+newline = Parser (fn st ->
+  n = strlen st.src;
+  if st.pos < n and charAt st.src st.pos == 10 then Ok (Unit, { st | pos = st.pos + 1 })
+  else if st.pos + 1 < n and charAt st.src st.pos == 13 and charAt st.src (st.pos + 1) == 10
+    then Ok (Unit, { st | pos = st.pos + 2 })
+  else Err (st.pos, "expected newline")).
+
+restOfLine : Parser String .
+restOfLine = takeWhile (fn c -> c != 10 and c != 13).
+
+# ---- numbers and hex --------------------------------------------------------------
+
+isHexDigit : Int -> Bool .
+isHexDigit c = S.isDigit c or (c >= 97 and c <= 102) or (c >= 65 and c <= 70).
+
+hexDigitValue : Int -> O.Option Int .
+hexDigitValue c | c >= 48 and c <= 57 = O.Some (c - 48).
+hexDigitValue c | c >= 97 and c <= 102 = O.Some (c - 87).
+hexDigitValue c | c >= 65 and c <= 70 = O.Some (c - 55).
+hexDigitValue _ = O.None.
+
+nat : Parser Int .
+nat =
+  takeWhile1 S.isDigit "a non-negative integer"
+  |> check (fn t -> S.toInt t |> R.mapError (fn u -> "integer out of range: {t}")).
+
+# "0" or a non-zero-leading decimal integer (TOML, QAR2, QLOG, SemVer).
+natNoLeadZero : Parser Int .
+natNoLeadZero =
+  takeWhile1 S.isDigit "a non-negative integer"
+  |> check (fn t ->
+      if strlen t > 1 and charAt t 0 == 48 then Err "leading zero in integer: {t}"
+      else S.toInt t |> R.mapError (fn u -> "integer out of range: {t}")).
+
+int : Parser Int .
+int = Parser (fn st ->
+  (neg, st1) =
+    if st.pos < strlen st.src and charAt st.src st.pos == 45 then (True, { st | pos = st.pos + 1 })
+    else if st.pos < strlen st.src and charAt st.src st.pos == 43 then (False, { st | pos = st.pos + 1 })
+    else (False, st);
+  j = scanWhile S.isDigit st1.src st1.pos (strlen st1.src - st1.pos);
+  if j <= st1.pos then Err (st.pos, "expected an integer")
+  else
+    digits = substr st1.src st1.pos (j - st1.pos);
+    raw = if neg then "-{digits}" else digits;
+    case S.toInt raw of
+        Ok n -> Ok (n, { st1 | pos = j })
+      | Err _ -> Err (st.pos, "integer out of range: {raw}")).
+
+hexGo : String -> Int -> (rem : Int | measure rem) -> Int -> Result Int String .
+hexGo s i rem acc =
+  if rem <= 0 then Ok acc
+  else case hexDigitValue (charAt s i) of
+      O.None -> Err "expected hexadecimal digit"
+    | O.Some d ->
+        if acc > 288230376151711743 then Err "hexadecimal integer out of range"
+        else hexGo s (i + 1) (rem - 1) (acc * 16 + d).
+
+hex : Parser Int .
+hex =
+  takeWhile1 isHexDigit "a hexadecimal integer"
+  |> check (fn t -> hexGo t 0 (strlen t) 0).
+
+hexN : Int -> Parser Int .
+hexN n = Parser (fn st ->
+  if n < 0 then Err (st.pos, "invalid hex width")
+  else if st.pos + n > strlen st.src then Err (st.pos, "expected {n} hexadecimal digits")
+  else case hexGo st.src st.pos n 0 of
+      Ok v -> Ok (v, { st | pos = st.pos + n })
+    | Err why -> Err (st.pos, why)).
+
+# ---- combinators ------------------------------------------------------------------
+
+map : (a -> b) -> Parser a -> Parser b .
+map f p = Parser (fn st ->
+  case apply p st of
+      Ok (v, st2) -> Ok (f v, st2)
+    | Err e -> Err e).
+
+andThen : (a -> Parser b) -> Parser a -> Parser b .
+andThen f p = Parser (fn st ->
+  case apply p st of
+      Ok (v, st2) -> apply (f v) st2
+    | Err e -> Err e).
+
+# Apply a parsed argument to a parsed function (pipeline-friendly, like Decode.andMap).
+andMap : Parser a -> Parser (a -> b) -> Parser b .
+andMap pa pf = Parser (fn st ->
+  case apply pf st of
+      Err e -> Err e
+    | Ok (f, st1) -> case apply pa st1 of
+        Err e -> Err e
+      | Ok (a, st2) -> Ok (f a, st2)).
+
+# Parse `ignored` after `p` and andMap `p`'s result.
+skip : Parser b -> Parser a -> Parser a .
+skip ignored p = Parser (fn st ->
+  case apply p st of
+      Err e -> Err e
+    | Ok (a, st1) -> case apply ignored st1 of
+        Err e -> Err e
+      | Ok (_, st2) -> Ok (a, st2)).
+
+between : Parser o -> Parser c -> Parser a -> Parser a .
+between open close p = open |> andThen (fn u -> p |> skip close).
+
+label : String -> Parser a -> Parser a .
+label msg p = Parser (fn st ->
+  case apply p st of
+      Ok res -> Ok res
+    | Err (pos, _) -> Err (pos, msg)).
+
+check : (a -> Result b String) -> Parser a -> Parser b .
+check ok p = Parser (fn st ->
+  case apply p st of
+      Err e -> Err e
+    | Ok (v, st2) -> case ok v of
+        Ok y -> Ok (y, st2)
+      | Err why -> Err (st.pos, why)).
+
+optional : Parser a -> Parser (O.Option a) .
+optional p = Parser (fn st ->
+  case apply p st of
+      Ok (v, st2) -> Ok (O.Some v, st2)
+    | Err _ -> Ok (O.None, st)).
+
+withDefault : a -> Parser a -> Parser a .
+withDefault d p = optional p |> map (O.withDefault d).
+
+# Try parsers in order; return the first Ok, or the furthest failure.
+oneOf : List (Parser a) -> Parser a .
+oneOf ps = Parser (fn st -> oneOfGo ps st (0 - 1, "no parser matched")).
+
+oneOfGo : (ps : List (Parser a) | measure ps) -> State -> (Int, String) -> Result (a, State) (Int, String) .
+oneOfGo ps st best =
+  (bp, _) = best;
+  case ps of
+      Nil -> Err (if bp < 0 then (st.pos, "no parser matched") else best)
+    | p :: rest -> case apply p st of
+        Ok res -> Ok res
+      | Err err ->
+          (ep, _) = err;
+          nextBest = if ep > bp then err else best;
+          oneOfGo rest st nextBest.
+
+# ---- safe repetition --------------------------------------------------------------
+
+# Zero or more occurrences. Stops cleanly if `p` fails or consumes zero bytes.
+many : Parser a -> Parser (List a) .
+many p = Parser (fn st -> manyGo p st (strlen st.src - st.pos) Nil).
+
+manyGo : Parser a -> State -> (rem : Int | measure rem) -> List a -> Result (List a, State) (Int, String) .
+manyGo p st rem acc =
+  if rem <= 0 then Ok (L.reverse acc, st)
+  else case apply p st of
+      Err _ -> Ok (L.reverse acc, st)
+    | Ok (v, st2) ->
+        if st2.pos <= st.pos then Ok (L.reverse acc, st)
+        else manyGo p st2 (rem - 1) (v :: acc).
+
+many1 : Parser a -> Parser (List a) .
+many1 p = succeed (fn x xs -> x :: xs) |> andMap p |> andMap (many p).
+
+sepBy : Parser sep -> Parser a -> Parser (List a) .
+sepBy sep p = Parser (fn st ->
+  case apply p st of
+      Err _ -> Ok (Nil, st)
+    | Ok (first, st1) -> sepTail sep p st1 (strlen st1.src - st1.pos) [first]).
+
+sepBy1 : Parser sep -> Parser a -> Parser (List a) .
+sepBy1 sep p = Parser (fn st ->
+  case apply p st of
+      Err e -> Err e
+    | Ok (first, st1) -> sepTail sep p st1 (strlen st1.src - st1.pos) [first]).
+
+sepTail : Parser sep -> Parser a -> State -> (rem : Int | measure rem) -> List a -> Result (List a, State) (Int, String) .
+sepTail sep p st rem acc =
+  if rem <= 0 then Ok (L.reverse acc, st)
+  else case apply sep st of
+      Err _ -> Ok (L.reverse acc, st)
+    | Ok (_, st1) -> case apply p st1 of
+        Err e -> Err e
+      | Ok (v, st2) ->
+          if st2.pos <= st.pos then Ok (L.reverse (v :: acc), st2)
+          else sepTail sep p st2 (rem - 1) (v :: acc).
+
+# Defer parser construction for recursive grammars.
+lazy : (Unit -> Parser a) -> Parser a .
+lazy thunk = Parser (fn st -> apply (thunk Unit) st).

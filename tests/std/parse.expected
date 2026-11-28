@@ -1,0 +1,19 @@
+PASS literal + end
+PASS trailing input rejected
+PASS runPrefix keeps remainder
+PASS nat
+PASS natNoLeadZero accepts 0
+PASS natNoLeadZero rejects 01
+PASS int positive/negative
+PASS hex and hexN
+PASS hexN wrong length
+PASS qrec with hash
+PASS qdel without hash
+PASS semver with tag
+PASS semver plain
+PASS sepBy empty
+PASS sepBy spaces and ints
+PASS many stops on zero-width parser
+PASS multiline error location
+PASS allChars
+std/parse checks passed
