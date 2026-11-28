@@ -94,6 +94,12 @@ The flash image prints each initialization phase over USB after the
 console identity query. The end-to-end test requires the C3 to print
 FPR BLE ADVERTISING and the Mac to discover the service UUID over the air.
 
+On the C3 bench board, the Mac discovered the service UUID on the
+initial start and after three controller stop/start cycles. Peak radio
+heap use was 23,488 bytes. Each stop returned live radio allocations to
+zero. The OTA test restored the original firmware and selection and
+verified the journal digest.
+
 ## Wi-Fi callback ABI
 
 Generate C declarations for the version 9 Wi-Fi adapter and its

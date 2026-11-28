@@ -71,7 +71,7 @@ void c3_irq_init(void) {
     MATRIX(CPU_ENABLE) = (1u << TIMER_LINE) | (1u << GPIO_LINE);
 }
 
-_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc);
+_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc, uint32_t value, uint32_t saved_ra);
 
 bool c3_irq_dispatch(unsigned line) {
     if (line == TIMER_LINE) {
@@ -89,10 +89,12 @@ bool c3_irq_dispatch(unsigned line) {
 }
 
 __attribute__((interrupt("machine"))) void c3_trap(void) {
-    uint32_t cause, pc;
+    uint32_t cause, pc, value, saved_ra;
+    __asm__ volatile("mv %0, ra" : "=r"(saved_ra));
     __asm__ volatile("csrr %0, mcause" : "=r"(cause));
     uint32_t irq = UINT32_C(0x80000000);
     if ((cause & irq) && c3_irq_dispatch(cause & ~irq)) return;
     __asm__ volatile("csrr %0, mepc" : "=r"(pc));
-    c3_fatal_trap(cause, pc);
+    __asm__ volatile("csrr %0, mtval" : "=r"(value));
+    c3_fatal_trap(cause, pc, value, saved_ra);
 }

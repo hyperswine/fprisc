@@ -93,7 +93,7 @@ void c3_ble_start_advertising(void) {
     c3_coex_install_ble(&callbacks);
 #endif
     c3_console_text("BLE power\n");
-    if (c3_ble_power_up()) fpr_cpanic("BLE clock or ROM data init");
+    if (c3_ble_power_up()) fpr_cpanic("BLE low-power clock setup");
 #ifdef C3_COEX
     coex_update_lpclk_interval();
 #endif

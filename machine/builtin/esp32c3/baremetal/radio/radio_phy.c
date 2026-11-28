@@ -3,7 +3,7 @@
 #define REG(address) (*(volatile uint32_t *)(uintptr_t)(address))
 enum {
     EFUSE_MAC_LOW = 0x60008844, EFUSE_MAC_HIGH = 0x60008848,
-    RNG_DATA = 0x600260b0, MIE = 8, PHY_RF_CAL_FULL = 2,
+    RNG_DATA = 0x600260b0, MIE = 8, PHY_RF_CAL_FULL = 2, PHY_CAL_DATA_CHECK_FAIL = 1,
 };
 static unsigned users;
 static _Alignas(4) uint8_t calibration[1904];
@@ -27,7 +27,9 @@ int c3_radio_phy_acquire(void) {
     if (!users) {
         phy_bbpll_en_usb(true);
         int rc = register_chipv7_phy(c3_phy_init_data, calibration, PHY_RF_CAL_FULL);
-        if (rc) return rc;
+        /* The archive reports the checksum of the previous calibration
+         * data. Full calibration creates fresh data on an empty buffer. */
+        if (rc != 0 && rc != PHY_CAL_DATA_CHECK_FAIL) return rc;
     }
     ++users;
     return 0;

@@ -143,9 +143,11 @@ static void callback_vectors(void) {
 static unsigned timer_hits, gpio_hits, radio_hits;
 void c3_timer_ack(void) { ++timer_hits; }
 void c3_gpio_irq(void) { ++gpio_hits; }
-_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc) {
+_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc, uint32_t value, uint32_t saved_ra) {
     (void)cause;
     (void)pc;
+    (void)value;
+    (void)saved_ra;
     fail(__LINE__);
 }
 
@@ -230,8 +232,7 @@ void phy_bbpll_en_usb(bool enabled) { CHECK(enabled); ++usb_pll; }
 
 int register_chipv7_phy(const void *params, void *scratch, unsigned mode) {
     CHECK(params == c3_phy_init_data && scratch && mode == 2);
-    ++calibrations;
-    return 0;
+    return ++calibrations == 1 ? 1 : 0;
 }
 
 void phy_close_rf(void) { ++closed; }

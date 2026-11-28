@@ -29,11 +29,15 @@ static void put_hex(uint32_t value) {
     write_bytes(digits, sizeof(digits));
 }
 
-_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc) {
+_Noreturn void c3_fatal_trap(uint32_t cause, uint32_t pc, uint32_t value, uint32_t saved_ra) {
     puts_usb("C3 trap cause=0x");
     put_hex(cause);
     puts_usb(" pc=0x");
     put_hex(pc);
+    puts_usb(" mtval=0x");
+    put_hex(value);
+    puts_usb(" ra=0x");
+    put_hex(saved_ra);
     puts_usb("\n");
     for (;;) __asm__ volatile("wfi");
 }

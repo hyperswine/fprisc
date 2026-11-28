@@ -4,16 +4,17 @@
 
 #define REG(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
 enum {
-    WIFI_CLOCKS = 0x60026014, RADIO_COMMON_CLOCKS = 0x0078078f,
+    WIFI_CLOCKS = 0x60026014, RADIO_CLOCKS = 0x00fb9fcf, WIFI_I2C_CLK = 1u << 5,
     RADIO_POWER = 0x60008088, RADIO_ISOLATION = 0x6000808c,
     BT_FORCE_PD = 1u << 11, BT_FORCE_ISO = 1u << 22,
+    WIFI_FORCE_PD = 1u << 17, WIFI_FORCE_ISO = 1u << 28,
     XTAL_MHZ = 40,
 };
 static unsigned critical_depth;
 static uint32_t saved_irq;
 extern bool btdm_lpclk_select_src(uint32_t source);
 extern bool btdm_lpclk_set_div(uint32_t divider);
-extern int btdm_controller_rom_data_init(void);
+extern void btdm_controller_rom_data_init(void);
 extern void ets_delay_us(uint32_t);
 extern void ble_base_funcs_reset(void), ble_42_adv_funcs_reset(void);
 extern void ble_ext_adv_funcs_reset(void), ble_dtm_funcs_reset(void);
@@ -64,10 +65,13 @@ static void reset_rom_dispatch(void) {
 }
 
 int c3_ble_power_up(void) {
-    REG(WIFI_CLOCKS) |= RADIO_COMMON_CLOCKS;
+    REG(RADIO_POWER) &= ~WIFI_FORCE_PD;
+    REG(RADIO_ISOLATION) &= ~WIFI_FORCE_ISO;
     power_on();
+    REG(WIFI_CLOCKS) = (REG(WIFI_CLOCKS) | RADIO_CLOCKS) & ~WIFI_I2C_CLK;
     if (!btdm_lpclk_select_src(0) || !btdm_lpclk_set_div(XTAL_MHZ)) return -1;
-    return btdm_controller_rom_data_init();
+    btdm_controller_rom_data_init();
+    return 0;
 }
 
 int c3_ble_calibrate(void) {
@@ -76,6 +80,19 @@ int c3_ble_calibrate(void) {
 
 static void *allocate(uint32_t bytes) { return c3_radio_alloc(bytes); }
 static void assertion_failed(void) { __builtin_trap(); }
+
+/* The controller invokes these hooks even with BLE as the sole radio. */
+static void coex_wifi_sleep(int32_t state) { (void)state; }
+static void coex_status_bit(uint32_t type, uint32_t bits) { (void)type; (void)bits; }
+static int32_t coex_register_phase(void *callback) { (void)callback; return 0; }
+static int32_t coex_connection_priority(int32_t *low, int32_t *high) {
+    (void)low;
+    (void)high;
+    return 0;
+}
+static uint32_t coex_interval(void) { return 0; }
+static uint8_t coex_period(void) { return 0; }
+static void *coex_phase(void) { return NULL; }
 
 void c3_ble_install_platform(struct c3_btdm_osi *table) {
     table->interrupt_disable = disable_irq;
@@ -88,6 +105,14 @@ void c3_ble_install_platform(struct c3_btdm_osi *table) {
     table->rand = random_word;
     table->btdm_lpcycles_2_hus = cycles_to_half_us;
     table->btdm_hus_2_lpcycles = half_us_to_cycles;
+    table->coex_wifi_sleep_set = coex_wifi_sleep;
+    table->coex_core_ble_conn_dyn_prio_get = coex_connection_priority;
+    table->coex_schm_register_btdm_callback = coex_register_phase;
+    table->coex_schm_status_bit_set = coex_status_bit;
+    table->coex_schm_status_bit_clear = coex_status_bit;
+    table->coex_schm_interval_get = coex_interval;
+    table->coex_schm_curr_period_get = coex_period;
+    table->coex_schm_curr_phase_get = coex_phase;
     table->esp_hw_power_down = power_off;
     table->esp_hw_power_up = power_on;
     table->ets_delay_us = ets_delay_us;
