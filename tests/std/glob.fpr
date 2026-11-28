@@ -1,0 +1,21 @@
+Glob = use "std/glob".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+main =
+  _ = check "exact match" (Glob.match "foo.fpr" "foo.fpr" and not (Glob.match "foo.fpr" "bar.fpr"));
+  _ = check "star wildcard" (Glob.match "*.fpr" "main.fpr" and Glob.match "a*b*c" "axxxbyyyc" and not (Glob.match "*.fpr" "main.c"));
+  _ = check "question wildcard" (Glob.match "a?c" "abc" and not (Glob.match "a?c" "ac") and not (Glob.match "a?c" "abbc"));
+  _ = check "pathological stars terminate fast" (not (Glob.match "a*a*a*a*a*a*b" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaac"));
+  _ = check "unanchored matches any depth" (Glob.matchesPattern "*.tmp" "a/b/c.tmp" and Glob.matchesPattern "build/" "sub/build/out.o");
+  _ = check "anchored matches root prefix only" (Glob.matchesPattern "docs/*.md" "docs/readme.md" and not (Glob.matchesPattern "docs/*.md" "a/docs/readme.md"));
+  _ = check "leading slash anchors at root" (Glob.matchesPattern "/notes.txt" "notes.txt" and not (Glob.matchesPattern "/notes.txt" "sub/notes.txt"));
+  _ = check "validRule" (Glob.validRule "*.tmp" and Glob.validRule "docs/*.md" and not (Glob.validRule "../x") and not (Glob.validRule ""));
+  rules = Glob.parseRules "# comment\n.DS_Store\n\nbuild/\n/secret.key\n";
+  _ = check "parseRules + matchesAny" (
+        Glob.matchesAny rules "a/.DS_Store"
+        and Glob.matchesAny rules "x/build/a.o"
+        and Glob.matchesAny rules "secret.key"
+        and not (Glob.matchesAny rules "sub/secret.key")
+        and not (Glob.matchesAny rules "src/main.fpr"));
+  print "std/glob checks passed".
