@@ -1,0 +1,207 @@
+# RTSP over TLS with interleaved RTP, and H.264 depacketization, for Bambu
+# X1C/X2D cameras (LIVE555 servers). Pure functions; the camera service owns the
+# connection, its lifetime and the viewers.
+#
+# Observed on both printers (2026-11-28): Digest authentication (MD5), one video
+# track "track1" (H264/90000, packetization-mode=1, SPS/PPS in the SDP and again
+# before every IDR), slices as FU-A (sometimes single NAL units), one slice per
+# frame, the RTP marker bit on each frame's last packet, a keyframe about every
+# second. The X1C's session times out after 10 s; keep it alive well inside that.
+S = use "std/string".
+L = use "std/list".
+O = use "std/option".
+E = use "std/encoding".
+B = use "std/binary".
+
+# ---- MD5 (RFC 1321), for Digest authentication only ------------------------------
+mask32 x = band x 4294967295.
+rotl x c = mask32 (bor (BITSHIFTL x c) (BITSHIFTR (mask32 x) (32 - c))).
+md5Shifts = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+  5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+  4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+  6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21].
+md5K = [3614090360, 3905402710, 606105819, 3250441966, 4118548399, 1200080426, 2821735955, 4249261313,
+  1770035416, 2336552879, 4294925233, 2304563134, 1804603682, 4254626195, 2792965006, 1236535329,
+  4129170786, 3225465664, 643717713, 3921069994, 3593408605, 38016083, 3634488961, 3889429448,
+  568446438, 3275163606, 4107603335, 1163531501, 2850285829, 4243563512, 1735328473, 2368359562,
+  4294588738, 2272392833, 1839030562, 4259657740, 2763975236, 1272893353, 4139469664, 3200236656,
+  681279174, 3936430074, 3572445317, 76029189, 3654602809, 3873151461, 530742520, 3299628645,
+  4096336452, 1126891415, 2878612391, 4237533241, 1700485571, 2399980690, 4293915773, 2240044497,
+  1873313359, 4264355552, 2734768916, 1309151649, 4149444226, 3174756917, 718787259, 3951481745].
+bnot32 x = bxor x 4294967295.
+md5Pad msg =
+  n = strlen msg;
+  zeros = (55 - n % 64 + 64) % 64;
+  msg + chr 128 + S.repeat zeros (chr 0) + B.putU32le (mask32 (n * 8)) + B.putU32le (mask32 ((n * 8) / 4294967296)).
+md5Word block i = O.withDefault 0 (B.u32le (4 * i) block).
+md5Round block i a b c d =
+  (f, g) = if i < 16 then (bor (band b c) (band (bnot32 b) d), i)
+    else if i < 32 then (bor (band d b) (band (bnot32 d) c), (5 * i + 1) % 16)
+    else if i < 48 then (bxor b (bxor c d), (3 * i + 5) % 16)
+    else (bxor c (bor b (bnot32 d)), (7 * i) % 16);
+  k = O.withDefault 0 (L.get i md5K);
+  s = O.withDefault 0 (L.get i md5Shifts);
+  sum = mask32 (a + f + k + md5Word block g);
+  (d, mask32 (b + rotl sum s), b, c).
+md5Rounds : String -> (i : Int | measure (64 - i)) -> (Int, Int, Int, Int) -> (Int, Int, Int, Int) .
+md5Rounds block i state | i >= 64 = state.
+md5Rounds block i state =
+  (a, b, c, d) = state;
+  md5Rounds block (i + 1) (md5Round block i a b c d).
+md5Blocks : String -> (at : Int | measure (n - at)) -> (n : Int) -> (Int, Int, Int, Int) -> (Int, Int, Int, Int) .
+md5Blocks msg at n state | at >= n = state.
+md5Blocks msg at n state =
+  (a0, b0, c0, d0) = state;
+  (a, b, c, d) = md5Rounds (substr msg at 64) 0 state;
+  md5Blocks msg (at + 64) n (mask32 (a0 + a), mask32 (b0 + b), mask32 (c0 + c), mask32 (d0 + d)).
+md5 : String -> String .
+md5 msg =
+  padded = md5Pad msg;
+  (a, b, c, d) = md5Blocks padded 0 (strlen padded) (1732584193, 4023233417, 2562383102, 271733878);
+  E.hex (B.putU32le a + B.putU32le b + B.putU32le c + B.putU32le d).
+
+# ---- RTSP requests and replies ------------------------------------------------------
+# A challenge is (realm, nonce); Digest responses follow RFC 2617 without qop, as
+# LIVE555 issues them.
+digest user code chal method uri = case chal of (realm, nonce) ->
+  ha1 = md5 "{user}:{realm}:{code}";
+  ha2 = md5 "{method}:{uri}";
+  "Digest username=\"{user}\", realm=\"{realm}\", nonce=\"{nonce}\", uri=\"{uri}\", response=\"{md5 "{ha1}:{nonce}:{ha2}"}\"".
+quoted key text =
+  at = strIndexOf "{key}=\"" text;
+  if at < 0 then O.None else
+    rest = S.dropLeft (at + strlen key + 2) text;
+    close = strIndexOf "\"" rest;
+    if close < 0 then O.None else O.Some (substr rest 0 close).
+challenge header = if not (S.startsWith "Digest " header) then O.None else
+  case (quoted "realm" header, quoted "nonce" header) of (O.Some r, O.Some n) -> O.Some (r, n) | _ -> O.None.
+render method uri cseq lines = strJoin "\r\n" (L.append ["{method} {uri} RTSP/1.0", "CSeq: {cseq}", "User-Agent: fprisc-printer-host"] lines) + "\r\n\r\n".
+# A reply head: status code and headers (keys lower-cased).
+Reply = Type (Reply Int (List (String, String)) String).
+parseHead head body = case S.split "\r\n" head of
+    Nil -> O.None
+  | status :: lines -> (case S.split " " status of
+      _ :: code :: _ -> (case S.toInt code of
+          Ok n -> O.Some (Reply n (L.filterMap headerLine lines) body)
+        | Err _ -> O.None)
+    | _ -> O.None).
+headerLine line =
+  at = strIndexOf ":" line;
+  if at < 0 then O.None else O.Some (S.toLower (substr line 0 at), S.trim (S.dropLeft (at + 1) line)).
+header key reply = case reply of Reply _ hs _ -> O.map (fn p -> case p of (_, v) -> v) (L.find (fn p -> case p of (k, _) -> k == key) hs).
+status reply = case reply of Reply n _ _ -> n.
+body reply = case reply of Reply _ _ b -> b.
+
+# ---- the byte stream after PLAY: interleaved frames and replies, in any order ---------
+Item = Type (Packet Int String | Answer Reply | Junk).
+# Split as many complete items as `buffer` holds; answers the items (in order) and
+# what is left over. A reply may arrive between frames (LIVE555 sends RTCP before
+# its PLAY reply and video before its TEARDOWN reply).
+split buffer = splitGo buffer Nil 64.
+splitGo : String -> List Item -> (fuel : Int | measure fuel) -> (List Item, String) .
+splitGo buffer acc fuel | fuel <= 0 = (L.reverse acc, buffer).
+splitGo buffer acc fuel = if strlen buffer < 4 then (L.reverse acc, buffer) else
+  if charAt buffer 0 == 36 then
+    n = O.withDefault 0 (B.u16be 2 buffer);
+    if strlen buffer < 4 + n then (L.reverse acc, buffer) else
+      splitGo (S.dropLeft (4 + n) buffer) (Packet (charAt buffer 1) (substr buffer 4 n) :: acc) (fuel - 1)
+  else if S.startsWith "RTSP/" buffer then
+    at = strIndexOf "\r\n\r\n" buffer;
+    (if at < 0 then (L.reverse acc, buffer) else
+        head = substr buffer 0 at;
+        length = case parseHead head "" of O.Some r -> (case header "content-length" r of O.Some v -> (case S.toInt v of Ok k -> k | _ -> 0) | _ -> 0) | _ -> 0;
+        if strlen buffer < at + 4 + length then (L.reverse acc, buffer) else
+          item = case parseHead head (substr buffer (at + 4) length) of O.Some r -> Answer r | O.None -> Junk;
+          splitGo (S.dropLeft (at + 4 + length) buffer) (item :: acc) (fuel - 1))
+  else (L.reverse (Junk :: acc), "").
+
+# ---- SDP --------------------------------------------------------------------------------
+# The video track's control URL, profile-level-id and SPS/PPS from sprop-parameter-sets.
+Sdp = Type (Sdp String String (List String)).
+attribute prefix text = O.map (fn l -> S.trim (S.dropLeft (strlen prefix) l)) (L.find (fn l -> S.startsWith prefix l) (L.map S.dropCr (S.split "\n" text))).
+fmtpField key fmtp = O.map (fn kv -> S.dropLeft (strlen key + 1) kv) (L.find (fn kv -> S.startsWith (key + "=") kv) (L.map S.trim (S.split ";" fmtp))).
+sdp text =
+  lines = L.map S.dropCr (S.split "\n" text);
+  video = L.dropWhile (fn l -> not (S.startsWith "m=video" l)) lines;
+  control = O.withDefault "track1" (O.map (fn l -> S.dropLeft 10 l) (L.find (fn l -> S.startsWith "a=control:" l) video));
+  fmtp = O.withDefault "" (O.map afterSpace (L.find (fn l -> S.startsWith "a=fmtp:" l) video));
+  profile = O.withDefault "42e01f" (fmtpField "profile-level-id" fmtp);
+  sets = L.filterMap (fn b -> case E.fromBase64 b of Ok bytes -> (if strlen bytes > 0 then O.Some bytes else O.None) | _ -> O.None)
+    (S.split "," (O.withDefault "" (fmtpField "sprop-parameter-sets" fmtp)));
+  Sdp control (S.toLower profile) sets.
+afterSpace l = at = strIndexOf " " l; if at < 0 then "" else S.dropLeft (at + 1) l.
+trackUrl base control = if S.startsWith "rtsp" control then control else (if S.endsWith "/" base then base else base + "/") + control.
+
+# ---- RTP -> H.264 access units (RFC 6184: single NAL, STAP-A, FU-A) ----------------------
+# A frame is (key, rtp timestamp, Annex B bytes). SPS/PPS seen in the stream (or the
+# SDP) are put in front of every keyframe that lacks them, so each keyframe decodes on
+# its own and a viewer can join at any keyframe.
+Frame = Type (Frame Bool Int String).
+startCode = chr 0 + chr 0 + chr 0 + chr 1.
+Depacketizer = {sps : String, pps : String, nals : List String, ts : Int, fu : List String, fuOn : Bool, seq : Int, broken : Bool, key : Bool, hasSps : Bool}.
+initialDepacketizer : List String -> Depacketizer .
+initialDepacketizer sets = {sps = O.withDefault "" (L.find (fn n -> band (charAt n 0) 31 == 7) sets),
+  pps = O.withDefault "" (L.find (fn n -> band (charAt n 0) 31 == 8) sets),
+  nals = Nil, ts = 0 - 1, fu = Nil, fuOn = False, seq = 0 - 1, broken = False, key = False, hasSps = False}.
+nalType nal = band (charAt nal 0) 31.
+addNal : Depacketizer -> String -> Depacketizer .
+addNal st nal = if strlen nal == 0 then st else
+  t = nalType nal;
+  st1 = if t == 7 then {st | sps = nal, hasSps = True} else if t == 8 then {st | pps = nal} else st;
+  {st1 | nals = nal :: st1.nals, key = st1.key or t == 5}.
+# Finish the current access unit, if any. Broken units (a sequence gap since the
+# last keyframe) are dropped until the next keyframe.
+flush : Depacketizer -> (Depacketizer, List Frame) .
+flush st = if st.nals == Nil then (st, Nil) else
+  nals = L.reverse st.nals;
+  front = if st.key and not st.hasSps and strlen st.sps > 0 and strlen st.pps > 0 then [st.sps, st.pps] else Nil;
+  data = strJoin "" (L.map (fn n -> startCode + n) (L.append front nals));
+  broken = st.broken and not st.key;
+  next = {st | nals = Nil, key = False, hasSps = False, fu = Nil, fuOn = False, broken = broken};
+  (next, if broken or (not st.key and st.broken) then Nil else [Frame st.key st.ts data]).
+# Each step consumes at least two bytes; fuel (the payload length) bounds the walk.
+stap : String -> Int -> (fuel : Int | measure fuel) -> Depacketizer -> Depacketizer .
+stap payload at fuel st | fuel <= 0 = st.
+stap payload at fuel st = if at + 2 > strlen payload then st else
+  n = O.withDefault 0 (B.u16be at payload);
+  if n == 0 or at + 2 + n > strlen payload then st else stap payload (at + 2 + n) (fuel - 1) (addNal st (substr payload (at + 2) n)).
+nalUnit : Depacketizer -> String -> Depacketizer .
+nalUnit st payload =
+  t = band (charAt payload 0) 31;
+  if t >= 1 and t <= 23 then addNal st payload
+  else if t == 24 then stap payload 1 (strlen payload) st
+  else if t == 28 and strlen payload > 2 then
+    indicator = charAt payload 0;
+    hdr = charAt payload 1;
+    start = band hdr 128 != 0;
+    end = band hdr 64 != 0;
+    piece = S.dropLeft 2 payload;
+    st1 = if start then {st | fu = [piece, chr (bor (band indicator 224) (band hdr 31))], fuOn = True}
+      else if st.fuOn then {st | fu = piece :: st.fu} else {st | broken = True};
+    if end and st1.fuOn then addNal {st1 | fu = Nil, fuOn = False} (strJoin "" (L.reverse st1.fu)) else st1
+  else st.
+# Feed one RTP packet; answers the new state and any finished frames.
+rtp : Depacketizer -> String -> (Depacketizer, List Frame) .
+rtp st packet = if strlen packet < 13 or band (charAt packet 0) 192 != 128 then (st, Nil) else
+  cc = band (charAt packet 0) 15;
+  ext = band (charAt packet 0) 16 != 0;
+  marker = band (charAt packet 1) 128 != 0;
+  seq = O.withDefault 0 (B.u16be 2 packet);
+  ts = O.withDefault 0 (B.u32be 4 packet);
+  base = 12 + 4 * cc;
+  offset = if ext then base + 4 + 4 * O.withDefault 0 (B.u16be (base + 2) packet) else base;
+  if offset >= strlen packet then (st, Nil) else
+  gap = st.seq >= 0 and seq != band (st.seq + 1) 65535;
+  (st1, early) = if st.ts >= 0 and ts != st.ts then flush st else (st, Nil);
+  st2 = nalUnit {st1 | seq = seq, ts = ts, broken = st1.broken or gap} (S.dropLeft offset packet);
+  (st3, late) = if marker then flush st2 else (st2, Nil);
+  (st3, L.append early late).
+# The browser decoder's codec string, from the SDP profile-level-id (e.g. avc1.641029).
+codec profile = "avc1." + profile.
+
+# ---- the viewer wire format ---------------------------------------------------------------
+# One record per frame: u32be length of what follows, a kind byte (1 = keyframe,
+# 2 = delta frame), u32be timestamp in milliseconds, then the Annex B frame. The
+# stream opens with one kind-0 record whose payload is the codec string.
+record kind ms bytes = B.putU32be (5 + strlen bytes) + chr kind + B.putU32be (mask32 ms) + bytes.
+frameRecord frame = case frame of Frame key ts data -> record (if key then 1 else 2) (ts / 90) data.

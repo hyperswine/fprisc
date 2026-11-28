@@ -1,0 +1,43 @@
+# Offline checks for examples/printer-dashboard/rtsph264 against a recorded camera
+# session: MD5 vectors, the Digest response, SDP parsing, interleaved splitting and
+# H.264 access-unit assembly.
+#   rtsph264_check CAPTURE.bin SDP.txt OUT.h264
+R = use "examples/printer-dashboard/rtsph264".
+L = use "../std/list".
+S = use "../std/string".
+F = use "../std/file".
+P = use "../std/program".
+check name ok = _ = print (if ok then "ok   {name}" else "FAIL {name}"); ok.
+feed state items = L.fold (fn acc item -> case acc of (st, frames) -> (case item of
+    R.Packet 0 bytes -> (case R.rtp st bytes of (st2, fs) -> (st2, L.revOnto fs frames))
+  | _ -> (st, frames))) state items.
+drainStep state =
+  (buffer, acc, rounds) = state;
+  (items, rest) = R.split buffer;
+  next = feed acc items;
+  (items != Nil and rounds > 0, (rest, next, rounds - 1)).
+drain buffer state rounds = case Sys.loop (buffer, state, rounds) drainStep of (_, final, _) -> final.
+main = case P.args Unit of
+    [capture, sdpFile, out] ->
+      vectors = check "md5 empty" (R.md5 "" == "d41d8cd98f00b204e9800998ecf8427e") and
+        check "md5 abc" (R.md5 "abc" == "900150983cd24fb0d6963f7d28e17f72") and
+        check "md5 64+ bytes" (R.md5 "12345678901234567890123456789012345678901234567890123456789012345678901234567890" == "57edf4a22be3c955ac49da2e2107b67a");
+      dig = R.digest "Mufasa" "Circle Of Life" ("testrealm@host.com", "dcd98b7102dd2f0e8b11d0f600bfb0c093") "GET" "/dir/index.html";
+      digOk = check "digest response (RFC 2617 example without qop)" (S.contains "response=\"670fd8c2df070c60b045671b8b24ff02\"" dig);
+      chal = check "challenge" (R.challenge "Digest realm=\"LIVE555 Streaming Media\", nonce=\"abc\"" == Some ("LIVE555 Streaming Media", "abc"));
+      raw = case F.readBytes capture of Ok b -> b | Err e -> P.fail 2 e;
+      text = case F.readText sdpFile of Ok b -> b | Err e -> P.fail 2 e;
+      (R.Sdp control profile sets) = R.sdp text;
+      sdpOk = check "sdp control {control}, profile {profile}, {L.length sets} parameter sets" (control == "track1" and strlen profile == 6 and L.length sets == 2);
+      (st, rev) = drain raw (R.initialDepacketizer sets, Nil) 100000;
+      frames = L.reverse rev;
+      keys = L.length (L.filter (fn f -> case f of R.Frame k _ _ -> k) frames);
+      first = case frames of R.Frame k _ _ :: _ -> k | _ -> False;
+      bytes = L.fold (fn n f -> case f of R.Frame _ _ d -> n + strlen d) 0 frames;
+      _ = print "frames {L.length frames}, keyframes {keys}, {bytes} bytes Annex B";
+      shape = check "frames assembled" (L.length frames > 20 and keys >= 1);
+      annex = strJoin "" (L.map (fn f -> case f of R.Frame _ _ d -> d) (L.dropWhile (fn f -> case f of R.Frame k _ _ -> not k) frames));
+      _ = case F.writeText out annex of Ok _ -> Unit | Err e -> P.fail 2 e;
+      record = check "record framing" (strlen (R.record 1 0 "abc") == 12);
+      if vectors and digOk and chal and sdpOk and shape and record then 0 else P.fail 1 "rtsph264 checks failed"
+  | _ -> P.fail 2 "usage: rtsph264_check CAPTURE.bin SDP.txt OUT.h264".
