@@ -20,11 +20,12 @@ compile() {
 
 compile "$here/start.S" start.o
 compile "$here/console.c" console.o
+compile "$here/sdio_probe.c" sdio_probe.o
 compile "$root/runtime/runtime.c" runtime.o
 compile "$root/runtime/i32.c" i32.o
 compile "$root/machine/builtin/heap.c" heap.o
 compile "$root/machine/virt/memshim.c" memshim.o
 "$cc" -march=rv32imc -mabi=ilp32 -nostdlib -T "$here/ram.ld" \
     -Wl,--gc-sections,--no-relax,-Map=selfcheck.map \
-    start.o console.o runtime.o i32.o heap.o memshim.o guest.o -lgcc -o selfcheck.elf
+    start.o console.o sdio_probe.o runtime.o i32.o heap.o memshim.o guest.o -lgcc -o selfcheck.elf
 "${ESPTOOL:-esptool.py}" --chip esp32p4 elf2image -o selfcheck.bin selfcheck.elf

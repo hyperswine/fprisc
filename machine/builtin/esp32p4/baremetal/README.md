@@ -27,3 +27,18 @@ returned from FP-RISC main.
 
     P4 BARE METAL integer self-check: 827204 [PASS]
     FPR DONE
+
+## Board-specific BLE HCI check
+
+    python3 machine/builtin/esp32p4/baremetal/check.py --ble-hci PORT build/p4-baremetal/selfcheck.bin
+
+Use this mode on the qualified P4 board with the onboard ESP32-C6 and
+its installed ESP-Hosted firmware. The probe pulses companion EN on
+GPIO54, then uses SDMMC slot 1 in 1-bit mode at 400 kHz. GPIO18 and
+GPIO19 carry clock and command. GPIO14 is DAT0. The probe confirms the
+C6 chip ID in the startup frame and sends HCI Reset (opcode `0x0c03`)
+over the hardware SDIO link. The expected H4 response is
+`04 0e 04 01 03 0c 00`, a matching Command Complete with status zero.
+
+Both chips' flash contents stay intact. This checks the BLE controller
+command path and leaves Wi-Fi work deferred.

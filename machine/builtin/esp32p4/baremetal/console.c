@@ -48,12 +48,23 @@ static V serial_result(V value, V passed) {
 }
 FPR_FN(fpr_g_Serial_x2eresult, serial_result, 2);
 
-static void wait_for_query(void) {
+void p4_puts(const char *message) { write_string(message); }
+
+void p4_hex(uint32_t value) {
+    char output[8];
+    for (unsigned i = 0; i < sizeof(output); ++i)
+        output[i] = "0123456789abcdef"[(value >> (28 - i * 4)) & 15];
+    write_bytes(output, sizeof(output));
+}
+
+extern void p4_sdio_probe(void);
+static uint8_t wait_for_query(void) {
     const volatile uint32_t *const fifo = (const volatile uint32_t *)UART0;
     const volatile uint32_t *const status = (const volatile uint32_t *)STATUS;
     for (;;) {
         while (!(*status & 0xffu)) {}
-        if ((uint8_t)*fifo == '?') return;
+        uint8_t key = (uint8_t)*fifo;
+        if (key == '?' || key == 'B') return key;
     }
 }
 
@@ -62,7 +73,8 @@ void p4_main(void) {
     static _Alignas(16) unsigned char heap[8192];
     fpr_set_tp(&fpr_harts[0]);
     fpr_builtin_heap_init(heap, heap + sizeof(heap));
-    wait_for_query();
+    uint8_t query = wait_for_query();
     fpr_fn_main();
+    if (query == 'B') p4_sdio_probe();
     write_string("FPR DONE\n");
 }
