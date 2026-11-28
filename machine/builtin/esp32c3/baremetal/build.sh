@@ -91,13 +91,13 @@ wifi|wifi-sta|coex)
     python3 "$here/radio/generate_ftm.py" "$radio_reference" > wifi_ftm.c
     compile "$PWD/wifi_ftm.c" wifi_ftm.o
     python3 "$here/radio/generate_wifi.py" "$radio_package" > wifi_config.h
-    for src in wifi_hw radio_phy wifi_single wifi_services wifi_irq wifi_lib lib_support task os_queue task_clock btdm_services event_group os_timer
+    for src in wifi_hw radio_phy wifi_single wifi_services wifi_irq wifi_lib station_lib lib_support task os_queue task_clock btdm_services event_group os_timer
     do
-        compile "$here/radio/$src.c" "$src.o" -I"$PWD"
+        compile "$here/radio/$src.c" "$src.o" -I"$PWD" -DC3_RADIO_QUEUE_BYTES=2048
         set -- "$@" "$src.o"
     done
     if [ "$example" != wifi ]; then
-        for src in net_probe wifi_probe station_config station_lib; do
+        for src in net_probe wifi_probe station_config; do
             compile "$here/radio/$src.c" "$src.o" -I"$PWD"
             set -- "$@" "$src.o"
         done
@@ -125,11 +125,7 @@ wifi|wifi-sta|coex)
             set -- "$@" "$radio_package/esp-wifi-sys-esp32c3/libs/lib$library.a"
         done
     fi
-    set -- "$@" -lm -lc
-    if [ "$example" != wifi ]; then
-        set -- "$@" -lnosys
-    fi
-    set -- "$@" -Wl,--end-group ;;
+    set -- "$@" -lm -lc -lnosys -Wl,--end-group ;;
 esac
 compile "$here/gpio.c" gpio.o
 compile "$here/clock.c" clock.o

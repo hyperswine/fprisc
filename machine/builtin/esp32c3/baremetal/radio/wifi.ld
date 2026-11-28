@@ -1,7 +1,9 @@
 ENTRY(_start)
 MEMORY {
   drom (r) : ORIGIN = 0x3c000020, LENGTH = 256K
-  irom (rx) : ORIGIN = 0x42000020, LENGTH = 512K
+  /* IROM and DROM share the C3 flash MMU table. Reserve DROM's first
+     four 64 KiB page indices before assigning any IROM pages. */
+  irom (rx) : ORIGIN = 0x42040020, LENGTH = 512K
   code (rx) : ORIGIN = 0x40380000, LENGTH = 64K
   data (rw) : ORIGIN = 0x3fc90000, LENGTH = 160K
 }

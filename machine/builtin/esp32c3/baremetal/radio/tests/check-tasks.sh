@@ -6,7 +6,7 @@ build=$(mktemp -d)
 trap 'rm -rf "$build"' EXIT
 if [ -n "${C3_RADIO_SYS:-}" ]; then
     python3 "$root/generate_wifi.py" "$C3_RADIO_SYS" > "$build/wifi_config.h"
-    set -- -DC3_TEST_WIFI -I"$build" "$root/wifi_services.c" "$root/wifi_irq.c" "$root/coex.c" "$root/radio_phy.c" "$root/os_timer.c" "$root/alloc.c"
+    set -- -DC3_TEST_WIFI -DC3_RADIO_QUEUE_BYTES=2048 -I"$build" "$root/wifi_services.c" "$root/wifi_irq.c" "$root/coex.c" "$root/radio_phy.c" "$root/os_timer.c" "$root/alloc.c"
 else
     set --
 fi

@@ -134,7 +134,9 @@ guest starts a station with power saving disabled, requests a passive
 scan of channels 1 through 11, reports the AP count over USB, and stops
 the controller. This image uses no network credentials. It prints
 FPR WIFI SCAN APs and FPR DONE when the scan and shutdown complete.
-The current evidence covers the flash image and linker closure.
+The C3 bench board detected three access points in a standalone passive
+scan and shut down cleanly. The OTA runner verified restoration of the
+original firmware and journal digest.
 
 ## Station packet probe
 

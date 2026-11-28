@@ -257,6 +257,9 @@ int coex_pre_init(void) {
 }
 
 static void shared_radio_vectors(void) {
+    void *scan_events = osi.queue_create(200, 8);
+    CHECK(scan_events);
+    osi.queue_delete(scan_events);
     CHECK(c3_radio_phy_acquire() == 0 && c3_radio_phy_acquire() == 0);
     CHECK(calibrations == 1 && usb_pll == 1);
     c3_radio_phy_release();

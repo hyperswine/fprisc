@@ -1,15 +1,19 @@
 #include "btdm_services.h"
 #include "os_queue.h"
 
+#ifndef C3_RADIO_QUEUE_BYTES
+#define C3_RADIO_QUEUE_BYTES 1024
+#endif
+
 enum {
-    QUEUES = 4, QUEUE_BYTES = 1024, SEMAPHORES = 8, MUTEXES = 4,
+    QUEUES = 4, SEMAPHORES = 8, MUTEXES = 4,
     CONTROLLER_TASKS = 2, STACK_BYTES = 8192, TICK_US = 1000,
 };
 static struct queue_slot {
     c3_os_queue queue;
     unsigned waiters;
     bool used;
-    uint8_t storage[QUEUE_BYTES];
+    uint8_t storage[C3_RADIO_QUEUE_BYTES];
 } queues[QUEUES];
 
 static struct semaphore_slot {

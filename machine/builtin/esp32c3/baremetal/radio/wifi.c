@@ -22,6 +22,7 @@ enum {
 extern const wpa_crypto_funcs_t g_wifi_default_wpa_crypto_funcs;
 extern int esp_wifi_init_internal(const wifi_init_config_t *);
 extern int esp_wifi_deinit_internal(void);
+extern int esp_supplicant_init(void), esp_supplicant_deinit(void);
 extern int esp_wifi_set_mode(unsigned);
 extern int esp_wifi_set_ps(unsigned);
 extern int esp_wifi_set_country(const wifi_country_t *);
@@ -42,7 +43,6 @@ enum { WIFI_IF_STA = 0, WIFI_STORAGE_RAM = 1, WIFI_EVENT_CONNECTED = 4,
        RETRY_US = 2000000, POLL_US = 100000 };
 enum link_state { LINK_CONNECTING, LINK_CONNECTED, LINK_DISCONNECTED };
 static enum link_state link;
-extern int esp_supplicant_init(void), esp_supplicant_deinit(void);
 extern int esp_wifi_set_storage(unsigned);
 extern int esp_wifi_set_config(unsigned, wifi_config_t *);
 extern int esp_wifi_get_mac(unsigned, uint8_t *);
@@ -109,8 +109,9 @@ static void start_controller(void) {
     check(esp_wifi_init_internal(&config), "Wi-Fi controller init");
     check(esp_wifi_set_mode(WIFI_MODE_STA), "Wi-Fi station mode");
     check(esp_wifi_set_country(&country), "Wi-Fi world country");
-#ifdef C3_WIFI_STATION
+    /* The scan path also uses the supplicant's beacon callbacks. */
     check(esp_supplicant_init(), "Wi-Fi supplicant init");
+#ifdef C3_WIFI_STATION
     check(esp_wifi_set_storage(WIFI_STORAGE_RAM), "Wi-Fi SRAM config");
 #endif
     check(esp_wifi_start(), "Wi-Fi start");
@@ -120,10 +121,8 @@ static void start_controller(void) {
 
 static void stop_controller(void) {
     check(esp_wifi_stop(), "Wi-Fi stop");
-    check(esp_wifi_deinit_internal(), "Wi-Fi controller deinit");
-#ifdef C3_WIFI_STATION
     check(esp_supplicant_deinit(), "Wi-Fi supplicant deinit");
-#endif
+    check(esp_wifi_deinit_internal(), "Wi-Fi controller deinit");
 }
 
 #ifndef C3_WIFI_STATION
