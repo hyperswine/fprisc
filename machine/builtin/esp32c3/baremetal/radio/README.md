@@ -185,7 +185,11 @@ did not resolve the station's static IPv4 address over ARP. A temporary
 ESP-IDF reference image on the same board and hotspot received a DHCP
 lease and an ICMP reply from the phone. A diagnostic bare-metal build
 reported successful radio transmissions of DHCP discovery frames, with
-zero receive callbacks during the test window.
+zero receive callbacks during the test window. A repeat of the Mac-to-C3
+test confirmed the Mac's IPv4 address and route on the phone's subnet
+before and after the run. Both baseline pings to the phone succeeded.
+The C3 associated, but the Mac's ARP entry for the station remained
+unresolved and no ICMP echo returned.
 
 ## Combined BLE and Wi-Fi image
 
