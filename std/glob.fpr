@@ -28,10 +28,11 @@ match pat name =
 matchGo : String -> Int -> String -> Int -> Int -> Int -> Int -> Int -> (fuel : Int | measure fuel) -> Bool .
 matchGo pat pn name sn pi si starPi starSi fuel =
   if fuel <= 0 then False
-  else if si < sn and pi < pn and (charAt pat pi == 63 or charAt pat pi == charAt name si) then
-    matchGo pat pn name sn (pi + 1) (si + 1) starPi starSi (fuel - 1)
+  # `*` first: a `*` in the name is an ordinary character, never a wildcard
   else if pi < pn and charAt pat pi == 42 then
     matchGo pat pn name sn (pi + 1) si pi si (fuel - 1)
+  else if si < sn and pi < pn and (charAt pat pi == 63 or charAt pat pi == charAt name si) then
+    matchGo pat pn name sn (pi + 1) (si + 1) starPi starSi (fuel - 1)
   else if si < sn and starPi >= 0 then
     matchGo pat pn name sn (starPi + 1) (starSi + 1) starPi (starSi + 1) (fuel - 1)
   else if si == sn then

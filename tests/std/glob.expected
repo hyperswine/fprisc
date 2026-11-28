@@ -1,6 +1,7 @@
 PASS exact match
 PASS star wildcard
 PASS question wildcard
+PASS a star in the name is a plain character
 PASS pathological stars terminate fast
 PASS unanchored matches any depth
 PASS anchored matches root prefix only
