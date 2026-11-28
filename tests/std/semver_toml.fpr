@@ -1,0 +1,35 @@
+V = use "std/semver".
+T = use "std/toml".
+J = use "std/json".
+O = use "std/option".
+R = use "std/result".
+Ord = use "std/order".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+mustOk r = case r of Ok x -> x | Err e -> error e.
+
+main : unsafe Unit .
+main =
+  # std/semver
+  v1 = mustOk (V.parse "0.13.0-rc.2");
+  v2 = mustOk (V.parse "0.13.0-rc.10");
+  v3 = mustOk (V.parse "0.13.0");
+  v4 = mustOk (V.parse "0.13.4");
+  _ = check "semver parse" (v1.parts == [0, 13, 0] and v1.tag == "rc.2");
+  _ = check "semver numeric prerelease ordering" (V.compare v1 v2 == Ord.Less and V.compare v2 v3 == Ord.Less);
+  _ = check "semver rejects leading zero" (R.isErr (V.parse "01.2.3"));
+  pCompat = mustOk (V.parsePin "0.13.0");
+  pExact = mustOk (V.parsePin "=0.13.0");
+  _ = check "semver compatible pin" (V.satisfies pCompat v3 and V.satisfies pCompat v4 and not (V.satisfies pCompat v1));
+  _ = check "semver exact pin" (V.satisfies pExact v3 and not (V.satisfies pExact v4));
+
+  # std/toml
+  doc = "manifest = 2\n[app]\nid = \"demo\"\nport = 0x1a_40\nok = true\ntags = [\"a\", \"b\",]\n[[items]]\nname = 'first'\n[[items]]\nname = \"second\\n\"\n";
+  parsed = mustOk (T.parse doc);
+  _ = check "toml top-level int" (J.intField "manifest" parsed == O.Some 2);
+  _ = check "toml table fields" (J.stringAt ["app", "id"] parsed == O.Some "demo" and J.intAt ["app", "port"] parsed == O.Some 6720);
+  _ = check "toml bool + array" (J.boolField "ok" (case J.field "app" parsed of O.Some a -> a | _ -> J.Null) == O.Some True);
+  _ = check "toml array of tables" (case J.listField "items" parsed of O.Some [a, b] -> J.stringField "name" a == O.Some "first" and J.stringField "name" b == O.Some "second\n" | _ -> False);
+  _ = check "toml duplicate key refused" (R.isErr (T.parse "a = 1\na = 2\n"));
+  print "std/semver + std/toml checks passed".

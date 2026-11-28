@@ -1,0 +1,11 @@
+PASS semver parse
+PASS semver numeric prerelease ordering
+PASS semver rejects leading zero
+PASS semver compatible pin
+PASS semver exact pin
+PASS toml top-level int
+PASS toml table fields
+PASS toml bool + array
+PASS toml array of tables
+PASS toml duplicate key refused
+std/semver + std/toml checks passed
