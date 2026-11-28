@@ -128,6 +128,21 @@ heap use was 23,488 bytes. Each stop returned live radio allocations to
 zero. The OTA test restored the original firmware and selection and
 verified the journal digest.
 
+The Builtin library example then completed 1,800.127 seconds of device
+time with GPIO8 released. All 31 endurance samples showed 23,488 bytes of
+live and peak radio heap. The Mac discovered the service at every sample
+in 0.096–3.433 seconds including observer startup. The maximum sample
+gap was 60,105 ms. Three subsequent restarts all restored on-air
+advertising, and each stop and final shutdown returned live radio heap
+to zero.
+
+A separate Builtin program built through the custom source argument
+verified malformed UUID rejection, idempotent start for the same UUID
+in different case, busy status for a different UUID, and repeated stop.
+The Mac observed its custom UUID during advertising and saw no matching
+advertisement during a 30-second scan after shutdown. Both runs verified
+restoration of the original firmware, OTA selection, and journal digest.
+
 ## Wi-Fi callback ABI
 
 Generate C declarations for the version 9 Wi-Fi adapter and its
