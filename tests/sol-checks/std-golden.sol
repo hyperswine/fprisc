@@ -19,6 +19,7 @@ special = [
   ("timedrecv-4", "timedrecv", [], "root", [("FPR_HARTS","4")]),
   ("timedrecv", "timedrecv", [], "root", []),
   ("durable", "durable", ["@/durable.kvlog"], "tmp", []),
+  ("liveturn", "liveturn", ["@/turn.log"], "tmp", []),
   ("compact", "compact", [], "tmp", []),
   ("kvwire", "kvwire", [], "tmp", []),
   ("apps", "apps", [], "tmp", [("T16_HOST","from-env")]),

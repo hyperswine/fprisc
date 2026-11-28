@@ -1,0 +1,30 @@
+  seen: a message from 1
+  seen: a message from 0
+  seen: a message from 0
+  seen: a message from 0
+  seen: a message from 0
+one turn:
+  add first from 1
+  wrote (True)
+  clock (True)
+  took (True)
+  saved
+  left for the driver: [After 50]  held: False
+journal: first
+view: lines 0
+  seen: a message from 1
+forged reply:
+  ignored from 1
+  left for the driver: []  held: False
+  seen: a message from 2
+  seen: a message from 0
+  seen: a message from 0
+  seen: a message from 0
+  seen: a message from 0
+append failed:
+  add second from 2
+  write failed
+  clock (True)
+  took (True)
+  saved
+  left for the driver: [After 50, Quit]  held: True

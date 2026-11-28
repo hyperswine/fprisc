@@ -83,7 +83,9 @@ Att = G.Att.
 # (Live.SyncClientState), so a checkout sees the cart the cashier saw.  The
 # server still decides: it clamps to stock, prices, sells.
 Msg = Type (Login String String | Logout | Quit | ClientState Client
-          | Cash String | Card | Void Int | Restock String Int | Command String | Rebuild | Dismiss | Theme | PricingPoll | NoticeTick).
+          | Cash String | Card | Void Int | Restock String Int | Command String | Rebuild | Dismiss | Theme | PricingPoll | NoticeTick
+          # the driver's replies (sid 0 only): an event's own time, the log's write, the metrics file's
+          | Timed String Int | Wrote Int | WriteFailed String | MetricsWritten | MetricsFailed String).
 codec = @Msg.
 # the four panes, one shown at a time by the page
 Tab = Type (Register | Receipts | Stock | Admin).
@@ -100,7 +102,7 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = B.noticeInit False 3000, metrics = "" }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = B.noticeInit False 3000, metrics = "", refused = 0 }.
 
 # ---- profiling ---------------------------------------------------------------------------
 # What the app measures about itself, shown on the Admin tab (microseconds):
@@ -117,7 +119,9 @@ initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0
 noStat = { n = 0, sum = 0, max = 0, last = 0 }.
 note st us = { n = st.n + 1, sum = st.sum + us, max = Int.max st.max us, last = us }.
 avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
-noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
+noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0, metricsWhy = "" }.
+noteFlush us prof = { prof | flush = note prof.flush us }.
+metricsSaid why prof = { prof | metricsWhy = why }.
 noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
 noteKind es kind us = case List.any (fn e -> case e of (k, _) -> (k == kind)) es of
     True -> List.map (fn e -> case e of (k, st) -> (case (k == kind) of True -> (k, note st us) | False -> (k, st))) es
@@ -130,7 +134,8 @@ kindOf ev = case ev of
 msgKind msg = case msg of
     Login _ _ -> "login" | Logout -> "logout" | Quit -> "quit" | ClientState _ -> "sync"
   | Cash a -> "cash" | Card -> "card" | Void a -> "void" | Restock _ _ -> "restock" | Command a -> "admin" | Rebuild -> "rebuild"
-  | Dismiss -> "dismiss" | Theme -> "theme" | PricingPoll -> "pricing" | NoticeTick -> "reload-notice".
+  | Dismiss -> "dismiss" | Theme -> "theme" | PricingPoll -> "pricing" | NoticeTick -> "reload-notice"
+  | Timed _ _ -> "timed" | Wrote _ -> "wrote" | WriteFailed _ -> "failed" | MetricsWritten -> "metrics" | MetricsFailed _ -> "metrics".
 statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
 noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil, tab = Register }.
 mkProduct sku price stock name = { sku = sku, name = name, price = price, stock = stock, retired = 0 }.
@@ -218,6 +223,9 @@ stockOf cat sku = p = findP cat sku; p.stock.
 nameOf cat sku = p = findP cat sku; p.name.
 # the product sku changed by f
 mapP ps sku f = List.map (fn p -> case (p.sku == sku) of True -> f p | False -> p) ps.
+# a sale's or a void's units: the sale's quantities were clamped to stock by
+# Core.quantity when it was committed, and a void returns exactly what its sale
+# took, so neither can be refused when the log is folded
 setStock cat sku d = mapP cat sku (fn p -> { p | stock = p.stock + d }).
 live ps = List.filter (fn p -> p.retired != 1) ps.
 pCount cat = List.length (live cat).
@@ -244,7 +252,7 @@ applyW m w r | (w == "price") = (case r of
     sku :: c :: x -> { m | cat = mapP m.cat sku (fn p -> { p | price = num c }) }
   | x -> m).
 applyW m w r | (w == "restock") = (case r of
-    sku :: d :: x -> addStock m sku (num d)
+    sku :: d :: x -> restockLine m sku (num d)
   | x -> m).
 applyW m w r | (w == "sale") = applySale m r.
 applyW m w r | (w == "void") = (case r of
@@ -254,7 +262,15 @@ applyW m w r = m.
 
 addP m sku price stock name | hasP m.cat sku = m.
 addP m sku price stock name = { m | cat = m.cat + (mkProduct sku price stock name :: Nil) }.
-addStock m sku d = { m | cat = setStock m.cat sku d }.
+# A restock line goes through the contracted core (Core.restock checks the
+# delta and the shelf, Core.addStock adds under its preconditions), the same
+# call the register made before it committed the line -- so a line the
+# register wrote folds to the stock it said.  A line the core refuses (one
+# written before the shelf bound, 2026-10-17) moves nothing and is counted:
+# `refused` is said at boot and by `rebuild`.
+restockLine m sku d = case Core.restock (stockOf m.cat sku) d of
+    Core.Added stock -> { m | cat = mapP m.cat sku (fn p -> { p | stock = stock }) }
+  | _ -> { m | refused = m.refused + 1 }.
 dropStaff es name = List.filter (fn e -> case e of (nm, _) -> not ((nm == name))) es.
 
 # sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <items...>
@@ -314,18 +330,28 @@ boot o path =
     True -> seed |> foldE (fn l mm -> commit mm l) m2
   | False -> m2;
   _ = print "[pos1] log {path}: {m3.events} lines folded in {t1 - t0} us, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
-  flush o.journal { m3 | fsOn = 1, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+  _ = (case m3.refused > 0 of True -> Sys.stderr "[pos1] {m3.refused} restock lines refused by the shelf rules (no stock moved)\n" | False -> Unit);
+  flushNow o.journal { m3 | fsOn = 1, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
 replayed m ls = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
 
 # The pending lines, oldest first, in ONE write (std/journal keeps the file
-# open: opening it for every append was most of an append's cost).  A write
-# that fails stops the server: a register must never show a change the log
-# does not have (THE ONE RULE), and the supervisor's restart folds the log
-# again.  So does a file that is no longer the one the journal left (a backup
-# restored over it, the file emptied or replaced while the server runs): the
-# change still goes in, every line stands alone, and the next start folds
-# what the file holds now.
+# open: opening it for every append was most of an append's cost).  From
+# `update` the write is a COMMAND, Live.Append: std/live performs it in event
+# order, before any register sees the change, and its answer comes back in
+# the same turn.  A write that fails withholds the broadcast and stops the
+# server: a register must never show a change the log does not have (THE ONE
+# RULE), and the supervisor's restart folds the log again.  So does a file
+# that is no longer the one the journal left (a backup restored over it, the
+# file emptied or replaced while the server runs): the change still goes in,
+# every line stands alone, and the next start folds what the file holds now.
 flush j m = case m.pend of
+    Nil -> (m, Nil)
+  | ls -> ({ m | pend = Nil }, Live.Append j (rev ls Nil) wrote :: Nil).
+wrote r = case r of
+    Ok us -> Wrote us
+  | Err why -> WriteFailed why.
+# at boot (the seed), before anything is served: the same write, done now
+flushNow j m = case m.pend of
     Nil -> m
   | ls -> (case Journal.append (rev ls Nil) j of
       Ok _ -> { m | pend = Nil }
@@ -342,6 +368,10 @@ flush j m = case m.pend of
 # a product added or retired, a rebuild) and at boot, written beside and
 # renamed over so a reader never sees half of it.  The log is still the shop.
 stockMoved m n = not (n.cat == m.cat) or n.lowAt != m.lowAt.
+# from `update`: the rewrite as a command (Live.WriteFile, beside and renamed
+# over), performed in event order so a later stock never loses to an earlier
+metricsCmds m n | (n.metrics == "") or not (stockMoved m n) = Nil.
+metricsCmds m n = Live.WriteFile n.metrics (promText n) (fn r -> case r of Ok _ -> MetricsWritten | Err why -> MetricsFailed why) :: Nil.
 writeStock m | (m.metrics == "") = 0.
 writeStock m = case File.writeText "{m.metrics}.tmp" (promText m) of
     Err why -> _ = Sys.stderr "[pos1] metrics: {why}\n"; 1
@@ -362,8 +392,9 @@ rebuild j m = case Journal.lines j of
 rebuildWith m m2 =
   diffs = m.cat |> foldE (fn p acc -> acc + bi (stockOf m2.cat p.sku != p.stock)) 0;
   case diffs == 0 of
-    True -> (m, "stock matches the log ({List.length m2.sales} sales folded)")
-  | False -> ({ m | cat = m2.cat, revenue = m2.revenue, sales = m2.sales }, "rebuilt from the log: {diffs} products corrected").
+    True -> (m, "stock matches the log ({List.length m2.sales} sales folded{refusedNote m2.refused})")
+  | False -> ({ m | cat = m2.cat, revenue = m2.revenue, sales = m2.sales }, "rebuilt from the log: {diffs} products corrected{refusedNote m2.refused}").
+refusedNote n = case n == 0 of True -> "" | False -> "; {n} restock lines refused by the shelf rules".
 
 # ---- sessions ----------------------------------------------------------------------------
 
@@ -383,17 +414,21 @@ withCart m sid cart =
 
 # ---- update ------------------------------------------------------------------------------
 
-update j ev m =
-  t0 = Sys.timeUs Unit;
-  (m2, cs) = step j ev m;
-  t1 = Sys.timeUs Unit;
-  wrote = not (List.isEmpty m2.pend);
-  m3 = flush j m2;
-  t2 = Sys.timeUs Unit;
-  # after t2: the profile's "append" is the log's write alone
-  _ = case stockMoved m m3 of True -> writeStock m3 | False -> 0;
-  prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
-  ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
+# `update` does no I/O of its own: the log's append, the metrics file and the
+# clock that times the event are commands (Live.Append, Live.WriteFile,
+# Live.Took), performed by std/live in this order after `step` and before any
+# register is told; their answers come back as driver messages (sid 0) in the
+# same turn.
+update j ev m = case ev of
+    Live.Msg 0 (Timed kind us) -> ({ m | prof = noteUpd kind us m.prof }, Nil)
+  | Live.Msg 0 (Wrote us) -> ({ m | prof = noteFlush us m.prof }, Nil)
+  | Live.Msg 0 (WriteFailed why) -> Program.fail 1 "pos1: {why}"
+  | Live.Msg 0 MetricsWritten -> ({ m | prof = metricsSaid "" m.prof }, Nil)
+  | Live.Msg 0 (MetricsFailed why) -> ({ m | prof = metricsSaid why m.prof }, Nil)
+  | _ ->
+      (m2, cs) = step j ev m;
+      (m3, writes) = flush j m2;
+      (m3, cs + writes + metricsCmds m m3 + (Live.Took (Timed (kindOf ev)) :: Nil)).
 step j ev m = case ev of
     Live.Msg sid msg -> pMsg j sid msg m
   | Live.Left sid -> (forget m sid, Nil)
@@ -831,13 +866,14 @@ profileText v rs =
       :: List.map (fn e -> (case e of (k, st) -> "  {statLine k st}")) v.prof.upd
       + ( "disk"
        :: "  {statLine "append" v.prof.flush}"
-       :: "  boot: {v.prof.bootLines} lines folded in {v.prof.bootUs} us"
+       :: "  boot: {v.prof.bootLines} lines folded in {v.prof.bootUs} us{metricsNote v.prof.metricsWhy}"
        :: "this session's writer"
        :: "  {statLine "render" rs.st}"
        :: "  view cache: {rs.hits} hits, {rs.misses} misses; {rs.cards} cards and {rs.rows} receipt rows remembered"
        :: "runtime"
        :: memLines v.mem v.grows
        + ("  harts {v.harts}, sessions online {v.online}" :: Nil))).
+metricsNote why = case why == "" of True -> "" | False -> "\n  metrics: {why}".
 memLines mem (grows, mib) = case mem of
     arena :: free :: reqs :: waits :: direct :: frees :: denied :: inl :: x ->
       "  arena {arena / 1024} MiB reserved, {(arena - free) / 1024} MiB in use, grown {grows} times ({mib} MiB)"

@@ -37,6 +37,26 @@
 # the driver performs them and what they produce comes back as a MESSAGE.
 # `update` itself stays a pure function, which is what makes the next part possible.
 #
+# IN-TURN COMMANDS.  Some effects must happen in EVENT ORDER and before anyone
+# sees the change: an append to the application's journal (the order of the
+# log is its meaning, and a page must never show a change the disk does not
+# have), a store put, a file rewritten as a view of the model, and reading the
+# clock.  `Live.Append j lines toMsg`, `Live.Put db key value toMsg`,
+# `Live.WriteFile path text toMsg`, `Live.Now toMsg` and `Live.Took toMsg` are
+# performed by the register itself, in the order given, after `update` and
+# BEFORE the broadcast; each one's result is handed to `toMsg` and that message
+# is run through `update` at once, in the same turn -- no other event comes
+# between, and the sessions see the model once, after every reply.  (Std/game's
+# Task is the model: the app never performs the work, it names it and says
+# which message the answer becomes.)  A reply arrives as `Live.Msg 0 reply`,
+# so an app accepts it from sid 0 only, as it does any driver message.  When
+# an Append or a Put fails the turn's broadcast is WITHHELD: the reply says
+# why, and an app that cannot go on answers `Live.Quit` (or stops the process)
+# from there.  The other commands (After, Run, Navigate, Emit, Quit) are
+# performed after the in-turn ones.  `Live.turn` is that turn without a
+# server, for tests.  A reply that asks again for an in-turn command loops:
+# the register does what it is told.
+#
 # DURABLE STATE, per field, named by a PATH: `Live.field Live.Always @Model.count`.
 # The path literal is checked against the model's declaration and gives the
 # getter, the setter and the key; the policy says how eagerly to save.  Saves go to an
@@ -70,6 +90,9 @@ P = use "proc".
 Ord = use "order".
 L = use "list".
 G = use "view".
+JN = use "journal".
+CL = use "clock".
+F = use "file".
 
 # ---- the app's vocabulary ------------------------------------------------------------
 # Msg sid m: from a session (sid 0: from a command or a subscription).
@@ -81,7 +104,19 @@ Ev msg = Type (Msg Int msg | Joined Int | Left Int | Refused Int String).
 # Emit sid name detail  hand the page's own script an event: document's 'live:<name>'
 #                       CustomEvent, detail = the text (a PORT to JavaScript)
 # Quit                  save every field and stop serving
-Cmd msg = Type (After Int msg | Run (Unit -> msg) | Navigate Int String | Emit Int String String | Quit).
+# -- in the turn, in order, before the broadcast (see IN-TURN COMMANDS above) --
+# Append j lines toMsg  the lines, oldest first, as ONE write to the journal
+#                       (std/journal); Ok carries how long the write took in us
+# Put db key value toMsg  one record into a store (std/kvlog's tryPut), waited for
+# WriteFile path text toMsg  replace a file whole: written beside it, renamed over
+# Now toMsg             the wall clock, seconds since 1970 (std/clock `now`)
+# Took toMsg            how long the `update` that asked took, in us (monotonic)
+Cmd msg = Type (After Int msg | Run (Unit -> msg) | Navigate Int String | Emit Int String String | Quit
+              | Append JN.Journal (List String) (Result Int String -> msg)
+              | Put KV.KvLog String J.Value (Result Unit String -> msg)
+              | WriteFile String String (Result Unit String -> msg)
+              | Now (Int -> msg)
+              | Took (Int -> msg)).
 
 # an HTTP request as a command: the reply (or why there was none) becomes a message
 http : { method : String, url : String, headers : List (String, String), body : String } -> (Result { status : Int, headers : List (String, String), body : String } String -> msg) -> Cmd msg .
@@ -388,11 +423,11 @@ handle me from q st = case st of Rs cfg app model sessions nextSid db saved tick
 # one update: the event (journaled first), then its effects, then everyone sees the model
 advance : Int -> Ev m -> Rs -> O.Option Rs .
 advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
-  _ = (if cfg.journal then journal app.codec db ev else Unit);
-  (case app.update ev model of (model2, cmds) ->
+  seen = (fn e -> if cfg.journal then journal app.codec db e else Unit);
+  (case turn seen app.update ev model of (model2, cmds, held) ->
       saved2 = persist me app.fields db model2 saved;
       quit = perform me sessions cmds;
-      told2 = broadcast me sessions (M.keys sessions) (version + 1) told;
+      told2 = (if held then told else broadcast me sessions (M.keys sessions) (version + 1) told);
       (if quit then _ = settle app.fields db model2 saved2; _ = goodbye (M.values sessions); O.None
        else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1) told2)))).
 
@@ -520,6 +555,56 @@ replayGo app events model index = case events of
       | Ok ev -> (case app.update ev model of (m2, _) -> replayGo app r m2 (index + 1))).
 
 # ---- commands ------------------------------------------------------------------------------
+# ONE TURN: `seen` the event (the journal, when it is kept), `update`, then the
+# in-turn commands in order, each reply through `update` at once (and `seen`).
+# Answers the model after every reply, the commands left for the driver
+# (After, Run, Navigate, Emit, Quit, in the order they were asked), and whether
+# a durable write failed (the broadcast is then withheld).
+turn seen update ev model =
+  _ = seen ev;
+  t0 = Sys.timeUs Unit;
+  (case update ev model of (model2, cmds) ->
+      took = Sys.timeUs Unit - t0;
+      turnGo seen update model2 cmds took Nil False).
+
+turnGo seen update model cmds took later held = case cmds of
+    Nil -> (model, L.reverse later, held)
+  | c :: r -> (case c of
+        Append j lines toMsg ->
+          t0 = Sys.timeUs Unit;
+          res = JN.append lines j;
+          us = Sys.timeUs Unit - t0;
+          (case res of
+              Ok _ -> answer seen update model (toMsg (Ok us)) r took later held
+            | Err why -> answer seen update model (toMsg (Err why)) r took later True)
+      | Put db key value toMsg ->
+          (case KV.tryPut key value db of
+              Ok u -> answer seen update model (toMsg (Ok u)) r took later held
+            | Err why -> answer seen update model (toMsg (Err why)) r took later True)
+      | WriteFile path text toMsg -> answer seen update model (toMsg (replaceFile path text)) r took later held
+      | Now toMsg -> answer seen update model (toMsg (CL.now Unit)) r took later held
+      | Took toMsg -> answer seen update model (toMsg took) r took later held
+      | other -> turnGo seen update model r took (other :: later) held).
+
+# a reply is an event from the driver: through `update` now, its own commands
+# before the rest of the turn's
+answer seen update model msg rest took later held =
+  ev = Msg 0 msg;
+  _ = seen ev;
+  t0 = Sys.timeUs Unit;
+  (case update ev model of (model2, cmds) ->
+      took2 = Sys.timeUs Unit - t0;
+      (case turnGo seen update model2 cmds took2 Nil held of (model3, later2, held2) ->
+          turnGo seen update model3 rest took (L.append (L.reverse later2) later) held2)).
+
+# written beside and renamed over, so a reader never sees half of it
+replaceFile : String -> String -> Result Unit String .
+replaceFile path text = case F.writeText "{path}.tmp" text of
+    Err why -> Err "{path}: {why}"
+  | Ok _ -> (case F.rename "{path}.tmp" path of
+      Ok _ -> Ok Unit
+    | Err why -> Err "{path}: {why}").
+
 # True when one of them was Quit
 perform reg sessions cmds = performGo reg sessions cmds False.
 performGo reg sessions cmds quit = case cmds of
@@ -537,7 +622,9 @@ performGo reg sessions cmds quit = case cmds of
           performGo reg sessions r quit
       | Emit sid name detail ->
           _ = push sessions sid (J.render (J.object (("emit", J.Text name) :: ("detail", J.Text detail) :: Nil)));
-          performGo reg sessions r quit).
+          performGo reg sessions r quit
+        # in-turn commands were performed by `turn`; none reach here
+      | _ -> performGo reg sessions r quit).
 
 # a frame for one session's page (sid 0: every session's)
 push : M.Map Int Int -> Int -> String -> Unit .

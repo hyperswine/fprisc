@@ -1,0 +1,71 @@
+profile base.
+# std/live's in-turn commands (Append, Put, WriteFile, Now, Took): performed in
+# order after `update`, each reply run through `update` at once in the same
+# turn, the other commands handed back for the driver, and a failed durable
+# write withholding the broadcast.  Driven through `Live.turn`, no server.
+#   ./fpr run tests/std/liveturn.fpr /tmp/turn.log
+Live = use "std/live".
+Journal = use "std/journal".
+File = use "std/file".
+Program = use "std/program".
+List = use "std/list".
+S = use "std/string".
+
+Msg = Type (Add String | Wrote Int | WriteFailed String | Clock Int | Spent Int | Saved | Unsaved String | Later).
+
+wrote r = case r of Ok us -> Wrote us | Err why -> WriteFailed why.
+saved r = case r of Ok _ -> Saved | Err why -> Unsaved why.
+
+# the app: a list of what happened; replies are accepted from sid 0 only
+update j path ev m = case ev of
+    Live.Msg sid (Add line) -> ({ m | log = List.append m.log ["add {line} from {sid}"] },
+        [Live.After 50 Later, Live.Append j [line] wrote, Live.Now Clock, Live.Took Spent,
+         Live.WriteFile path "lines {List.length m.log}\n" saved])
+  | Live.Msg 0 (Wrote us) -> ({ m | log = List.append m.log ["wrote ({us >= 0})"] }, Nil)
+  | Live.Msg 0 (WriteFailed why) -> ({ m | log = List.append m.log ["write failed"] }, [Live.Quit])
+  | Live.Msg 0 (Clock t) -> ({ m | log = List.append m.log ["clock ({t > 1700000000})"] }, Nil)
+  | Live.Msg 0 (Spent us) -> ({ m | log = List.append m.log ["took ({us >= 0})"] }, Nil)
+  | Live.Msg 0 Saved -> ({ m | log = List.append m.log ["saved"] }, Nil)
+  | Live.Msg 0 (Unsaved why) -> ({ m | log = List.append m.log ["unsaved"] }, Nil)
+  | Live.Msg sid _ -> ({ m | log = List.append m.log ["ignored from {sid}"] }, Nil)
+  | _ -> (m, Nil).
+
+seen ev = case ev of
+    Live.Msg sid _ -> print "  seen: a message from {sid}"
+  | _ -> print "  seen: another event".
+
+cmdName c = case c of
+    Live.After ms _ -> "After {ms}"
+  | Live.Quit -> "Quit"
+  | Live.Run _ -> "Run"
+  | _ -> "other".
+
+show label r = case r of (m, cmds, held) ->
+  _ = print "{label}:";
+  _ = List.map (fn l -> print "  {l}") m.log;
+  print "  left for the driver: [{strJoin ", " (List.map cmdName cmds)}]  held: {held}".
+
+main = case Program.args Unit of
+    [path] -> run path
+  | _ -> Program.fail 2 "usage: liveturn LOG".
+
+run path = case Journal.open path of
+    Err why -> Program.fail 1 why
+  | Ok o ->
+      j = o.journal;
+      side = "{path}.view";
+      up = update j side;
+      r1 = Live.turn seen up (Live.Msg 1 (Add "first")) { log = Nil };
+      _ = show "one turn" r1;
+      _ = print "journal: {S.trim (unwrapR (File.readText path))}";
+      _ = print "view: {S.trim (unwrapR (File.readText side))}";
+      # a browser cannot forge a reply: sid 1 is not the driver
+      r2 = Live.turn seen up (Live.Msg 1 (Wrote 5)) { log = Nil };
+      _ = show "forged reply" r2;
+      # the file is gone from under the journal: the append is Err, the broadcast held
+      _ = File.remove path;
+      r3 = Live.turn seen up (Live.Msg 2 (Add "second")) { log = Nil };
+      _ = show "append failed" r3;
+      0.
+
+unwrapR r = case r of Ok t -> t | Err why -> "ERR {why}".
