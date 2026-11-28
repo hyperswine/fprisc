@@ -795,3 +795,37 @@ python3 tests/check_native_gateway.py --binary=build/printer-host \
 Live acceptance may select reachable devices explicitly with `--printers=a1`.
 An unavailable printer should be displayed offline; it does not justify
 weakening TLS trust or changing the configured identity.
+
+## Native H.264 cameras (X1C/X2D), 2026-11-28
+
+Camera mode `bambu-rtsps-h264` streams the printer's own H.264 video to the browser with no
+decoder process and no transcoding. It replaces `bambu-rtsps-snapshot` (FFmpeg snapshots every
+10 s) for printers that serve RTSPS on port 322.
+
+- **Printer side** (`printer-dashboard/rtsph264.fpr`, used by `cameraservice.fpr`): RTSPS to
+  LIVE555 on port 322 with Digest login, DESCRIBE/SETUP (RTP over the RTSP connection)/PLAY, a
+  `GET_PARAMETER` keepalive every 4 s (the X1C's session times out after 10 s), RTP splitting
+  (RTCP and replies can arrive between packets) and H.264 reassembly (single NAL, STAP-A,
+  FU-A). The SPS/PPS go in front of every keyframe.
+- **Sharing:** the camera manager keeps the current group of pictures, from the latest keyframe
+  on (bounded at 240 frames / 8 MiB). One printer connection serves all viewers. A viewer joins
+  at that keyframe; a slow one skips ahead to the next.
+- **Wire format** (`/camera/<id>.h264`, same gateway authentication and relay as MJPEG): a kind-0
+  record with the codec string (for example `avc1.641029`), then one record per frame:
+  u32be length, kind (1 keyframe, 2 delta), u32be milliseconds, Annex B bytes.
+- **Browser** (`printer-dashboard/videoplayer.fpr`, generated JavaScript): hosts marked
+  `data-video-id` fetch the stream and decode it with WebCodecs onto a canvas. Off, hidden tabs,
+  a dead live link and page hide stop the fetch and close the decoder; interruptions reconnect
+  with backoff. Browsers without WebCodecs say so on the card.
+- **Measured:** X2D 1920x1080 at about 29 fps, X1C 1168x720 at about 25 fps. The X1C streamed
+  25 s without a break, past its 10 s session timeout. The X2D's camera port omits its
+  intermediate certificate; use the `camera_tls_ca` file described in
+  `deploy/printer-dashboard/snapshots/README.md`.
+- **Checks:** `tests/rtsph264_check.fpr` (MD5/Digest vectors, SDP, splitting, reassembly) on a
+  recorded session gave 111 frames / 4 keyframes (X2D) and 99 / 4 (X1C), both decoding cleanly
+  in FFmpeg. `tests/camera_h264_live.fpr` runs the service against a real printer.
+  `tests/videoplayer_export.fpr` writes the player script for `node --check`. An end-to-end
+  local run through the gateway and login played the X2D in the dashboard. Turning the camera
+  off closed the printer connection.
+- **Config:** `"camera": "bambu-rtsps-h264"`, `camera_port` defaults to 322, `camera_tls_peer` /
+  `camera_tls_ca` as for the other modes.

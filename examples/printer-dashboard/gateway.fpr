@@ -183,7 +183,7 @@ handle cfg raw peer me = case T.adopt 16384 (ST.Stream raw) of
             Err _ -> text 503 "View unavailable\n" c1
           | Ok r -> gated cfg token expected (response 200 "text/html; charset=utf-8" r.body Nil) c1)
         else if req.path == "/ws" then proxy local token expected cfg.viewPort req.target "" req c1
-        else (case L.find (fn camera -> req.path == "/camera/{camera.id}.mjpg") cfg.cameras of
+        else (case L.find (fn camera -> req.path == "/camera/{camera.id}.mjpg" or req.path == "/camera/{camera.id}.h264") cfg.cameras of
           O.Some camera -> proxy local token expected camera.port "/stream" camera.gate req c1
         | _ -> text 404 "No such route\n" c1);
       _ = T.close final;

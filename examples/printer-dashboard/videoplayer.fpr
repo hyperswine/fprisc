@@ -1,0 +1,150 @@
+# Browser player for native H.264 cameras (X1C/X2D), generated as structured
+# JavaScript (std/javascript has no raw node). Each camera host marked
+# data-video-id streams /camera/<id>.h264 with fetch while its card's camera is on
+# and the tab is visible and live; the records (see rtsph264.fpr) are decoded with
+# WebCodecs onto a canvas. Off, hidden, disconnected or page hide stop the fetch and
+# close the decoder; an interruption reconnects with backoff (1 s doubling to 10 s).
+# A slow decoder drops to the next keyframe rather than queueing.
+JS = use "std/javascript".
+L = use "std/list".
+n x = JS.Name x.
+t x = JS.Text x.
+num x = JS.Number x.
+f e k = JS.Field e k.
+call e args = JS.Call e args.
+m e k args = JS.Call (JS.Field e k) args.
+doM e k args = JS.Do (m e k args).
+eq a b = JS.Binary JS.Equal a b.
+ne a b = JS.Binary JS.NotEqual a b.
+both a b = JS.Binary JS.And a b.
+either a b = JS.Binary JS.Or a b.
+neg a = JS.Unary JS.Not a.
+add a b = JS.Binary JS.Add a b.
+set target value = JS.Assign target value.
+attr host name = m host "getAttribute" [t name].
+canvasHtml = "<canvas style=\"display:block;width:100%;height:100%;aspect-ratio:16/9;object-fit:contain;border-radius:8px;background:#111\"></canvas>".
+
+stop = JS.Define "stopPlayer" ["state"]
+  [JS.If (f (n "state") "abort") [doM (f (n "state") "abort") "abort" Nil, set (f (n "state") "abort") JS.Null] Nil,
+   JS.If (f (n "state") "decoder") [JS.Try [doM (f (n "state") "decoder") "close" Nil] "e" Nil Nil, set (f (n "state") "decoder") JS.Null] Nil,
+   JS.If (f (n "state") "retry") [JS.Do (call (n "clearTimeout") [f (n "state") "retry"]), set (f (n "state") "retry") JS.Null] Nil,
+   set (f (n "state") "active") (JS.Boolean False)].
+
+label = JS.Define "label" ["host", "text"]
+  [JS.Const "id" (attr (n "host") "data-video-id"),
+   JS.ForOf "c" (m (n "document") "querySelectorAll" [t "[data-camera-status]"])
+     [JS.If (both (eq (attr (n "c") "data-camera-status") (n "id")) (ne (f (n "c") "textContent") (n "text")))
+       [set (f (n "c") "textContent") (n "text")] Nil]].
+
+# The page's live patches reset the status line; remember each player's message
+# and put it back on every sync.
+say = JS.Define "say" ["host", "state", "text"] [set (f (n "state") "text") (n "text"), JS.Do (call (n "label") [n "host", n "text"])].
+wanted = JS.Define "wanted" ["host"]
+  [JS.Const "link" (m (n "document") "getElementById" [t "lv-link"]),
+   JS.Return (both (both (both (f (n "host") "isConnected") (eq (attr (n "host") "data-camera-on") (t "true")))
+     (neg (f (n "document") "hidden"))) (both (n "link") (eq (f (n "link") "textContent") (t "live"))))].
+
+# Parse every complete record in `buffer`; the loop runs on a flag (no break).
+parseRecords =
+  [JS.Let "more" (JS.Boolean True),
+   JS.While (both (n "more") (JS.Binary JS.GreaterEqual (f (n "buffer") "length") (num 4)))
+     [JS.Const "view" (JS.New (n "DataView") [f (n "buffer") "buffer", f (n "buffer") "byteOffset", f (n "buffer") "byteLength"]),
+      JS.Const "size" (m (n "view") "getUint32" [num 0]),
+      JS.If (JS.Binary JS.Less (f (n "buffer") "length") (add (num 4) (n "size"))) [set (n "more") (JS.Boolean False)]
+        [JS.Const "kind" (JS.Index (n "buffer") (num 4)),
+         JS.Const "ms" (m (n "view") "getUint32" [num 5]),
+         JS.Const "body" (m (n "buffer") "slice" [num 9, add (num 4) (n "size")]),
+         set (n "buffer") (m (n "buffer") "slice" [add (num 4) (n "size")]),
+         JS.If (eq (n "kind") (num 0))
+           [JS.Const "codec" (m (JS.New (n "TextDecoder") Nil) "decode" [n "body"]),
+            JS.Const "canvas" (f (n "state") "canvas"),
+            JS.Const "context" (m (n "canvas") "getContext" [t "2d"]),
+            set (f (n "state") "decoder") (JS.New (n "VideoDecoder") [JS.Object
+              [("output", JS.Function ["frame"]
+                 [JS.If (ne (f (n "canvas") "width") (f (n "frame") "displayWidth")) [set (f (n "canvas") "width") (f (n "frame") "displayWidth")] Nil,
+                  JS.If (ne (f (n "canvas") "height") (f (n "frame") "displayHeight")) [set (f (n "canvas") "height") (f (n "frame") "displayHeight")] Nil,
+                  doM (n "context") "drawImage" [n "frame", num 0, num 0],
+                  doM (n "frame") "close" Nil]),
+               ("error", JS.Function ["e"] [doM (n "abort") "abort" Nil])]]),
+            doM (f (n "state") "decoder") "configure" [JS.Object [("codec", n "codec"), ("optimizeForLatency", JS.Boolean True)]]]
+           [JS.If (f (n "state") "decoder")
+             [JS.If (eq (n "kind") (num 1)) [set (n "needKey") (JS.Boolean False)] Nil,
+              JS.If (JS.Binary JS.Greater (f (f (n "state") "decoder") "decodeQueueSize") (num 30)) [set (n "needKey") (JS.Boolean True)] Nil,
+              JS.If (neg (n "needKey"))
+                [doM (f (n "state") "decoder") "decode" [JS.New (n "EncodedVideoChunk") [JS.Object
+                   [("type", JS.Choose (eq (n "kind") (num 1)) (t "key") (t "delta")), ("timestamp", JS.Binary JS.Multiply (n "ms") (num 1000)), ("data", n "body")]]],
+                 set (n "frames") (add (n "frames") (num 1))] Nil,
+              JS.If (JS.Binary JS.GreaterEqual (JS.Binary JS.Subtract (m (n "Date") "now" Nil) (n "since")) (num 2000))
+                [JS.Do (call (n "say") [n "host", n "state", add (add (t "Live video · ") (m (n "Math") "round" [JS.Binary JS.Divide (JS.Binary JS.Multiply (n "frames") (num 1000)) (JS.Binary JS.Subtract (m (n "Date") "now" Nil) (n "since"))])) (t " fps")]),
+                 set (n "frames") (num 0), set (n "since") (m (n "Date") "now" Nil)] Nil] Nil]]]].
+
+play = JS.AsyncDefine "play" ["host", "state"]
+  [set (f (n "state") "active") (JS.Boolean True),
+   set (f (n "state") "serial") (add (f (n "state") "serial") (num 1)),
+   JS.Const "serial" (f (n "state") "serial"),
+   JS.Const "abort" (JS.New (n "AbortController") Nil),
+   set (f (n "state") "abort") (n "abort"),
+   JS.Do (call (n "say") [n "host", n "state", t "Connecting to camera…"]),
+   JS.Try
+     [JS.Const "route" (add (add (add (t "/camera/") (call (n "encodeURIComponent") [attr (n "host") "data-video-id"])) (t ".h264?_media=")) (m (n "Date") "now" Nil)),
+      JS.Const "response" (JS.Await (call (n "fetch") [n "route", JS.Object [("signal", f (n "abort") "signal"), ("cache", t "no-store"), ("credentials", t "same-origin")]])),
+      JS.If (either (neg (f (n "response") "ok")) (neg (f (n "response") "body"))) [JS.Throw (JS.New (n "Error") [add (t "camera ") (f (n "response") "status")])] Nil,
+      JS.Const "reader" (m (f (n "response") "body") "getReader" Nil),
+      JS.Let "buffer" (JS.New (n "Uint8Array") [num 0]),
+      JS.Let "needKey" (JS.Boolean True), JS.Let "frames" (num 0), JS.Let "since" (m (n "Date") "now" Nil),
+      JS.Let "reading" (JS.Boolean True),
+      JS.While (n "reading")
+        [JS.Const "part" (JS.Await (m (n "reader") "read" Nil)),
+         JS.If (f (n "part") "done") [set (n "reading") (JS.Boolean False)]
+           (L.append
+             [JS.Const "joined" (JS.New (n "Uint8Array") [add (f (n "buffer") "length") (f (f (n "part") "value") "length")]),
+              doM (n "joined") "set" [n "buffer", num 0],
+              doM (n "joined") "set" [f (n "part") "value", f (n "buffer") "length"],
+              set (n "buffer") (n "joined")]
+             parseRecords)]]
+     "e" Nil Nil,
+   JS.If (ne (f (n "state") "serial") (n "serial")) [JS.ReturnVoid] Nil,
+   JS.Do (call (n "stopPlayer") [n "state"]),
+   JS.If (call (n "wanted") [n "host"])
+     [JS.Do (call (n "say") [n "host", n "state", t "Camera interrupted · reconnecting…"]),
+      set (f (n "state") "retry") (call (n "setTimeout") [JS.Function Nil [set (f (n "state") "retry") JS.Null, JS.Do (call (n "schedule") Nil)], f (n "state") "delay"]),
+      set (f (n "state") "delay") (m (n "Math") "min" [JS.Binary JS.Multiply (f (n "state") "delay") (num 2), num 10000])] Nil].
+
+sync = JS.Define "sync" Nil
+  [set (n "queued") (JS.Boolean False),
+   JS.If (neg (n "running")) [JS.ReturnVoid] Nil,
+   JS.ForOf "entry" (m (n "players") "entries" Nil)
+     [JS.If (neg (f (JS.Index (n "entry") (num 0)) "isConnected"))
+       [JS.Do (call (n "stopPlayer") [JS.Index (n "entry") (num 1)]), doM (n "players") "delete" [JS.Index (n "entry") (num 0)]] Nil],
+   JS.ForOf "host" (m (n "document") "querySelectorAll" [t "[data-video-id]"])
+     [JS.Let "state" (m (n "players") "get" [n "host"]),
+      JS.If (neg (n "state"))
+        [JS.Const "shadow" (m (n "host") "attachShadow" [JS.Object [("mode", t "open")]]),
+         set (f (n "shadow") "innerHTML") (t canvasHtml),
+         set (n "state") (JS.Object [("canvas", m (n "shadow") "querySelector" [t "canvas"]), ("abort", JS.Null), ("decoder", JS.Null),
+           ("retry", JS.Null), ("active", JS.Boolean False), ("delay", num 1000), ("serial", num 0), ("text", JS.Null)]),
+         doM (n "players") "set" [n "host", n "state"]] Nil,
+      JS.If (eq (JS.Unary JS.TypeOf (n "VideoDecoder")) (t "undefined"))
+        [JS.Do (call (n "say") [n "host", n "state", t "This browser cannot decode the live camera"]), JS.Continue] Nil,
+      JS.If (call (n "wanted") [n "host"])
+        [JS.If (both (neg (f (n "state") "active")) (neg (f (n "state") "retry"))) [JS.Do (call (n "play") [n "host", n "state"])]
+           [JS.If (f (n "state") "text") [JS.Do (call (n "label") [n "host", f (n "state") "text"])] Nil]]
+        [JS.If (either (f (n "state") "active") (f (n "state") "retry"))
+           [JS.Do (call (n "stopPlayer") [n "state"]), set (f (n "state") "serial") (add (f (n "state") "serial") (num 1))] Nil,
+         set (f (n "state") "delay") (num 1000),
+         JS.Do (call (n "say") [n "host", n "state", JS.Choose (eq (attr (n "host") "data-camera-on") (t "true"))
+           (t "Camera paused while this tab is hidden or disconnected") (t "Camera is off")])]]].
+
+script : String .
+script = JS.program [JS.Do (call (JS.Function Nil
+  [JS.Const "players" (JS.New (n "Map") Nil), JS.Let "queued" (JS.Boolean False), JS.Let "running" (JS.Boolean True),
+   JS.Define "schedule" Nil [JS.If (both (n "running") (neg (n "queued"))) [set (n "queued") (JS.Boolean True), JS.Do (call (n "queueMicrotask") [n "sync"])] Nil],
+   stop, label, say, wanted, play, sync,
+   JS.Const "root" (m (n "document") "getElementById" [t "lv-root"]),
+   JS.If (n "root") [doM (JS.New (n "MutationObserver") [n "schedule"]) "observe" [n "root", JS.Object [("childList", JS.Boolean True), ("subtree", JS.Boolean True), ("attributes", JS.Boolean True), ("attributeFilter", JS.Array [t "data-camera-on"]), ("characterData", JS.Boolean True)]]] Nil,
+   JS.Const "link" (m (n "document") "getElementById" [t "lv-link"]),
+   JS.If (n "link") [doM (JS.New (n "MutationObserver") [n "schedule"]) "observe" [n "link", JS.Object [("childList", JS.Boolean True), ("subtree", JS.Boolean True), ("characterData", JS.Boolean True)]]] Nil,
+   doM (n "document") "addEventListener" [t "visibilitychange", n "schedule"],
+   doM (n "window") "addEventListener" [t "pagehide", JS.Function Nil [set (n "running") (JS.Boolean False), JS.ForOf "s" (m (n "players") "values" Nil) [JS.Do (call (n "stopPlayer") [n "s"])]]],
+   doM (n "window") "addEventListener" [t "pageshow", JS.Function ["event"] [JS.If (f (n "event") "persisted") [set (n "running") (JS.Boolean True), JS.Do (call (n "schedule") Nil)] Nil]],
+   JS.Do (call (n "schedule") Nil)]) Nil)].

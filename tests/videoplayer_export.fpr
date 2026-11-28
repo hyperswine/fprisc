@@ -1,0 +1,7 @@
+# Writes the generated H.264 camera player script (for syntax and browser checks).
+Player = use "examples/printer-dashboard/videoplayer".
+F = use "../std/file".
+P = use "../std/program".
+main = case P.args Unit of
+    [out] -> (case F.writeText out Player.script of Ok _ -> 0 | Err e -> P.fail 2 e)
+  | _ -> P.fail 2 "usage: videoplayer_export OUT.js".

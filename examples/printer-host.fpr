@@ -1,4 +1,5 @@
-# Native printer application. X1C snapshots optionally use a loopback decoder.
+# Native printer application. X1C/X2D cameras stream H.264 natively (bambu-rtsps-h264)
+# or use the optional loopback snapshot decoder (bambu-rtsps-snapshot).
 T = use "std/transport".
 unsafe base.
 Gateway = use "printer-dashboard/gateway".
@@ -7,6 +8,7 @@ AuthService = use "printer-dashboard/authservice".
 Registry = use "printer-dashboard/registry".
 Camera = use "printer-dashboard/cameraservice".
 Frame = use "printer-dashboard/cameraframe".
+Player = use "printer-dashboard/videoplayer".
 Collector = use "examples/printer-telemetry".
 View = use "examples/printers".
 Care = use "printer-dashboard/care".
@@ -75,14 +77,15 @@ rows value demo =
     _ = if not (slug id) or name == "" or strlen name > 80 or (not demo and (host == "" or serial == "" or not (Q.topic serial) or S.contains "/" serial or not (envName codeEnv) or peer == "" or ca == "" or port < 1 or port > 65535)) then P.fail 2 "printer host: invalid public printer configuration" else Unit;
     mode = field "none" "camera" v;
     snapshot = mode == "bambu-rtsps-snapshot";
+    h264 = mode == "bambu-rtsps-h264";
     snapshotPort = integer 6741 "camera_snapshot_port" v;
-    _ = if not (L.member mode ["none", "bambu-jpeg", "bambu-rtsps-snapshot"]) or
+    _ = if not (L.member mode ["none", "bambu-jpeg", "bambu-rtsps-snapshot", "bambu-rtsps-h264"]) or
       (snapshot and (snapshotPort < 1 or snapshotPort > 65535)) then P.fail 2 "printer host: invalid camera mode or snapshot port" else Unit;
     camera = not demo and mode != "none";
     {id = id, host = host, serial = serial, port = port, peer = peer, ca = ca, codeEnv = codeEnv,
-      camera = camera, snapshot = snapshot, snapshotPort = snapshotPort, cameraPort = integer 6000 "camera_port" v, cameraPeer = field peer "camera_tls_peer" v, cameraCa = field ca "camera_tls_ca" v,
+      camera = camera, snapshot = snapshot, h264 = h264, snapshotPort = snapshotPort, cameraPort = integer (if h264 then 322 else 6000) "camera_port" v, cameraPeer = field peer "camera_tls_peer" v, cameraCa = field ca "camera_tls_ca" v,
       metadata = J.object [("id", J.Text id), ("name", J.Text name), ("model", J.Text (text "model" v)), ("location", J.Text (text "location" v)), ("camera_available", J.Boolean camera),
-        ("camera_mode", J.Text (if snapshot then "snapshot" else "stream")), ("camera_interval_ms", J.Integer (if snapshot then 10000 else 0))]}) values;
+        ("camera_mode", J.Text (if snapshot then "snapshot" else if h264 then "h264" else "stream")), ("camera_interval_ms", J.Integer (if snapshot then 10000 else 0))]}) values;
   _ = if L.length (L.unique (L.map (fn row -> row.id) loaded)) != L.length loaded then P.fail 2 "printer host: duplicate printer id" else Unit;
   loaded.
 telemetry registry row code me =
@@ -150,13 +153,14 @@ run v =
     if not row.camera then O.None else
     gate = need (Auth.random Unit);
     camera = if row.snapshot then Camera.startSnapshot {id = row.id, port = row.snapshotPort, code = code, gate = gate, intervalMs = 10000, maxFrame = 4194304}
+      else if row.h264 then Camera.startH264 {host = row.host, port = row.cameraPort, peer = row.cameraPeer, ca = row.cameraCa, code = code, gate = gate, maxFrame = 4194304}
       else Camera.start {host = row.host, port = row.cameraPort, peer = row.cameraPeer, ca = row.cameraCa, gate = gate, login = need (Frame.login "bblp" code), maxFrame = 4194304};
     _ = A.spawnWith (A.Static 16) (cameraStats registry row.id camera.manager);
     O.Some {id = row.id, port = camera.port, gate = gate}) printers;
   parent = myself 0;
   view = A.spawnWith (A.Static 16) (fn me ->
     cfg = {Live.defaults | port = 0, title = "Print room", store = text "store" v, journal = False,
-      script = LJ.src Unit + View.cameraScript + CareProgram.src Unit + SessionProgram.src Unit};
+      script = LJ.src Unit + View.cameraScript + Player.script + CareProgram.src Unit + SessionProgram.src Unit};
     _ = Live.serveProjectedNotify (fn port -> _ = send parent port; Unit) UI.document cfg
       {init = model registry care, update = update registry care, subs = View.subs 1000, fields = Nil, codec = View.codec, project = View.project,
        same = (fn a b -> a == b), cache = Unit, view = (fn sid m cache -> (View.view 1000 sid m, Unit)), css = View.css};
