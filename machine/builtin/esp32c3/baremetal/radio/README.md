@@ -215,6 +215,13 @@ radio heap returned to 18,880 live bytes after each BLE stop and peaked at
 verified after the run. The associated-traffic endurance test requires
 a test access point.
 
+With the phone hotspot, a diagnostic combined build advertised on BLE,
+associated to Wi-Fi, and transmitted DHCP discovery frames during a
+20-second packet test. The Mac observed its BLE service. Samples ran
+about once per second with a peak radio heap of 54,496 bytes. The build
+received zero Wi-Fi data callbacks during the packet test, so live
+packet exchange and endurance remain pending.
+
 After installing the BLE or combined test image, use the compiled
 CoreBluetooth observer with the matching Mac checker.
 
