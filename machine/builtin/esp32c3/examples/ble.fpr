@@ -1,0 +1,23 @@
+profile builtin.
+BLE = use "../lib/ble".
+Board = use "../boards/supermini".
+GPIO = use "../lib/gpio".
+EspIO.tryReadByte : Unit -> Int .
+EspBLE.report : Unit -> Unit .
+
+start u = BLE.start "43AA9E7E-1EA0-4AB4-A7C2-1A280B18B13C".
+
+loop u =
+  byte = EspIO.tryReadByte Unit;
+  if byte == 81 then _ = BLE.stop Unit; 0 else
+    rc = (if byte == 66 then _ = BLE.stop Unit; start Unit else 0);
+    if rc != 0 then rc else
+      _ = (if byte == 83 then EspBLE.report Unit else Unit);
+      _ = BLE.service Unit;
+      loop Unit.
+
+main =
+  led = GPIO.openDrain Board.led True;
+  if led != 0 then led else
+    rc = start Unit;
+    if rc != 0 then rc else loop Unit.

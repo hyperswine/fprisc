@@ -10,8 +10,6 @@
 # Every loop declares its MEASURE (the list it walks, the count it lowers),
 # so the compiler proves it terminates and `fpr build --cost` closes a
 # caller's equation to len xs x work f (docs/2026-10-02-RESOURCE-BOUNDS.md).
-# Only `merge` (two lists) and `mergeAll` (a halving) are still `unsafe`:
-# their descent is not one parameter.
 
 O = use "option".
 Ord = use "order".
@@ -24,7 +22,7 @@ singleton x = x :: Nil.
 range : (a : Int) -> (b : Int) -> List Int | size range <= max 0 (b - a + 1) .
 range a b = rangeGo a b Nil.
 rangeGo : (a : Int) -> (b : Int | measure (b - a)) -> List Int -> List Int .
-rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: acc).
+rangeGo a b acc = if b < a then acc else rangeGo a (b - 1) (b :: acc).
 
 # Fusion target (checked list fusion, FPR_NO_LIST_FUSE to roll back):
 # `fold f z (range a b)` rewrites to `foldRange f z a b`, ascending like
@@ -35,11 +33,11 @@ rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: a
 # first. The loop stops at a == b and never computes `b + 1`, so a range
 # ending at maxInt does not trap.
 foldRange : (b -> Int -> b) -> b -> Int -> Int -> b .
-foldRange f z a b = case a > b of
-    True -> z
-  | False -> (case a - 1 < b of True -> foldRangeGo f z a b | False -> z).
+foldRange f z a b =
+  if a > b then z
+  else if a - 1 < b then foldRangeGo f z a b else z.
 foldRangeGo : (b -> Int -> b) -> b -> (a : Int) -> (b : Int | measure (b - a)) -> b .
-foldRangeGo f z a b = case a < b of True -> foldRangeGo f (f z a) (a + 1) b | False -> f z a.
+foldRangeGo f z a b = if a < b then foldRangeGo f (f z a) (a + 1) b else f z a.
 
 # Evaluate the callback in the same ascending order as mapGo. foldRange
 # checks the lower endpoint before the first call and stops at the upper
@@ -55,7 +53,7 @@ mapRangeForward f a b = reverse (foldRange (fn acc i -> f i :: acc) Nil a b).
 mapRange : (Int -> a) -> (a : Int) -> (b : Int) -> List a | size mapRange <= max 0 (b - a + 1) .
 mapRange f a b = mapRangeGo f a b Nil.
 mapRangeGo : (Int -> a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
-mapRangeGo f a b acc = case b < a of True -> acc | False -> mapRangeGo f a (b - 1) (f b :: acc).
+mapRangeGo f a b acc = if b < a then acc else mapRangeGo f a (b - 1) (f b :: acc).
 
 # Materializing fusion target. The compiler supplies a checked, pure step
 # which either conses one result or returns acc unchanged. Descending input
@@ -65,12 +63,12 @@ mapRangeGo f a b acc = case b < a of True -> acc | False -> mapRangeGo f a (b - 
 buildRange : (Int -> List a -> List a) -> Int -> Int -> List a .
 buildRange step a b = buildRangeGo step a b Nil.
 buildRangeGo : (Int -> List a -> List a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
-buildRangeGo step a b acc = case b < a of True -> acc | False -> buildRangeGo step a (b - 1) (step b acc).
+buildRangeGo step a b acc = if b < a then acc else buildRangeGo step a (b - 1) (step b acc).
 
 repeat : (n : Int) -> a -> List a | size repeat <= max 0 n .
 repeat n x = repeatGo n x Nil.
 repeatGo : (n : Int | measure n) -> a -> List a -> List a .
-repeatGo n x acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) x (x :: acc).
+repeatGo n x acc = if n <= 0 then acc else repeatGo (n - 1) x (x :: acc).
 
 # ---- size and order ------------------------------------------------------------
 length : List a -> Int .
@@ -82,7 +80,7 @@ lengthGo xs n = case xs of Nil -> n | _ :: r -> lengthGo r (n + 1).
 lengthRange : Int -> Int -> Int .
 lengthRange a b = lengthRangeGo a b 0.
 lengthRangeGo : (a : Int) -> (b : Int | measure (b - a)) -> Int -> Int .
-lengthRangeGo a b n = case b < a of True -> n | False -> lengthRangeGo a (b - 1) (n + 1).
+lengthRangeGo a b n = if b < a then n else lengthRangeGo a (b - 1) (n + 1).
 
 isEmpty : List a -> Bool .
 isEmpty xs = case xs of Nil -> True | _ -> False.
@@ -116,19 +114,17 @@ mapWhere : (a -> Bool) -> (a -> a) -> (xs : List a) -> List a | size mapWhere <=
   | work mapWhere <= 7 * (len xs + 1) + len xs * (work f + work p + 15) + (len xs + 1) * (work p + 9) + 16 | alloc mapWhere <= 24 * (len xs + 1) + len xs * (alloc f + alloc p + 24) + (len xs + 1) * alloc p + 32 .
 mapWhere p f xs = mapWhereFrom p f xs (lastWhere p xs 0 (0 - 1)).
 mapWhereFrom : (a -> Bool) -> (a -> a) -> List a -> Int -> List a .
-mapWhereFrom p f xs last = case last < 0 of
-    True -> xs
-  | False -> mapWhereGo p f xs last Nil.
+mapWhereFrom p f xs last = if last < 0 then xs else mapWhereGo p f xs last Nil.
 lastWhere : (a -> Bool) -> (xs : List a | measure xs) -> Int -> Int -> Int .
 lastWhere p xs i last = case xs of
     Nil -> last
-  | x :: r -> lastWhere p r (i + 1) (case p x of True -> i | False -> last).
+  | x :: r -> lastWhere p r (i + 1) (if p x then i else last).
 mapWhereGo : (a -> Bool) -> (a -> a) -> (xs : List a | measure xs) -> Int -> List a -> List a .
 mapWhereGo p f xs n acc = case xs of
     Nil -> revOnto acc Nil
-  | x :: r -> (case n < 0 of
-      True -> revOnto acc xs
-    | False -> mapWhereGo p f r (n - 1) ((case p x of True -> f x | False -> x) :: acc)).
+  | x :: r ->
+      if n < 0 then revOnto acc xs
+      else mapWhereGo p f r (n - 1) ((if p x then f x else x) :: acc).
 
 # each element with its position, from 0
 indexedMap : (Int -> a -> b) -> (xs : List a) -> List b | size indexedMap <= len xs .
@@ -144,7 +140,7 @@ filter p xs = filterGo p xs Nil.
 filterGo : (a -> Bool) -> (xs : List a | measure xs) -> List a -> List a .
 filterGo p xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> (case p x of True -> filterGo p r (x :: acc) | False -> filterGo p r acc).
+  | x :: r -> if p x then filterGo p r (x :: acc) else filterGo p r acc.
 
 # Fusion targets for map/filter cross-composition:
 mapFilter : (a -> b) -> (a -> Bool) -> (xs : List a) -> List b | size mapFilter <= len xs .
@@ -152,14 +148,14 @@ mapFilter f p xs = mapFilterGo f p xs Nil.
 mapFilterGo : (a -> b) -> (a -> Bool) -> (xs : List a | measure xs) -> List b -> List b .
 mapFilterGo f p xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> (case p x of True -> mapFilterGo f p r (f x :: acc) | False -> mapFilterGo f p r acc).
+  | x :: r -> if p x then mapFilterGo f p r (f x :: acc) else mapFilterGo f p r acc.
 
 filterMapped : (b -> Bool) -> (a -> b) -> (xs : List a) -> List b | size filterMapped <= len xs .
 filterMapped p f xs = filterMappedGo p f xs Nil.
 filterMappedGo : (b -> Bool) -> (a -> b) -> (xs : List a | measure xs) -> List b -> List b .
 filterMappedGo p f xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> y = f x; case p y of True -> filterMappedGo p f r (y :: acc) | False -> filterMappedGo p f r acc.
+  | x :: r -> y = f x; if p y then filterMappedGo p f r (y :: acc) else filterMappedGo p f r acc.
 
 # map and keep what is there: List.filterMap parseLine lines
 filterMap : (a -> O.Option b) -> (xs : List a) -> List b | size filterMap <= len xs .
@@ -192,13 +188,13 @@ product xs = fold (fn a x -> a * x) 1 xs.
 any : (a -> Bool) -> List a -> Bool .
 any p xs = anyGo p xs.
 anyGo : (a -> Bool) -> (xs : List a | measure xs) -> Bool .
-anyGo p xs = case xs of Nil -> False | x :: r -> (case p x of True -> True | False -> anyGo p r).
+anyGo p xs = case xs of Nil -> False | x :: r -> if p x then True else anyGo p r.
 
 all : (a -> Bool) -> List a -> Bool .
 all p xs = not (any (fn x -> not (p x)) xs).
 
 count : (a -> Bool) -> List a -> Int .
-count p xs = fold (fn n x -> case p x of True -> n + 1 | False -> n) 0 xs.
+count p xs = fold (fn n x -> if p x then n + 1 else n) 0 xs.
 
 # the least / greatest under a comparator; None for an empty list
 minimum : (a -> a -> Ord.Ordering) -> List a -> O.Option a .
@@ -211,7 +207,7 @@ maximum cmp xs = case xs of Nil -> O.None | x :: r -> O.Some (fold (fn m y -> Or
 find : (a -> Bool) -> List a -> O.Option a .
 find p xs = findGo p xs.
 findGo : (a -> Bool) -> (xs : List a | measure xs) -> O.Option a .
-findGo p xs = case xs of Nil -> O.None | x :: r -> (case p x of True -> O.Some x | False -> findGo p r).
+findGo p xs = case xs of Nil -> O.None | x :: r -> if p x then O.Some x else findGo p r.
 
 # by deep equality
 member : a -> List a -> Bool .
@@ -228,7 +224,7 @@ last xs = head (reverse xs).
 
 # position from 0
 get : Int -> List a -> O.Option a .
-get i xs = case i < 0 of True -> O.None | False -> head (drop i xs).
+get i xs = if i < 0 then O.None else head (drop i xs).
 
 # Like `get`, then `Option.withDefault`.  A negative index or one past the
 # end is a no-op: the default is answered, never a trap.  Matches terra-ii's
@@ -240,34 +236,36 @@ getWithDefault d i xs = O.withDefault d (get i xs).
 take : Int -> (xs : List a) -> List a | size take <= len xs .
 take n xs = takeGo n xs Nil.
 takeGo : Int -> (xs : List a | measure xs) -> List a -> List a .
-takeGo n xs acc = case n <= 0 of
-    True -> reverse acc
-  | False -> (case xs of Nil -> reverse acc | x :: r -> takeGo (n - 1) r (x :: acc)).
+takeGo n xs acc =
+  if n <= 0 then reverse acc
+  else case xs of Nil -> reverse acc | x :: r -> takeGo (n - 1) r (x :: acc).
 
 drop : Int -> (xs : List a) -> List a | size drop <= len xs .
 drop n xs = dropGo n xs.
 dropGo : Int -> (xs : List a | measure xs) -> List a .
-dropGo n xs = case n <= 0 of True -> xs | False -> (case xs of Nil -> Nil | _ :: r -> dropGo (n - 1) r).
+dropGo n xs =
+  if n <= 0 then xs
+  else case xs of Nil -> Nil | _ :: r -> dropGo (n - 1) r.
 
 # Replace the element at index `i` (from 0).  A negative index or one past
 # the end is a no-op: the list is answered unchanged, never a trap.  Matches
 # terra-ii's `setAt l i v`.
 setAt : Int -> a -> (xs : List a) -> List a | size setAt <= len xs .
-setAt i v xs = case i < 0 of True -> xs | False -> setAtGo i v xs Nil.
+setAt i v xs = if i < 0 then xs else setAtGo i v xs Nil.
 setAtGo : Int -> a -> (xs : List a | measure xs) -> List a -> List a .
 setAtGo i v xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> (case i == 0 of True -> revOnto acc (v :: r) | False -> setAtGo (i - 1) v r (x :: acc)).
+  | x :: r -> if i == 0 then revOnto acc (v :: r) else setAtGo (i - 1) v r (x :: acc).
 
 # Drop the element at index `i` (from 0).  A negative index or one past the
 # end is a no-op: the list is answered unchanged, never a trap.  Matches
 # terra-ii's `delAt l i`.
 removeAt : Int -> (xs : List a) -> List a | size removeAt <= len xs .
-removeAt i xs = case i < 0 of True -> xs | False -> removeAtGo i xs Nil.
+removeAt i xs = if i < 0 then xs else removeAtGo i xs Nil.
 removeAtGo : Int -> (xs : List a | measure xs) -> List a -> List a .
 removeAtGo i xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> (case i == 0 of True -> revOnto acc r | False -> removeAtGo (i - 1) r (x :: acc)).
+  | x :: r -> if i == 0 then revOnto acc r else removeAtGo (i - 1) r (x :: acc).
 
 # `(prefix, suffix)` after `n` elements.  `n <= 0` answers `(Nil, xs)`;
 # `n` past the end answers `(xs, Nil)`.  Neither case traps.  terra-ii's
@@ -276,23 +274,23 @@ removeAtGo i xs acc = case xs of
 # `(xs, Nil)`, which this function does not — it treats every OOB `n`
 # as a no-op on the corresponding end, so `n < 0` is `(Nil, xs)`.
 splitAt : Int -> (xs : List a) -> (List a, List a) .
-splitAt n xs = case n <= 0 of True -> (Nil, xs) | False -> splitAtGo n xs Nil.
+splitAt n xs = if n <= 0 then (Nil, xs) else splitAtGo n xs Nil.
 splitAtGo : Int -> (xs : List a | measure xs) -> List a -> (List a, List a) .
-splitAtGo n xs acc = case n == 0 of
-    True -> (reverse acc, xs)
-  | False -> (case xs of Nil -> (reverse acc, Nil) | x :: r -> splitAtGo (n - 1) r (x :: acc)).
+splitAtGo n xs acc =
+  if n == 0 then (reverse acc, xs)
+  else case xs of Nil -> (reverse acc, Nil) | x :: r -> splitAtGo (n - 1) r (x :: acc).
 
 takeWhile : (a -> Bool) -> (xs : List a) -> List a | size takeWhile <= len xs .
 takeWhile p xs = twGo p xs Nil.
 twGo : (a -> Bool) -> (xs : List a | measure xs) -> List a -> List a .
 twGo p xs acc = case xs of
     Nil -> reverse acc
-  | x :: r -> (case p x of True -> twGo p r (x :: acc) | False -> reverse acc).
+  | x :: r -> if p x then twGo p r (x :: acc) else reverse acc.
 
 dropWhile : (a -> Bool) -> (xs : List a) -> List a | size dropWhile <= len xs .
 dropWhile p xs = dwGo p xs.
 dwGo : (a -> Bool) -> (xs : List a | measure xs) -> List a .
-dwGo p xs = case xs of Nil -> Nil | x :: r -> (case p x of True -> dwGo p r | False -> xs).
+dwGo p xs = case xs of Nil -> Nil | x :: r -> if p x then dwGo p r else xs.
 
 # (those that pass, those that do not), each in order
 partition : (a -> Bool) -> List a -> (List a, List a) .
@@ -326,7 +324,7 @@ unique xs = uniqueGo xs Nil.
 uniqueGo : (xs : List a | measure xs) -> List a -> List a .
 uniqueGo xs seen = case xs of
     Nil -> reverse seen
-  | x :: r -> (case member x seen of True -> uniqueGo r seen | False -> uniqueGo r (x :: seen)).
+  | x :: r -> if member x seen then uniqueGo r seen else uniqueGo r (x :: seen).
 
 # ---- sorting -------------------------------------------------------------------------
 # A stable merge sort: equal elements keep their order, so sorting by one key
@@ -353,9 +351,9 @@ groupBy key xs = case xs of
 groupGo : (a -> k) -> (xs : List a | measure xs) -> k -> List a -> List (k, List a) -> List (k, List a) .
 groupGo key xs k cur acc = case xs of
     Nil -> reverse ((k, reverse cur) :: acc)
-  | x :: r -> (case key x == k of
-        True -> groupGo key r k (x :: cur) acc
-      | False -> groupGo key r (key x) (x :: Nil) ((k, reverse cur) :: acc)).
+  | x :: r ->
+      if key x == k then groupGo key r k (x :: cur) acc
+      else groupGo key r (key x) (x :: Nil) ((k, reverse cur) :: acc).
 
 # do something for each element, for its effect
 each : (a -> b) -> List a -> Unit .

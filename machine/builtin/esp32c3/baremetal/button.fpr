@@ -1,0 +1,64 @@
+profile builtin.
+Board = use "../boards/supermini".
+GPIO = use "../lib/gpio".
+Clock = use "../lib/clock".
+
+EspGPIO.watch : Int -> Int .
+EspGPIO.waitEdge : Int -> Int .
+EspIO.writeByte : Int -> Int .
+
+emitStamp stamp i =
+  if i == 8 then 0 else
+    p = Addr.add stamp i;
+    byte = Mem.read8 p;
+    _ = Rc.release p;
+    rc = EspIO.writeByte byte;
+    if rc < 0 then rc else emitStamp stamp (i + 1).
+
+emit tag stamp =
+  rc = EspIO.writeByte tag;
+  if rc < 0 then rc else emitStamp stamp 0.
+
+# Sample on a millisecond grid. A change restarts the debounce window.
+waitLevel stamp deadline expected stable =
+  level = GPIO.read Board.button;
+  if level < 0 then level else
+    matches = level == expected;
+    _ = Clock.nowMs stamp;
+    if matches and stable >= 20 then emit (48 + level) stamp else
+      _ = Clock.afterMs stamp 1 deadline;
+      _ = Clock.sleepUntil deadline;
+      waitLevel stamp deadline expected (if matches then stable + 1 else 0).
+
+waitEdge stamp deadline expected =
+  edge = EspGPIO.waitEdge Board.button;
+  if edge < 0 then edge else
+    if edge != expected then waitEdge stamp deadline expected else
+      accepted = waitLevel stamp deadline expected 0;
+      accepted.
+
+run stamp deadline =
+  _ = Clock.nowMs stamp;
+  _ = emit 65 stamp;
+  _ = Clock.afterMs stamp 1000 deadline;
+  _ = Clock.sleepUntil deadline;
+  _ = Clock.nowMs stamp;
+  _ = emit 66 stamp;
+  releasedLevel = if Board.buttonActiveLow then 1 else 0;
+  initial = waitLevel stamp deadline releasedLevel 0;
+  if initial < 0 then initial else
+    pressed = waitEdge stamp deadline (1 - releasedLevel);
+    if pressed < 0 then pressed else waitEdge stamp deadline releasedLevel.
+
+main =
+  rc = GPIO.input Board.button Board.buttonActiveLow;
+  armed = if rc != 0 then rc else EspGPIO.watch Board.button;
+  if armed != 0 then armed else
+    stamp = Mem.alloc 8;
+    deadline = Mem.alloc 8;
+    result = run stamp deadline;
+    _ = Mem.free deadline;
+    _ = Rc.release deadline;
+    _ = Mem.free stamp;
+    _ = Rc.release stamp;
+    result.

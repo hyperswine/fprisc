@@ -1,0 +1,19 @@
+# std/keys: the names are the evdev codes, the helpers add the modifier
+# offsets, std/game re-exports the same values, and named guards dispatch
+# like literals.
+K = use "std/keys".
+Game = use "std/game".
+
+name k | k == K.keyEnter = "enter".
+name k | k == K.ctrl K.keyS = "ctrl-s".
+name k | k == K.ctrlShift K.keyZ = "ctrl-shift-z".
+name k | k == K.alt K.keyLeft = "alt-left".
+name k | k == K.shift K.keyTab = "shift-tab".
+name k | k == Game.keySpace = "space".
+name k = "other".
+
+main =
+  _ = print "codes: esc={K.keyEsc} enter={K.keyEnter} space={K.keySpace} up={K.keyUp} delete={K.keyDelete}";
+  _ = print "modifiers: shift={K.shift K.keyA} ctrl={K.ctrl K.keyC} ctrlShift={K.ctrlShift K.keyZ} alt={K.alt K.keyLeft}";
+  _ = print "game re-exports: {Game.keyEsc == K.keyEsc} {Game.keyR == K.keyR} {Game.keyDelete == K.keyDelete}";
+  print "names: {name 28} {name 4031} {name 5044} {name 8105} {name 1015} {name 57} {name 31}".

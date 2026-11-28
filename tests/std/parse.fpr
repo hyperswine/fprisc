@@ -1,0 +1,50 @@
+P = use "std/parse".
+L = use "std/list".
+O = use "std/option".
+R = use "std/result".
+S = use "std/string".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+# A QLOG-style record header parser: "TAG pages size key[ hN]"
+qrecHeader =
+  P.succeed (fn tag pages size key hash -> { tag = tag, pages = pages, size = size, key = key, hash = hash })
+  |> P.andMap (P.oneOf [P.literal "QREC", P.literal "QDEL", P.literal "QBLK"])
+  |> P.skip (P.char 32) |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 32) |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 32) |> P.andMap (P.takeWhile1 (fn c -> c > 32 and c != 127) "key")
+  |> P.andMap (P.optional (P.literal " h" |> P.andThen (fn u -> P.natNoLeadZero))).
+
+# A SemVer-like MAJOR.MINOR.PATCH[-tag] parser
+semver =
+  P.succeed (fn maj min pat tag -> { maj = maj, min = min, pat = pat, tag = tag })
+  |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 46) |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 46) |> P.andMap P.natNoLeadZero
+  |> P.andMap (P.withDefault "" (P.char 45 |> P.andThen (fn u -> P.takeWhile1 (fn c -> S.isAlpha c or S.isDigit c or c == 46) "tag"))).
+
+# Comma-separated integers inside brackets: "[ 1, -2, 30 ]"
+intList =
+  P.between (P.char 91 |> P.skip P.whitespace) (P.whitespace |> P.skip (P.char 93))
+    (P.sepBy (P.whitespace |> P.skip (P.char 44) |> P.skip P.whitespace) P.int).
+
+main =
+  _ = check "literal + end" (P.run (P.literal "hello") "hello" == Ok "hello");
+  _ = check "trailing input rejected" (R.isErr (P.run (P.literal "hello") "hello!"));
+  _ = check "runPrefix keeps remainder" (P.runPrefix (P.literal "hello") "hello world" == Ok ("hello", " world"));
+  _ = check "nat" (P.run P.nat "0042" == Ok 42);
+  _ = check "natNoLeadZero accepts 0" (P.run P.natNoLeadZero "0" == Ok 0);
+  _ = check "natNoLeadZero rejects 01" (R.isErr (P.run P.natNoLeadZero "01"));
+  _ = check "int positive/negative" (P.run P.int "-123" == Ok (0 - 123) and P.run P.int "+45" == Ok 45);
+  _ = check "hex and hexN" (P.run P.hex "deadBEEF" == Ok 3735928559 and P.run (P.hexN 4) "00e9" == Ok 233);
+  _ = check "hexN wrong length" (R.isErr (P.run (P.hexN 4) "00e"));
+  _ = check "qrec with hash" (P.run qrecHeader "QREC 2 4096 apps/main.qa h98765" == Ok { tag = "QREC", pages = 2, size = 4096, key = "apps/main.qa", hash = O.Some 98765 });
+  _ = check "qdel without hash" (P.run qrecHeader "QDEL 0 0 old" == Ok { tag = "QDEL", pages = 0, size = 0, key = "old", hash = O.None });
+  _ = check "semver with tag" (P.run semver "0.13.0-rc.2" == Ok { maj = 0, min = 13, pat = 0, tag = "rc.2" });
+  _ = check "semver plain" (P.run semver "1.2.3" == Ok { maj = 1, min = 2, pat = 3, tag = "" });
+  _ = check "sepBy empty" (P.run intList "[]" == Ok Nil);
+  _ = check "sepBy spaces and ints" (P.run intList "[ 1, -2 , 30 ]" == Ok [1, 0 - 2, 30]);
+  _ = check "many stops on zero-width parser" (P.runPrefix (P.many (P.succeed 1)) "a" == Ok (Nil, "a"));
+  _ = check "multiline error location" (P.run (P.literal "a\nb\n" |> P.andThen (fn u -> P.literal "xyz")) "a\nb\nx!z" == Err "line 3, column 1: expected \"xyz\"");
+  _ = check "allChars" (S.allChars S.isDigit "12345" and not (S.allChars S.isDigit "12a45"));
+  print "std/parse checks passed".

@@ -5353,6 +5353,14 @@ static void render(V v) {
   }
 }
 
+static inline str_t *alloc_string_bytes(uw bytes) {
+#ifndef FPR_BUILTIN
+  V cell = alloc_window(fpr_hart(), bytes);
+  if (cell) return (str_t *)cell;
+#endif
+  return (str_t *)fpr_alloc(bytes);
+}
+
 V fpr_prim_fn_str(V v) {
   /* a String renders as itself: return it unchanged rather than
    * copying it through the fixed render buffer. This is what makes
@@ -5361,8 +5369,7 @@ V fpr_prim_fn_str(V v) {
     sw value = UNTAG(v);
     if (value >= 0 && value <= 9) return (V)&byte_strings['0' + value];
     uw width = decimal_width(value);
-    str_t *out = (str_t *)alloc_window(fpr_hart(), sizeof(str_t) + width);
-    if (!out) out = (str_t *)fpr_alloc(sizeof(str_t) + width);
+    str_t *out = alloc_string_bytes(sizeof(str_t) + width);
     out->tid = T_STR; out->var = 0; out->len = width;
     write_decimal(out->bytes, width, value);
     return (V)out;
@@ -5419,8 +5426,7 @@ static inline __attribute__((always_inline)) V strcat_pieces(const V *p, uw n) {
     if (len > ~(uw)0 - sizeof(str_t) - total) fpr_trap("string pieces: size overflow");
     total += len;
   }
-  str_t *out = (str_t *)alloc_window(fpr_hart(), sizeof(str_t) + total);
-  if (!out) out = (str_t *)fpr_alloc(sizeof(str_t) + total);
+  str_t *out = alloc_string_bytes(sizeof(str_t) + total);
   out->tid = T_STR;
   out->var = 0;
   out->len = total;

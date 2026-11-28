@@ -1,0 +1,150 @@
+# std/geom.fpr -- Safe 2D geometry primitives: Point, Vec2, Rect, and interpolation.
+#
+#   Geom = use "std/geom".
+#   Geom.contains 12 18 { x = 10, y = 10, w = 20, h = 20 }   -- True
+#   Geom.lerp 0.0 100.0 0.25                                  -- 25.0
+#
+# Covers integer pixel/grid geometry (Point, Rect) for UI hit-testing and
+# layout, plus floating-point Vec2 for physics and graphing. 100% safe.
+
+M = use "math".
+O = use "option".
+
+Point = { x : Int, y : Int }.
+Vec2  = { x : F64, y : F64 }.
+Rect  = { x : Int, y : Int, w : Int, h : Int }.
+
+# ---- scalar interpolation & clamping ----------------------------------------------
+
+clampF : F64 -> F64 -> F64 -> F64 .
+clampF lo hi x | x < lo = lo.
+clampF _ hi x | x > hi = hi.
+clampF _ _ x = x.
+
+lerp : F64 -> F64 -> F64 -> F64 .
+lerp a b t = a + (b - a) * t.
+
+lerpInt : Int -> Int -> Int -> (den : Int | den != 0) -> Int .
+lerpInt a b num den = a + (b - a) * num / den.
+
+# ---- integer 2D points ------------------------------------------------------------
+
+pt : Int -> Int -> Point .
+pt x y = { x = x, y = y }.
+
+ptAdd : Point -> Point -> Point .
+ptAdd a b = { x = a.x + b.x, y = a.y + b.y }.
+
+ptSub : Point -> Point -> Point .
+ptSub a b = { x = a.x - b.x, y = a.y - b.y }.
+
+ptScale : Int -> Point -> Point .
+ptScale s p = { x = p.x * s, y = p.y * s }.
+
+ptDistSq : Point -> Point -> Int .
+ptDistSq a b =
+  dx = a.x - b.x;
+  dy = a.y - b.y;
+  dx * dx + dy * dy.
+
+manhattan : Point -> Point -> Int .
+manhattan a b = M.abs (a.x - b.x) + M.abs (a.y - b.y).
+
+# ---- floating-point 2D vectors ----------------------------------------------------
+
+vec2 : F64 -> F64 -> Vec2 .
+vec2 x y = { x = x, y = y }.
+
+add : Vec2 -> Vec2 -> Vec2 .
+add a b = { x = a.x + b.x, y = a.y + b.y }.
+
+sub : Vec2 -> Vec2 -> Vec2 .
+sub a b = { x = a.x - b.x, y = a.y - b.y }.
+
+scale : F64 -> Vec2 -> Vec2 .
+scale s v = { x = v.x * s, y = v.y * s }.
+
+neg : Vec2 -> Vec2 .
+neg v = { x = 0.0 - v.x, y = 0.0 - v.y }.
+
+dot : Vec2 -> Vec2 -> F64 .
+dot a b = a.x * b.x + a.y * b.y.
+
+lenSq : Vec2 -> F64 .
+lenSq v = v.x * v.x + v.y * v.y.
+
+len : Vec2 -> F64 .
+len v = M.sqrt (lenSq v).
+
+dist : Vec2 -> Vec2 -> F64 .
+dist a b = len (sub a b).
+
+norm : Vec2 -> Vec2 .
+norm v =
+  l = len v;
+  if l == 0.0 then { x = 0.0, y = 0.0 }
+  else { x = v.x / l, y = v.y / l }.
+
+lerpVec : Vec2 -> Vec2 -> F64 -> Vec2 .
+lerpVec a b t = { x = lerp a.x b.x t, y = lerp a.y b.y t }.
+
+# ---- axis-aligned integer rectangles ----------------------------------------------
+
+rect : Int -> Int -> Int -> Int -> Rect .
+rect x y w h = { x = x, y = y, w = w, h = h }.
+
+right : Rect -> Int .
+right r = r.x + r.w.
+
+bottom : Rect -> Int .
+bottom r = r.y + r.h.
+
+center : Rect -> Point .
+center r = { x = r.x + r.w / 2, y = r.y + r.h / 2 }.
+
+isEmpty : Rect -> Bool .
+isEmpty r = r.w <= 0 or r.h <= 0.
+
+area : Rect -> Int .
+area r = if isEmpty r then 0 else r.w * r.h.
+
+contains : Int -> Int -> Rect -> Bool .
+contains px py r =
+  not (isEmpty r) and px >= r.x and px < r.x + r.w and py >= r.y and py < r.y + r.h.
+
+containsPt : Point -> Rect -> Bool .
+containsPt p r = contains p.x p.y r.
+
+intersects : Rect -> Rect -> Bool .
+intersects a b =
+  not (isEmpty a) and not (isEmpty b)
+  and a.x < b.x + b.w and a.x + a.w > b.x
+  and a.y < b.y + b.h and a.y + a.h > b.y.
+
+intersection : Rect -> Rect -> O.Option Rect .
+intersection a b =
+  x1 = M.max a.x b.x;
+  y1 = M.max a.y b.y;
+  x2 = M.min (right a) (right b);
+  y2 = M.min (bottom a) (bottom b);
+  if x2 <= x1 or y2 <= y1 then O.None
+  else O.Some { x = x1, y = y1, w = x2 - x1, h = y2 - y1 }.
+
+union : Rect -> Rect -> Rect .
+union a b | isEmpty a = b.
+union a b | isEmpty b = a.
+union a b =
+  x1 = M.min a.x b.x;
+  y1 = M.min a.y b.y;
+  x2 = M.max (right a) (right b);
+  y2 = M.max (bottom a) (bottom b);
+  { x = x1, y = y1, w = x2 - x1, h = y2 - y1 }.
+
+inset : Int -> Rect -> Rect .
+inset pad r =
+  nw = M.max 0 (r.w - pad * 2);
+  nh = M.max 0 (r.h - pad * 2);
+  { x = r.x + pad, y = r.y + pad, w = nw, h = nh }.
+
+offset : Int -> Int -> Rect -> Rect .
+offset dx dy r = { r | x = r.x + dx, y = r.y + dy }.

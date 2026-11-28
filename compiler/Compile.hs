@@ -114,7 +114,7 @@ compileWithReport opts0 accepted report = do
     if ok then exitSuccess else exitFailure
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|x64mac|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|riscv32imc|rv64|a64|a64mac|x64|x64mac|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   remarkMode<-either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure (Remark.parseMode (oRemarks opts0))
   when (oCheckOnly opts0 && remarkMode/=Remark.Off) $
     hPutStrLn stderr "error: optimization remarks require native compilation; omit --check-only" >> exitFailure

@@ -181,3 +181,23 @@ records hashes, public frame checks, session continuity and browser recovery.
 Ignored local build/test artifacts are under
 `build/printer-camera-investigation-20261029/`. Concurrent compiler/Sol work was
 preserved and was not included in this camera deployment.
+
+## 2026-11-28 X2D camera
+
+The X2D reports `ipcam.rtsp_url = rtsps://<host>:322/streaming/live/1` (1080p) and now uses the
+same snapshot decoder as the X1C: row `x2d` in `data/printers.json` has
+`camera = bambu-rtsps-snapshot`, `camera_port = 322`, `camera_snapshot_port = 6741`.
+
+Its camera server sends only the leaf certificate (CN = serial, issued by
+`BBL Device CA N6-V2`), while its MQTT port also sends that intermediate. Against the plain CA
+bundle, verified RTSPS therefore failed (`unable to verify the first certificate`; the decoder
+answered 503 within a second). The row sets `camera_tls_ca` to
+`data/bbl-x2d-camera-ca.pem`: the bundle plus the N6-V2 intermediate taken from port 8883,
+checked first to chain to the bundled `BBL CA2 RSA` root. Verification stays on: the right
+serial verifies, a wrong one fails with hostname mismatch.
+
+On the Mini, two decoder frames came back about 12 s apart (1280x720 JPEG, about 2 s each). The X1C still
+captured, the host restarted with MQTT to all four printers, and anonymous `/camera/x2d.mjpg`
+returned 401. An authenticated public check through the browser was left to the owner.
+Rollback: `rollback/x2d-camera-20261128T191417/printers.json`, then restart the decoder
+(`launchctl kickstart -k gui/501/cloud.cswine.printer-snapshots`) and the host.

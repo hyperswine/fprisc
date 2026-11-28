@@ -206,3 +206,96 @@ them.
   5 of the review and comes later, once 1-4 have landed.
 - Changing app behaviour or key bindings.
 - New view diffing or rendering work.
+
+## Amendment (26 November, later the same day)
+
+A second read against fprisc `f607eb59` and qos `988d7296`. The findings and
+the four steps stand. This section corrects the order, adds what the steps
+left out, and records that the first half of step 2 is now implemented
+([Nullary literal fold](2026-11-26-NULLARY-LITERAL-FOLD.md)).
+
+### A1. The cause of finding 2, and a second machine
+
+The typed inliner refuses every nullary definition
+(`compiler/Core/Typed/Inline.hs`, `NullaryCallee`), so `K.keyR` is a call to
+`fpr_fn_keyR_…` whose result the caller knows nothing about: each guard pays
+the call, a tag test and the generic `==` fallback path. Inside one module
+the reference is also a call; only literal patterns avoid it.
+
+The measurements above are Linux x86-64 only. The same benchmark on macOS
+arm64 (M4, `fpr` from `f607eb59`, median of 15 process runs):
+
+| dispatch style | time |
+|---|---|
+| literal patterns | 12.4 ms |
+| guards against constants in the same module | 21.9 ms |
+| constants from another module, plus the `K.ctrl K.keyC` guard | 43.0 ms |
+
+"Largest in qos editapp" is reasoned from the guard counts, not measured; no
+QOS target was measured.
+
+### A2. Order: step 2 before step 1
+
+"1 first" and "after step 2 settles their home" contradict each other. The
+order is 2, then 1. Step 1 also needs two things the page does not list:
+
+- the SDK's compiler must contain step 2's fold, so qos has to move its
+  fprisc pin (now `73e8fd31`) with a pin trial before 0.7.0 is cut;
+- an owner for the release and for grapher's interim README note.
+
+### A3. Step 3 needs a decision first
+
+The step offers a generated per-app loop or a kept callback loop with the
+design rule amended, and chooses neither. That is the owner's decision and
+blocks the step. Also unchecked: whether qos `mods/gamerun.fpr`, which takes
+`Game.app init update subs view`, draws the same `generic-call` remark.
+Step 3's success test includes running the remark command on a gamerun app.
+
+### A4. Step 4: enforce it, and design the request/response effects
+
+- **Purity is not checked.** The compiler has a view-purity check for
+  `std/game` apps only (`compiler/Compile.hs`, `viewPurityErrors`). Nothing
+  checks `update`. Step 4's success test ("contain no `print`, `Sys.*`, …")
+  is by inspection, so the effects can return. Add an update-purity check
+  with the same mechanism, first for `std/game` apps, then for `std/live`
+  and the qos app loop; success is that check passing, not a grep.
+- **Effects whose answer `update` needs.** The synchronous policy calls
+  (editapp `:421,454`) and `RP.pollActor` (`:444`) cannot simply move: each
+  becomes a command plus a result message, which adds states to the app.
+  The step needs that design per call site and a test that the visible
+  order of events is unchanged.
+- **`std/live` can already carry these effects.** `examples/logbook.fpr`
+  does its store write and clock read inside `Live.Run` (`:38,45,121`).
+  The typed journal-append and clock commands are a narrowing of `Run`, not
+  a new capability; pos1 and inventory could move to `Live.Run` first.
+- **Performance gate for the qos apps.** The step gates pos1 and inventory
+  only. Add editapp's key-to-insert path and termapp's refresh.
+
+### A5. Scope
+
+- Sol's MVU runtime (`sol/lib/ui.sol`, `sol/lib/web.sol`, the eight web
+  examples) is a fifth surface. It was not reviewed and is not in the
+  non-goals list; the [Sol review](2026-11-26-SOL-SCRIPTING-REVIEW.md)
+  item 5 proposes sharing its types with `std`.
+- `std/ui` apps other than pos1 and inventory were not audited for effects
+  in `update`.
+
+### A6. Status (end of 26 November)
+
+- **Step 2, compiler and library: done** on fprisc branch
+  `zero-cost-named-keys`
+  ([Nullary literal fold](2026-11-26-NULLARY-LITERAL-FOLD.md)). Literal
+  definitions fold at every reference, `ctrl keyC` folds to `4046`, and
+  `std/keys` exists with `std/game` re-exporting it. Cross-module guards
+  44.3 -> 14.1 ms against 12.3 ms for literal patterns. Left: a run of
+  guards is still a comparison chain; the qos copies of the table wait for
+  a pin move; terra-ii.
+- **Step 3: decided and done** on qos branch `as-run-design-rule`. The owner
+  chose the simpler design: `AS.run` keeps its callbacks and the rule is
+  changed (qos `docs/2026-11-26-APP-LOOP-CALLBACKS.md`). The first-Resize
+  commands are issued and the status comes from `view`, as in the SDK
+  adapter; qos `tests/apprun.fpr` covers both. Step 3's "no `<dynamic>`
+  remark" test no longer applies. `mods/gamerun.fpr` draws the same remark
+  and is covered by the same decision.
+- **Steps 1 and 4: not started.** Step 1 needs these branches merged and a
+  qos pin trial.

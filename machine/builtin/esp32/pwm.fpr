@@ -1,0 +1,7 @@
+EspPWM.open : Int -> Int -> Int -> Int -> Int .
+EspPWM.pulseUs : Int -> Int -> Int .
+EspPWM.stop : Int -> Int .
+
+open channel timer pin frequencyHz = EspPWM.open channel timer pin frequencyHz.
+pulseUs channel width = EspPWM.pulseUs channel width.
+stop channel = EspPWM.stop channel.

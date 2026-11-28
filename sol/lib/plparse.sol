@@ -14,12 +14,6 @@ logic = use "logic".
 
 Opt2 = Type (Nope2 | Got2 x).
 
-# Parser could be extracted to its own lib
-# could in theory just use a small parser combinator with around 2-3 basic combinators
-# then build all the other combinators on top of that
-# including a "tokenizer"
-# so parser could be a library that is used by the sol compiler and also by sol programs
-
 # raw terms before interning/numbering
 R = Type (RA x | RV x | RI x | RC x y).
 
@@ -33,7 +27,7 @@ tkKind t = (k, s, n) = t; k.
 tkStr t = (k, s, n) = t; s.
 tkNum t = (k, s, n) = t; n.
 
-isP t s2 = (k, s, n) = t; and (k == 4) (s == s2).
+isP t s2 = (k, s, n) = t; k == 4 and s == s2.
 
 # ---------- tokenizer ----------
 isDigit c | c >= 48, c <= 57 = True.
@@ -50,7 +44,7 @@ isIdent c = isDigit c.
 # strip comment: cut line at first '#'
 stripC ln =
   k = Str.find 35 ln;
-  case k < 0 of True -> ln | False -> Str.slice ln 0 k.
+  if k < 0 then ln else Str.slice ln 0 k.
 
 tokLine ln = toks (stripC ln) 0.
 
@@ -89,7 +83,7 @@ tokAll (l :: r) = (tokLine l) + (tokAll r).
 
 expect toks s = case toks of
   [] -> error "expected {s} at end of input"
-| t :: r -> (case isP t s of True -> r | False -> error "expected {s} near {tkStr t}").
+| t :: r -> if isP t s then r else error "expected {s} near {tkStr t}".
 
 peekP toks s = case toks of
   t :: r -> isP t s
@@ -111,11 +105,9 @@ pCmp toks =
     t :: r -> pCmp2 l t t1 r
   | _ -> (l, t1).
 pCmp2 l t t1 r =
-  case and (tkKind t == 2) (tkStr t == "is") of
-    True -> pCmpRhs "is" l r
-  | False -> (case and (tkKind t == 4) (cmpName (tkStr t) != "") of
-      True -> pCmpRhs (cmpName (tkStr t)) l r
-    | False -> (l, t1)).
+  if tkKind t == 2 and tkStr t == "is" then pCmpRhs "is" l r
+  else if tkKind t == 4 and cmpName (tkStr t) != "" then pCmpRhs (cmpName (tkStr t)) l r
+  else (l, t1).
 pCmpRhs nm l r =
   (rhs, t2) = pAdd r;
   (RC nm [l, rhs], t2).
@@ -124,9 +116,10 @@ pAdd toks =
   (l, t1) = pMul toks;
   pAddLoop l t1.
 pAddLoop l toks = case toks of
-  t :: r -> (case isP t "+" of
-      True -> pAddStep "plus" l r
-    | False -> (case isP t "-" of True -> pAddStep2 "minus" l r toks | False -> (l, toks)))
+  t :: r ->
+    if isP t "+" then pAddStep "plus" l r
+    else if isP t "-" then pAddStep2 "minus" l r toks
+    else (l, toks)
 | _ -> (l, toks).
 pAddStep nm l r = (rhs, t2) = pMul r; pAddLoop (RC nm [l, rhs]) t2.
 pAddStep2 nm l r toks = (rhs, t2) = pMul r; pAddLoop (RC nm [l, rhs]) t2.
@@ -135,11 +128,11 @@ pMul toks =
   (l, t1) = pPrim toks;
   pMulLoop l t1.
 pMulLoop l toks = case toks of
-  t :: r -> (case isP t "*" of
-      True -> pMulStep "mul" l r
-    | False -> (case isP t "/" of
-        True -> pMulStep "div" l r
-      | False -> (case isP t "%" of True -> pMulStep "mod" l r | False -> (l, toks))))
+  t :: r ->
+    if isP t "*" then pMulStep "mul" l r
+    else if isP t "/" then pMulStep "div" l r
+    else if isP t "%" then pMulStep "mod" l r
+    else (l, toks)
 | _ -> (l, toks).
 pMulStep nm l r = (rhs, t2) = pPrim r; pMulLoop (RC nm [l, rhs]) t2.
 
@@ -148,30 +141,29 @@ pPrim toks = case toks of
   t :: r -> pPrim2 t r
 | _ -> error "unexpected end of input".
 pPrim2 t r =
-  case tkKind t == 1 of True -> (RI (tkNum t), r) | False ->
-  case tkKind t == 3 of True -> (RV (tkStr t), r) | False ->
-  case isP t "(" of True -> pParen r | False ->
-  case tkKind t == 2 of True -> pCompound (tkStr t) r | False ->
-  error "unexpected token {tkStr t}".
+  if tkKind t == 1 then (RI (tkNum t), r)
+  else if tkKind t == 3 then (RV (tkStr t), r)
+  else if isP t "(" then pParen r
+  else if tkKind t == 2 then pCompound (tkStr t) r
+  else error "unexpected token {tkStr t}".
 pParen r =
   (e, t2) = pExpr r;
   (e, expect t2 ")").
 
 pCompound nm toks =
   (args, t2) = pArgs toks;
-  case args == [] of
-    True -> (RA nm, t2)
-  | False -> (RC nm args, t2).
+  if args == [] then (RA nm, t2) else (RC nm args, t2).
 
 # argterms: greedily take atoms/ints/vars/parens until a non-arg token
 pArgs toks = case toks of
   t :: r -> pArgs2 t r toks
 | _ -> ([], toks).
 pArgs2 t r toks =
-  case tkKind t == 1 of True -> pArgsCons (RI (tkNum t)) r | False ->
-  case tkKind t == 3 of True -> pArgsCons (RV (tkStr t)) r | False ->
-  case and (tkKind t == 2) (tkStr t != "is") of True -> pArgsCons (RA (tkStr t)) r | False ->
-  case isP t "(" of True -> pArgsParen r | False -> ([], toks).
+  if tkKind t == 1 then pArgsCons (RI (tkNum t)) r
+  else if tkKind t == 3 then pArgsCons (RV (tkStr t)) r
+  else if tkKind t == 2 and tkStr t != "is" then pArgsCons (RA (tkStr t)) r
+  else if isP t "(" then pArgsParen r
+  else ([], toks).
 pArgsCons a r = (rest, t2) = pArgs r; (a :: rest, t2).
 pArgsParen r =
   (e, t2) = pParen r;
@@ -181,9 +173,7 @@ pArgsParen r =
 # goals: expr sepBy ','
 pGoals toks =
   (g, t1) = pExpr toks;
-  case peekP t1 "," of
-    True -> pGoalsMore g t1
-  | False -> ([g], t1).
+  if peekP t1 "," then pGoalsMore g t1 else ([g], t1).
 pGoalsMore g t1 =
   (rest, t2) = pGoals (expect t1 ",");
   (g :: rest, t2).
@@ -194,15 +184,13 @@ Stmt = Type (SClause x y | SQuery x).
 
 pStmt toks = case toks of
   [] -> error "expected statement at end of input"
-| t :: r -> (case isP t ">" of True -> pQuery r | False -> pClause toks).
+| t :: r -> if isP t ">" then pQuery r else pClause toks.
 pQuery r =
   (gs, t2) = pGoals r;
   (SQuery gs, expect t2 "?").
 pClause toks =
   (hd, t1) = pExpr toks;
-  case peekP t1 "." of
-    True -> (SClause hd [], expect t1 ".")
-  | False -> pRule hd t1.
+  if peekP t1 "." then (SClause hd [], expect t1 ".") else pRule hd t1.
 pRule hd t1 =
   (body, t2) = pGoals (expect t1 "<-");
   (SClause hd body, expect t2 ".").
@@ -222,9 +210,8 @@ conv r syms cv = case r of
 
 convVar nm syms cv =
   (vm, nx) = cv;
-  case nm == "_" of
-    True -> (logic.PV nx, syms, (vm, nx + 1))
-  | False -> convNamed nm syms vm nx.
+  if nm == "_" then (logic.PV nx, syms, (vm, nx + 1))
+  else convNamed nm syms vm nx.
 convNamed nm syms vm nx =
   case lookupV nm vm of
     Got2 i -> (logic.PV i, syms, (vm, nx))

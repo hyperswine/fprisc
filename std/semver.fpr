@@ -1,0 +1,137 @@
+# std/semver.fpr -- Semantic versions (MAJOR.MINOR.PATCH[-tag]) and project pins.
+#
+#   V = use "std/semver".
+#   V.parse "0.13.0-rc.2"      -- Ok { parts = [0, 13, 0], tag = "rc.2", text = "0.13.0-rc.2" }
+#   V.parsePin "0.12.0"        -- compatible: 0.12.x >= 0.12.0 (or major series when major >= 1)
+#   V.parsePin "=0.12.3"       -- exact: only 0.12.3
+#
+# Pre-releases sort before their release, with numeric dot-separated tag parts
+# compared numerically (rc.10 > rc.2). Every function is total and 100% safe.
+
+L = use "list".
+O = use "option".
+P = use "parse".
+R = use "result".
+S = use "string".
+Ord = use "order".
+
+Version = { parts : List Int, tag : String, text : String }.
+Pin = { exact : Bool, version : Version }.
+
+isTagChar : Int -> Bool .
+isTagChar c = S.isDigit c or S.isAlpha c or c == 45 or c == 46.
+
+validTag : String -> Bool .
+validTag "" = True.
+validTag t = S.allChars isTagChar t and (t |> S.split "." |> L.all (fn p -> strlen p > 0)).
+
+versionParser : String -> P.Parser Version .
+versionParser text =
+  P.succeed (fn maj min pat tag -> { parts = [maj, min, pat], tag = tag, text = text })
+  |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 46) |> P.andMap P.natNoLeadZero
+  |> P.skip (P.char 46) |> P.andMap P.natNoLeadZero
+  |> P.andMap (P.withDefault "" (
+       P.char 45
+       |> P.andThen (fn u -> P.takeWhile1 isTagChar "prerelease tag")
+       |> P.check (fn tag -> if validTag tag then Ok tag else Err "invalid prerelease tag"))).
+
+parse : String -> Result Version String .
+parse text =
+  P.run (versionParser text) text
+  |> R.mapError (fn u -> "\"{text}\" is not a version (expected MAJOR.MINOR.PATCH, for example 0.12.0)").
+
+parsePin : String -> Result Pin String .
+parsePin text | S.startsWith "=" text =
+  text |> S.dropLeft 1 |> parse |> R.map (fn v -> { exact = True, version = v }).
+parsePin text =
+  text |> parse |> R.map (fn v -> { exact = False, version = v }).
+
+pinText : Pin -> String .
+pinText p | p.exact = "={p.version.text}".
+pinText p = p.version.text.
+
+numbers : (xs : List String | measure xs) -> List Int -> Result (List Int) String .
+numbers xs acc = case xs of
+    Nil -> Ok (L.reverse acc)
+  | x :: rest ->
+      if strlen x > 0 and S.allChars S.isDigit x and (strlen x == 1 or not (S.startsWith "0" x))
+        then S.toInt x |> R.andThen (fn n -> numbers rest (n :: acc))
+        else Err "not a number".
+
+listCompare : (a : List Int | measure a) -> List Int -> Ord.Ordering .
+listCompare a b = case a of
+    Nil -> (case b of Nil -> Ord.Equal | _ -> Ord.Less)
+  | x :: xs -> (case b of
+      Nil -> Ord.Greater
+    | y :: ys ->
+        if x < y then Ord.Less
+        else if x > y then Ord.Greater
+        else listCompare xs ys).
+
+# newest last when sorted with this; a pre-release before its release
+compare : Version -> Version -> Ord.Ordering .
+compare a b = case listCompare a.parts b.parts of
+    Ord.Equal ->
+      if a.tag == b.tag then Ord.Equal
+      else if a.tag == "" then Ord.Greater
+      else if b.tag == "" then Ord.Less
+      else tagCompare (S.split "." a.tag) (S.split "." b.tag)
+  | other -> other.
+
+# Numeric prerelease identifiers sort numerically, not lexically (rc.10 > rc.2).
+trimZero : String -> String .
+trimZero s = trimZeroGo s (strlen s).
+
+trimZeroGo : String -> (rem : Int | measure rem) -> String .
+trimZeroGo s rem =
+  if rem <= 1 then s
+  else if strlen s > 1 and S.startsWith "0" s then trimZeroGo (S.dropLeft 1 s) (rem - 1)
+  else s.
+
+numericTag : String -> String -> Ord.Ordering .
+numericTag x y =
+  a = trimZero x;
+  b = trimZero y;
+  if strlen a < strlen b then Ord.Less
+  else if strlen a > strlen b then Ord.Greater
+  else Ord.string a b.
+
+allDigits : String -> Bool .
+allDigits s = strlen s > 0 and S.allChars S.isDigit s.
+
+tagPartCompare : String -> String -> Ord.Ordering .
+tagPartCompare x y | allDigits x and allDigits y = numericTag x y.
+tagPartCompare x _ | allDigits x = Ord.Less.
+tagPartCompare _ y | allDigits y = Ord.Greater.
+tagPartCompare x y = Ord.string x y.
+
+tagCompare : (a : List String | measure a) -> List String -> Ord.Ordering .
+tagCompare a b = case a of
+    Nil -> (case b of Nil -> Ord.Equal | _ -> Ord.Less)
+  | x :: xs -> (case b of
+      Nil -> Ord.Greater
+    | y :: ys -> (case tagPartCompare x y of
+        Ord.Equal -> tagCompare xs ys
+      | order -> order)).
+
+series : Version -> List Int .
+series v = case v.parts of
+    0 :: minor :: _ -> [0, minor]
+  | major :: _ -> [major]
+  | Nil -> Nil.
+
+# does an installed version satisfy a pin?
+satisfies : Pin -> Version -> Bool .
+satisfies pin v | pin.exact = v.text == pin.version.text.
+satisfies pin v =
+  sameList (series v) (series pin.version)
+  and (v.tag == "" or pin.version.tag != "")
+  and notLess (compare v pin.version).
+
+sameList : List Int -> List Int -> Bool .
+sameList a b = case listCompare a b of Ord.Equal -> True | _ -> False.
+
+notLess : Ord.Ordering -> Bool .
+notLess Ord.Less = False.
+notLess _ = True.

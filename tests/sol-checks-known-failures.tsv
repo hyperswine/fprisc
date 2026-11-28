@@ -1,2 +1,3 @@
 # Checks that fail on main for a recorded reason: name<TAB>reason.
 # tests/run.sol still runs them; it fails if one of them starts passing.
+trust:std/toml.fpr	11 recursive parsers marked unsafe; admission to approvedLibraries needs the owner's review (added on zero-cost-named-keys, merged 2026-11-29)

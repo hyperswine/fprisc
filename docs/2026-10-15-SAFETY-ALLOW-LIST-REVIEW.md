@@ -94,6 +94,7 @@ programs; `tests/check_trust.py`; the suites and the apps' own checks
 ## Added 17 November 2026
 
 - `std/game.fpr`: no unsafe helpers. Every recursion carries a measure, the test runner's task chain included (a fuel count that fails loudly when it runs out); `fpr --stdcheck` passes.
+- `std/keys.fpr`: integer literals and four one-line adders; no recursion, no unsafe helpers (26 November).
 
 ## Added 18 November 2026
 

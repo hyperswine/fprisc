@@ -1,0 +1,20 @@
+EspFile.mount : Unit -> Int .
+EspFile.create : String -> Int .
+EspFile.open : String -> Int .
+EspFile.read : Int -> Addr -> Int -> Int .
+EspFile.write : Int -> Addr -> Int -> Int .
+EspFile.close : Int -> Int .
+mount u = EspFile.mount u.
+create name = EspFile.create name.
+open name = EspFile.open name.
+read fd p n = EspFile.read fd p n.
+write fd p n = EspFile.write fd p n.
+close fd = EspFile.close fd.
+EspFile.append : String -> Int .
+EspFile.flush : Int -> Int .
+append name = EspFile.append name.
+flush fd = EspFile.flush fd.
+EspFile.edit : String -> Int .
+EspFile.truncate : Int -> Int -> Int .
+edit name = EspFile.edit name.
+truncate fd size = EspFile.truncate fd size.

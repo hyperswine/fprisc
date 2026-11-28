@@ -48,58 +48,45 @@ comp p q =
 catL : (xs : List a | measure xs) -> List a -> List a .
 catL xs ys = case xs of Nil -> ys | x :: r -> x :: catL r ys.
 
-# ---- string equality (byte strings; strlen-bounded walk) -------------------
+# ---- string equality -------------------------------------------------------
 
-strEq : unsafe String -> String -> Bool .
-strEq a b = case strlen a == strlen b of
-    False -> False
-  | True -> strEqAt a b 0.
-strEqAt : unsafe String -> String -> Int -> Bool .
-strEqAt a b i = case i >= strlen a of
-    True -> True
-  | False -> case charAt a i == charAt b i of
-      True -> strEqAt a b (i + 1)
-    | False -> False.
+strEq : String -> String -> Bool .
+strEq a b = a == b.
 
 # ---- the string tier -------------------------------------------------------
 
 # find the schema entry for a dotted path
-find : unsafe List _ -> String -> Result _ String .
+find : (es : List _ | measure es) -> String -> Result _ String .
 find es p = case es of
     Nil -> Err "no schema leaf '{p}'"
-  | e :: r -> case strEq e.path p of True -> Ok e | False -> find r p.
+  | e :: r -> if e.path == p then Ok e else find r p.
 
 # set a leaf from its string form; Err leaves the model untouched
-set : unsafe List _ -> String -> String -> _ -> Result _ String .
+set : List _ -> String -> String -> _ -> Result _ String .
 set es p v m = case find es p of
     Err e -> Err e
   | Ok en -> wireAt p (en.unwire (WStr v) m).
 
 # read a leaf, rendered to its string form
-get : unsafe List _ -> String -> _ -> Result String String .
+get : List _ -> String -> _ -> Result String String .
 get es p m = case find es p of
     Err e -> Err e
   | Ok en -> Ok (J.wireText (en.wire m)).
 
 # the wire form: "path value..." -- value is everything after the
 # FIRST space (values may contain spaces; "path" alone -> Err)
-setWords : unsafe List _ -> String -> _ -> Result _ String .
+setWords : List _ -> String -> _ -> Result _ String .
 setWords es pv m =
   cut = spaceAt pv 0;
-  case cut < 0 of
-    True -> Err "set: want 'path value', got '{pv}'"
-  | False -> set es (substr pv 0 cut) (substr pv (cut + 1) (strlen pv - cut - 1)) m.
+  if cut < 0 then Err "set: want 'path value', got '{pv}'"
+  else set es (substr pv 0 cut) (substr pv (cut + 1) (strlen pv - cut - 1)) m.
 # the 0-based position of the first space at or after i; -1 = none
-spaceAt : unsafe String -> Int -> Int .
-spaceAt s i = case i >= strlen s of
-    True -> 0 - 1
-  | False -> case charAt s i == 32 of
-      True -> i
-    | False -> spaceAt s (i + 1).
+spaceAt : String -> Int -> Int .
+spaceAt s i = strIndexFrom " " s i.
 
 # render every leaf as "path=value" lines -- the generic INSPECTOR:
 # walk the schema, no per-app code
-dump : unsafe List _ -> _ -> String -> String .
+dump : (es : List _ | measure es) -> _ -> String -> String .
 dump es m acc = case es of
     Nil -> acc
   | e :: r -> dump r m "{acc}{e.path}={J.wireText (e.wire m)}\n".

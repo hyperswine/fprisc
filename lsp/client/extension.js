@@ -7,11 +7,13 @@ let client;
 
 function activate(context) {
   const serverModule = context.asAbsolutePath(path.join('server', 'server.js'));
-  const serverOptions = {
-    run: { module: serverModule, transport: TransportKind.stdio },
-    debug: { module: serverModule, transport: TransportKind.stdio },
-  };
   const settings = vscode.workspace.getConfiguration('fpr');
+  const traceDir = settings.get('traceFreeze') ? context.logUri.fsPath : '';
+  const options = { env: { ...process.env, FPR_LSP_TRACE_DIR: traceDir } };
+  const serverOptions = {
+    run: { module: serverModule, transport: TransportKind.stdio, options },
+    debug: { module: serverModule, transport: TransportKind.stdio, options },
+  };
   const clientOptions = {
     initializationOptions: {
       home: settings.get('home'), modulePaths: settings.get('modulePaths'),

@@ -1,0 +1,10 @@
+profile builtin.
+IO = use "../lib/io".
+echo p = n = IO.read p 64;
+  if n <= 0 then n else
+    if IO.write p n == n then echo p else -1.
+main = p = Mem.alloc 64;
+  status = echo p;
+  _ = Mem.free p;
+  _ = Rc.release p;
+  status.

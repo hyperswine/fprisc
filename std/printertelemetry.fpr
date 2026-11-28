@@ -29,7 +29,18 @@ texts = ["gcode_state", "gcode_file", "subtask_name", "wifi_signal"].
 putField payload key fields = case J.field key payload of
     O.None -> fields
   | O.Some value -> M.insert key (if key == "print_error" then (if Alerts.u32 value then value else M.getOr J.Null key fields) else if L.member key numeric then number value else case value of J.Text s -> J.Text (S.left 160 s) | _ -> J.Null) fields.
-tray value = case get "tray_type" value of J.Text s -> if strlen s == 0 then Nil else [S.left 40 s] | _ -> Nil.
+tray value =
+  material = short (get "tray_type" value) "";
+  profile = case short (get "tray_info_idx" value) "" of
+      "GFA00" -> "Bambu PLA Basic"
+    | "GFSNL04" -> "SUNLU PLA+ 2.0"
+    | _ -> short (get "tray_sub_brands" value) material;
+  color = case S.toLower (short (get "tray_color" value) "") of
+      "00ae42ff" -> "green"
+    | "000000ff" -> "black"
+    | "00000000" -> ""
+    | other -> S.left 8 other;
+  if material == "" then Nil else [S.join " " (L.filter (fn s -> s != "") [if profile == "" then material else S.left 40 profile, color])].
 filaments payload =
   units = L.take 16 (items (get "ams" (get "ams" payload)));
   trays = L.concatMap (fn unit -> L.concatMap tray (L.take 16 (items (get "tray" unit)))) units;

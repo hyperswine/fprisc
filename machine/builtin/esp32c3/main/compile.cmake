@@ -1,0 +1,12 @@
+set(assembly "${guest}.s")
+execute_process(COMMAND "${fpr}" compile --system=bare-metal --profile=builtin --target riscv32imc
+    "--depfile=${guest}.d" "${source}" "${assembly}" COMMAND_ERROR_IS_FATAL ANY)
+file(STRINGS "${assembly}.units" units)
+set(objects)
+foreach(unit IN ITEMS "${assembly}" ${units})
+    list(LENGTH objects index)
+    set(obj "${guest}.${index}.o")
+    execute_process(COMMAND "${cc}" -march=rv32imc -mabi=ilp32 -c "${unit}" -o "${obj}" COMMAND_ERROR_IS_FATAL ANY)
+    list(APPEND objects "${obj}")
+endforeach()
+execute_process(COMMAND "${cc}" -march=rv32imc -mabi=ilp32 -nostdlib -r ${objects} -o "${guest}" COMMAND_ERROR_IS_FATAL ANY)

@@ -1,0 +1,4 @@
+codes: esc=1 enter=28 space=57 up=103 delete=111
+modifiers: shift=1030 ctrl=4046 ctrlShift=5044 alt=8105
+game re-exports: True True True
+names: enter ctrl-s ctrl-shift-z alt-left shift-tab space other

@@ -1,0 +1,46 @@
+profile builtin.
+Board = use "../boards/supermini".
+GPIO = use "../lib/gpio".
+Clock = use "../lib/clock".
+Journal = use "../lib/journal".
+EspStats.report : Int -> Unit .
+
+wait p ms = _ = Clock.nowMs p;
+  rc = Clock.afterMs p ms p;
+  if rc != 0 then rc else _ = Clock.sleepUntil p; 0.
+
+checkpoint p stateByte index =
+  level = GPIO.read Board.button;
+  if level < 0 then level else
+    _ = Clock.nowMs p;
+    _ = Mem.write8 stateByte level;
+    rc = Journal.append "FPREND.BIN" p 9;
+    if rc != 0 then rc else _ = EspStats.report index; 0.
+
+loop p stateByte count group =
+  rc = (if count == 0 then checkpoint p stateByte group else 0);
+  if rc != 0 then rc else
+    slept = wait p 2000;
+    if slept != 0 then slept else
+      if count == 29 then loop p stateByte 0 (group + 1) else loop p stateByte (count + 1) group.
+
+run p =
+  health = Journal.inspect "FPREND.BIN" p False;
+  if health != 0 then health else
+    stateByte = Addr.add p 8;
+    rc = loop p stateByte 0 0;
+    _ = Rc.release stateByte;
+    rc.
+
+main =
+  fs = Journal.mount Unit;
+  if fs != 0 then fs else
+    button = GPIO.input Board.button True;
+    if button != 0 then button else
+      led = GPIO.openDrain Board.led True;
+      if led != 0 then led else
+        p = Mem.alloc 72;
+        rc = run p;
+        _ = Mem.free p;
+        _ = Rc.release p;
+        rc.

@@ -1,0 +1,23 @@
+profile builtin.
+
+BLE = use "../lib/ble".
+EspIO.tryReadByte : Unit -> Int .
+P4Test.resetCompanion : Unit -> Unit .
+P4Test.stats : Unit -> Unit .
+
+start u = BLE.start "ACAF3791-694C-4F66-AC82-12C4D04D35D9".
+
+loop u =
+  byte = EspIO.tryReadByte Unit;
+  if byte == 81 then _ = BLE.stop Unit; 0 else
+    rc = (
+      if byte == 65 then start Unit else
+        _ = (if byte == 88 then BLE.stop Unit else Unit);
+        _ = (if byte == 82 then P4Test.resetCompanion Unit else Unit);
+        _ = (if byte == 83 then P4Test.stats Unit else Unit);
+        0);
+    if rc != 0 then rc else
+      _ = BLE.service Unit;
+      loop Unit.
+
+main = loop Unit.

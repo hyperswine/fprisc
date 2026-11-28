@@ -14,14 +14,14 @@ toInt x = x / 65536.
 toMilli x = (x * 1000) / 65536.
 
 fmul a b = (a * b) / 65536.
-fdiv a b = case b == 0 of True -> 0 | False -> (a * 65536) / b.
-fabs x = case x < 0 of True -> 0 - x | False -> x.
-fmin a b = case a < b of True -> a | False -> b.
-fmax a b = case a > b of True -> a | False -> b.
+fdiv a b = if b == 0 then 0 else (a * 65536) / b.
+fabs x = if x < 0 then 0 - x else x.
+fmin a b = if a < b then a else b.
+fmax a b = if a > b then a else b.
 
 # Newton-Raphson square root, 18 iterations: y' = (y + x/y) / 2
 fsqrtGo x y k | k == 0 = y.
 fsqrtGo x y k = fsqrtGo x ((y + fdiv x y) / 2) (k - 1).
 
 fsqrt x | x <= 0 = 0.
-fsqrt x = fsqrtGo x (case x > 65536 of True -> x / 2 | False -> 65536) 18.
+fsqrt x = fsqrtGo x (if x > 65536 then x / 2 else 65536) 18.

@@ -1,0 +1,11 @@
+# Counts are bytes. The caller owns an Addr spanning at least count bytes.
+EspIO.read : Addr -> Int -> Int .
+EspIO.readExact : Addr -> Int -> Int .
+EspIO.write : Addr -> Int -> Int .
+EspIO.readByte : Unit -> Int .
+read p n = EspIO.read p n.
+readExact p n = EspIO.readExact p n.
+write p n = EspIO.write p n.
+readByte u = EspIO.readByte u.
+EspIO.writeByte : Int -> Int .
+writeByte byte = EspIO.writeByte byte.

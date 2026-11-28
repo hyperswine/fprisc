@@ -98,6 +98,8 @@ runScript = do
     ["state"] -> maintainState False
     ["recover"] -> maintainState True
     ("--repl" : rest) -> runRepl rest
+    ("-e" : expr : rest) -> runEval expr rest
+    ("--eval" : expr : rest) -> runEval expr rest
     _ -> runFile as
 
 runFile :: [String] -> IO ()
@@ -211,13 +213,14 @@ parseSolArgs asm policy (path:rest)
 parseSolArgs _ _ _ = Left solUsage
 
 solUsage :: String
-solUsage = "usage: sol [--asm] [--retry-policy=guarded|legacy] <script.sol> [args] | --repl [args]"
+solUsage = "usage: sol [--asm] [--retry-policy=guarded|legacy] <script.sol> [args] | -e <expr> [args] | --repl [args]"
 
 solHelp :: String
 solHelp = unlines
   [ solUsage
   , "       sol --help | --version | state | recover"
   , "Script arguments follow the script, without shell interpretation."
+  , "-e / --eval <expr>: evaluate a Sol expression or snippet in one transaction."
   , "--repl: interactive session; one command, one transaction (Ctrl-D exits)."
   , "state: list retained recovery journals and live/dead owners."
   , "recover: replay dead-owner journals; errors retain their recovery fences."
@@ -859,6 +862,57 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
         txCfgExitOnFailure = True,
         txCfgRetryNoun = if length topNames > 1 then "statement" else ""
       } attempt
+
+-- ---- one-shot evaluation: `sol -e <expr> [args]` ---------------------------
+
+runEval :: String -> [String] -> IO ()
+runEval expr scriptArgs = do
+  configured <- maybe "guarded" id <$> lookupEnv "SOL_RETRY_POLICY"
+  retryPolicy <- case parseRetryPolicy configured of
+    Right policy -> pure policy
+    Left why -> diagnostic why >> exitFailure >> pure GuardedRetry
+  let trimEnd = reverse . dropWhile isSpace . reverse
+      trimmed = trimEnd (dropWhile isSpace expr)
+      withDot = if null trimmed || last trimmed == '.' then trimmed else trimmed ++ "."
+      wrapped = "> " ++ withDot ++ "\n"
+      hasEntry ts = any (\t -> case t of TEval _ -> True; TBind "main" [] _ _ -> True; _ -> False) ts
+  (src, utops) <- case parse program "<eval>" expr of
+    Right ts | hasEntry ts -> pure (expr, ts)
+    _ -> case parse program "<eval>" wrapped of
+      Right ts -> pure (wrapped, ts)
+      Left e -> diagnostic (errorBundlePretty e) >> exitFailure >> pure ("", [])
+  base <- getCurrentDirectory
+  seenRef <- newIORef M.empty
+  trustRef <- newIORef S.empty
+  stampsRef <- newIORef []
+  isTrusted <- unsafeInterleaveIO (phaseIO "library-paths" trustedLibraryChecker)
+  expanded <- expandUses 8 "" isTrusted trustRef seenRef stampsRef ".sol" base utops
+  trusted <- readIORef trustRef
+  ptops <- preludeTops
+  prepared <- compilePrepared "<eval>" src ptops utops expanded trusted
+  let Prepared cons shapes prog bprog runList _ = prepared
+  writeIORef VM.conNames
+    [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
+    | (c, (t, v, ar)) <- M.toList cons, M.notMember c builtinCons ]
+  jitFlag <- lookupEnv "SOL_JIT"
+  jc <- case jitFlag of
+    Just "0" -> pure Nothing
+    _ -> initJIT
+  tmp <- getTemporaryDirectory
+  now <- getPOSIXTime
+  let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
+      consTV = M.map (\(t, v, _) -> (t, v)) cons
+      dataFile = tmp ++ "/sol-eval-" ++ show (floor (now * 1000000) :: Integer) ++ ".soldata"
+  journalFile <- runJournalPath "sol-eval"
+  rt <- newRtCounts
+  recoverScriptJournals "sol-eval"
+  r <- try (runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
+  case r of
+    Right () -> pure ()
+    Left e -> do
+      let msg = if isUserError e then ioeGetErrorString e else show e
+      hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
+      exitFailure
 
 -- ---- the REPL: one command, one transaction -------------------------------
 -- docs/2026-10-29-SOL-REPL-DESIGN.md. The session is a growing source text:

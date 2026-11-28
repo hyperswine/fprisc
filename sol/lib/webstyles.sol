@@ -72,4 +72,4 @@ empty = Utilities [(0,"color","fpr-u-0-636f6c6f723a726762283130302c3131362c31333
 
 # Compose per-node atoms with the same stage/property last-wins contract.
 classes styles = styles |> List.fold (fn acc style -> case style of Utilities atoms -> acc + atoms) [] |> List.rev |> List.fold retain [] |> List.map (fn atom -> (s, p, name) = atom; name).
-retain kept atom = (stage, property, name) = atom; case List.any (fn entry -> (s, p, n) = entry; and (s == stage) (p == property)) kept of True -> kept | False -> atom :: kept.
+retain kept atom = (stage, property, name) = atom; if List.any (fn entry -> (s, p, n) = entry; s == stage and p == property) kept then kept else atom :: kept.

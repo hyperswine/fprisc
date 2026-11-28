@@ -1,0 +1,37 @@
+profile builtin.
+IO = use "../lib/io".
+Journal = use "../lib/journal".
+
+# Wire replies: 6=success, 21=error. L emits length-prefixed records then
+# zero and a status. A consumes one length and payload and returns a status.
+status rc = IO.writeByte (if rc == 0 then 6 else 21).
+loop p healthy = cmd = IO.readByte Unit;
+  if cmd == 65 then
+    n = IO.readByte Unit;
+    if n < 1 or n > 64 then _ = status -1; loop p healthy else
+      got = IO.readExact p n;
+      rc = (if got != n or healthy == False then -1 else Journal.append "FPRJNL.BIN" p n);
+      _ = status rc;
+      loop p (healthy and rc == 0)
+  else if cmd == 76 then
+    rc = Journal.inspect "FPRJNL.BIN" p True;
+    _ = IO.writeByte 0;
+    _ = status rc;
+    loop p (rc == 0)
+  else if cmd == 82 then
+    rc = Journal.repair "FPRJNL.BIN" p;
+    _ = status rc;
+    loop p (rc == 0)
+  else if cmd == 81 then 0 else
+    _ = status -1;
+    loop p healthy.
+
+main = rc = Journal.mount Unit;
+  if rc != 0 then rc else
+    p = Mem.alloc 72;
+    health = Journal.inspect "FPRJNL.BIN" p False;
+    _ = status health;
+    result = loop p (health == 0);
+    _ = Mem.free p;
+    _ = Rc.release p;
+    result.

@@ -66,7 +66,7 @@ ptsBounds pts =
   (lo1, hi1, lo2, hi2).
 fst2 p = (a, b) = p; a.
 snd2 p = (a, b) = p; b.
-padB lo hi = case hi - lo == 0.0 of True -> (lo - 1.0, hi + 1.0) | False -> (lo, hi).
+padB lo hi = if hi - lo == 0.0 then (lo - 1.0, hi + 1.0) else (lo, hi).
 
 mergeB a b =
   (a1, a2, a3, a4) = a; (b1, b2, b3, b4) = b;
@@ -176,7 +176,7 @@ pAnim title dur frames =
 valsGo bx frames b | isNil frames = b.
 valsGo bx frames b =
   f :: r = frames;
-  sep = case isNil r of True -> "" | False -> ";";
+  sep = if isNil r then "" else ";";
   valsGo bx r (BStr.append "{ptsS bx f}{sep}" b).
 
 # tracks = [[(x, y) over time]]: one dot per track animated along its
@@ -221,9 +221,7 @@ pChart title specs =
 specGo bx specs i b | isNil specs = b.
 specGo bx specs i b =
   s :: r = specs; (t, asLine, pts) = s;
-  b2 = case asLine of
-      True -> polyline bx (colAt i) pts b
-    | False -> markers bx (colAt i) pts b;
+  b2 = if asLine then polyline bx (colAt i) pts b else markers bx (colAt i) pts b;
   specGo bx r (i + 1) b2.
 
 fstS s = (t, _, pts) = s; t.

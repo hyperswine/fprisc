@@ -214,9 +214,10 @@ fprc: fpr
 .PHONY: unit-tests
 # ---- fprmeta: the toolchain manager and launcher (docs/2026-11-01-FPRMETA.md) ----
 # One binary; link it as fprmeta, qosmeta, fpr, sol and qos.
+FPRMETA_MACOS_MIN ?= 14.0
 fprmeta: fpr
 	mkdir -p build/fprmeta
-	FPR_HOME=$(CURDIR) ./fpr build tools/fprmeta/fprmeta.fpr --with tools/fprmeta/host.c --link -larchive -o build/fprmeta/fprmeta
+	MACOSX_DEPLOYMENT_TARGET=$(FPRMETA_MACOS_MIN) FPR_HOME=$(CURDIR) ./fpr build tools/fprmeta/fprmeta.fpr --with tools/fprmeta/host.c --link -larchive -o build/fprmeta/fprmeta
 
 unit-tests:
 	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct

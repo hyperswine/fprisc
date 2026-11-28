@@ -72,6 +72,23 @@ function builtinFor(uri, name) {
 // transport (identical to fpr-lang)
 // ---------------------------------------------------------------------------
 
+const traceDir = process.env.FPR_LSP_TRACE_DIR;
+const traceFile = traceDir && path.join(traceDir, `lsp-freeze-${Date.now()}-${process.pid}.jsonl`);
+let traceSequence = 0;
+let traceFailed = false;
+
+function trace(event) {
+  if (!traceFile || traceFailed) return;
+  try {
+    if (traceSequence === 1 && event.phase === 'begin') fs.mkdirSync(traceDir, { recursive: true });
+    // Write before dispatch without relying on the event loop to flush a stream.
+    fs.appendFileSync(traceFile, JSON.stringify({ time: new Date().toISOString(), ...event }) + '\n', { mode: 0o600 });
+  } catch (error) {
+    traceFailed = true;
+    console.error(`FP-RISC freeze trace disabled: ${error.message}`);
+  }
+}
+
 let buffer = Buffer.alloc(0);
 process.stdin.on('data', (chunk) => {
   buffer = Buffer.concat([buffer, chunk]);
@@ -88,7 +105,18 @@ process.stdin.on('data', (chunk) => {
     buffer = buffer.slice(start + len);
     let msg;
     try { msg = JSON.parse(body); } catch (e) { continue; }
-    handle(msg);
+    if (!traceFile || traceFailed) {
+      handle(msg);
+      continue;
+    }
+    const sequence = ++traceSequence;
+    const startedAt = Date.now();
+    trace({ phase: 'begin', sequence, message: msg });
+    try {
+      handle(msg);
+    } finally {
+      trace({ phase: 'end', sequence, elapsedMs: Date.now() - startedAt });
+    }
   }
 });
 
@@ -146,7 +174,18 @@ function moduleHome(fromFile) {
   return context.error ? '' : context.home || rootPath || '';
 }
 
+// Resolution stats files and builds the compiler context, and the semantic
+// token and diagnostic passes ask once per identifier: cache it for one
+// incoming message (cleared in handle) and whenever the open buffers change.
+const modulePathCache = new Map();
 function modulePath(fromUri, usePath) {
+  const key = fromUri + '\0' + usePath;
+  if (modulePathCache.has(key)) return modulePathCache.get(key);
+  const found = resolveModulePath(fromUri, usePath);
+  modulePathCache.set(key, found);
+  return found;
+}
+function resolveModulePath(fromUri, usePath) {
   const from = uriToPath(fromUri);
   if (!from) return null;
   const { name, hash } = splitSpec(usePath);
@@ -456,12 +495,16 @@ function wordAt(doc, pos) {
     if (pos.character >= start && pos.character < match.index + match[0].length)
       return { word: match[2], qualifier: match[1], start, end: match.index + match[0].length };
   }
-  const isW = (c) => /[\w']/.test(c);
-  let a = pos.character, b = pos.character;
+  // RegExp.test(undefined) tests the string "undefined", so a cursor past the
+  // end of the comment-stripped line must not count as a word character: it
+  // used to walk back to the line's end and answer an empty word.
+  const isW = (c) => c !== undefined && /[\w']/.test(c);
+  let a = Math.min(pos.character, line.length), b = a;
   while (a > 0 && isW(line[a - 1])) a--;
   while (b < line.length && isW(line[b])) b++;
   if (a === b) return null;
   const word = line.slice(a, b);
+  if (!word) return null;
   let qualifier = null;
   if (a >= 2 && line[a - 1] === '.') {
     let qa = a - 1;
@@ -613,7 +656,8 @@ function findDefinition(uri, doc, pos, wantDeclaration) {
       const lhs = l.slice(0, eq);
       let m = null, best = null;
       const re = new RegExp("(?:^|[\\s(,>])(" + escapeRe(word) + ")(?=[\\s),])", 'g');
-      while ((m = re.exec(lhs)) !== null) best = m;
+      // An empty match would leave lastIndex in place and spin forever.
+      while ((m = re.exec(lhs)) !== null) { best = m; if (!m[0]) re.lastIndex++; }
       if (best) {
         const col = best.index + best[0].indexOf(word);
         if (li === pos.line && col === w.start) continue;
@@ -956,7 +1000,23 @@ function republish(files) {
   }
 }
 
+// While one incoming message is handled, publishing only marks the uri: an
+// edit asks several times (the invalidated check, then the new buffer, then
+// every other open file) and each scan costs the whole file. handle()
+// publishes each marked uri once, against the buffer current at its end.
+let pendingPublish = null;
 function publishDiagnostics(uri, doc) {
+  if (pendingPublish) { pendingPublish.add(uri); return; }
+  publishNow(uri, doc);
+}
+function flushPublish() {
+  const uris = pendingPublish; pendingPublish = null;
+  for (const uri of uris || []) {
+    const doc = docs.get(uri);
+    if (doc) publishNow(uri, doc);
+  }
+}
+function publishNow(uri, doc) {
   const diags = moduleSettings.unresolvedNames === false ? [] : unresolvedDiagnostics(doc);
   if (moduleSettings.unsafeCalls === true) diags.push(...unsafeCalls(doc, { clauseBinders, clauseLocals, resolveName, builtinFor, caseBindings }));
   const qre = /([A-Za-z_][\w']*)\.([a-z_][\w']*)/g;
@@ -1091,7 +1151,14 @@ function clauseLocals(doc, from, to) {
   return locals;
 }
 
+// One edit publishes diagnostics twice (the new buffer, then the cancelled
+// check's republish) and both scan the tokens: keep them for one message.
+let tokenCache = new WeakMap();
 function semanticTokens(doc) {
+  if (!tokenCache.has(doc)) tokenCache.set(doc, scanSemanticTokens(doc));
+  return tokenCache.get(doc);
+}
+function scanSemanticTokens(doc) {
   const caseBindingAt = caseBindings(doc.text);
   const lineOffsets = [0];
   for (let i = 0; i < doc.text.length; i++) if (doc.text[i] === '\n') lineOffsets.push(i + 1);
@@ -1281,7 +1348,7 @@ function completions(doc, pos) {
 
 function openDoc(uri, text) {
   const a = analyze(uri, text);
-  docs.set(uri, a);
+  docs.set(uri, a); modulePathCache.clear();
   if (uriToPath(uri)) workspaceIndex.overlay(uriToPath(uri), text);
   for (const [openUri, doc] of docs) publishDiagnostics(openUri, doc);
 }
@@ -1313,8 +1380,9 @@ const managerPoll = setInterval(() => {
 managerPoll.unref();
 
 function handle(msg) {
-  qualifiedCache.clear();
+  qualifiedCache.clear(); modulePathCache.clear(); tokenCache = new WeakMap();
   const { id, method, params } = msg;
+  pendingPublish = new Set();
   try {
     switch (method) {
       case 'initialize':
@@ -1377,7 +1445,7 @@ function handle(msg) {
       }
       case 'textDocument/didClose':
         remarkRunner.invalidate('An editor buffer closed');
-        docs.delete(params.textDocument.uri);
+        docs.delete(params.textDocument.uri); modulePathCache.clear();
         workspaceIndex.overlay(uriToPath(params.textDocument.uri), null);
         changedFiles([uriToPath(params.textDocument.uri)], false);
         dropCheck(params.textDocument.uri);
@@ -1452,6 +1520,8 @@ function handle(msg) {
     }
   } catch (e) {
     if (id !== undefined) replyErr(id, -32603, String(e && e.stack || e));
+  } finally {
+    try { flushPublish(); } catch (e) { pendingPublish = null; console.error(`FP-RISC diagnostics: ${e && e.stack || e}`); }
   }
 }
 

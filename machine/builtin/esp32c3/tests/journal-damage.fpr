@@ -1,0 +1,45 @@
+profile builtin.
+File = use "machine/builtin/esp32c3/lib/file".
+Journal = use "machine/builtin/esp32c3/lib/journal".
+EspRecord.pack : Addr -> Int -> Int .
+
+writePart fd p count bad =
+  _ = Mem.write8 p 77;
+  packed = EspRecord.pack p 1;
+  if packed != 72 then -1 else
+    _ = (if bad then Mem.write8 p 0 else Unit);
+    if File.write fd p count == count then 0 else -1.
+
+seed name p count bad interior =
+  fd = File.create name;
+  if fd < 0 then fd else
+    a = writePart fd p 72 False;
+    b = (if a == 0 then writePart fd p count bad else a);
+    c = (if b == 0 and interior then writePart fd p 72 False else b);
+    Journal.finish fd c.
+
+qualify name p count bad interior =
+  seeded = seed name p count bad interior;
+  if seeded != 0 then seeded else
+  if Journal.inspect name p False == 0 then -101 else
+    repaired = Journal.repair name p;
+    if interior then (if repaired == 0 then -102 else 0) else
+    if repaired != 0 then repaired else
+      fd = File.open name;
+      if fd < 0 then fd else
+        got = File.read fd p 72;
+        valid = EspRecord.unpack p;
+        mark = Mem.read8 p;
+        extra = File.read fd p 1;
+        Journal.finish fd (if got == 72 and valid == 1 and mark == 77 and extra == 0 then 0 else -103).
+
+EspRecord.unpack : Addr -> Int .
+main = fs = File.mount Unit;
+  if fs != 0 then fs else
+    p = Mem.alloc 72;
+    a = qualify "FQSHORT1.BIN" p 13 False False;
+    b = (if a == 0 then qualify "FQCRC1.BIN" p 72 True False else a);
+    c = (if b == 0 then qualify "FQMID1.BIN" p 72 True True else b);
+    _ = Mem.free p;
+    _ = Rc.release p;
+    c.

@@ -1,0 +1,102 @@
+# std/color.fpr -- Safe packed ARGB color helpers, blending, and hex codecs.
+#
+#   Color = use "std/color".
+#   c = Color.rgb 30 144 255
+#   Color.toHex c                  -- "#1e90ff"
+#   Color.fromHex "#1e90ff"        -- Ok c
+#   Color.blend 128 c (Color.rgb 255 255 255)
+#
+# Packed representation is 0xAARRGGBB (8 bits per channel, matching QOS
+# framebuffers and UI themes). Every function is total and 100% safe.
+
+M = use "math".
+P = use "parse".
+R = use "result".
+S = use "string".
+
+Rgba = { r : Int, g : Int, b : Int, a : Int }.
+
+clampByte : Int -> Int .
+clampByte n = M.clamp 0 255 n.
+
+# ---- packing & unpacking (0xAARRGGBB) ---------------------------------------------
+
+rgba : Int -> Int -> Int -> Int -> Int .
+rgba r g b a =
+  (clampByte a * 16777216) + (clampByte r * 65536) + (clampByte g * 256) + clampByte b.
+
+rgb : Int -> Int -> Int -> Int .
+rgb r g b = rgba r g b 255.
+
+alpha : Int -> Int .
+alpha c = band (c / 16777216) 255.
+
+red : Int -> Int .
+red c = band (c / 65536) 255.
+
+green : Int -> Int .
+green c = band (c / 256) 255.
+
+blue : Int -> Int .
+blue c = band c 255.
+
+withAlpha : Int -> Int -> Int .
+withAlpha a c = rgba (red c) (green c) (blue c) a.
+
+unpack : Int -> Rgba .
+unpack c = { r = red c, g = green c, b = blue c, a = alpha c }.
+
+pack : Rgba -> Int .
+pack c = rgba c.r c.g c.b c.a.
+
+# ---- blending & shading -----------------------------------------------------------
+
+# Linear blend between c1 (t = 0) and c2 (t = 255), per channel.
+blendChan : Int -> Int -> Int -> Int .
+blendChan t a b = a + ((b - a) * t) / 255.
+
+blend : Int -> Int -> Int -> Int .
+blend t c1 c2 =
+  k = clampByte t;
+  rgba
+    (blendChan k (red c1) (red c2))
+    (blendChan k (green c1) (green c2))
+    (blendChan k (blue c1) (blue c2))
+    (blendChan k (alpha c1) (alpha c2)).
+
+darken : Int -> Int -> Int .
+darken amount c = blend amount c (rgba 0 0 0 (alpha c)).
+
+lighten : Int -> Int -> Int .
+lighten amount c = blend amount c (rgba 255 255 255 (alpha c)).
+
+# ---- hex formatting & parsing -----------------------------------------------------
+
+hexDigit : Int -> String .
+hexDigit d = substr "0123456789abcdef" (band d 15) 1.
+
+hexByte : Int -> String .
+hexByte n =
+  b = clampByte n;
+  strcat (hexDigit (b / 16)) (hexDigit (b - (b / 16) * 16)).
+
+toHex : Int -> String .
+toHex c = S.concat ["#", hexByte (red c), hexByte (green c), hexByte (blue c)].
+
+toHexRgba : Int -> String .
+toHexRgba c = S.concat ["#", hexByte (red c), hexByte (green c), hexByte (blue c), hexByte (alpha c)].
+
+hexColorParser : P.Parser Int .
+hexColorParser =
+  P.optional (P.char 35)
+  |> P.andThen (fn u ->
+      P.succeed (fn r g b a -> rgba r g b a)
+      |> P.andMap (P.hexN 2)
+      |> P.andMap (P.hexN 2)
+      |> P.andMap (P.hexN 2)
+      |> P.andMap (P.withDefault 255 (P.hexN 2))).
+
+fromHex : String -> Result Int String .
+fromHex text =
+  P.run hexColorParser text
+  |> R.mapError (fn u -> "invalid hex color: \"{text}\" (expected #rrggbb or #rrggbbaa)").

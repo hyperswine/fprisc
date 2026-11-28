@@ -1,0 +1,61 @@
+IO = use "./io".
+File = use "./file".
+EspFlashLog.enabled : Unit -> Bool .
+EspFlashLog.mount : Unit -> Int .
+EspFlashLog.append : String -> Addr -> Int -> Int .
+EspFlashLog.next : String -> Int -> Addr -> Int .
+
+mount u = if EspFlashLog.enabled Unit then EspFlashLog.mount u else File.mount u.
+
+rawScan name p sizeByte emit pos = step = EspFlashLog.next name pos p;
+  if step <= 0 then step else
+    n = Mem.read8 sizeByte;
+    if emit and IO.writeByte n != 1 then -1 else
+    if emit and IO.write p n != n then -1 else rawScan name p sizeByte emit step.
+
+EspRecord.pack : Addr -> Int -> Int .
+EspRecord.unpack : Addr -> Int .
+
+finish fd rc = closed = File.close fd; if rc == 0 then closed else rc.
+
+scan fd p emit = got = File.read fd p 72;
+  if got == 0 then 0 else
+  if got != 72 then -1 else
+    n = EspRecord.unpack p;
+    if n < 1 then -1 else
+    if emit and IO.writeByte n != 1 then -1 else
+    if emit and IO.write p n != n then -1 else scan fd p emit.
+
+inspect name p emit = if EspFlashLog.enabled Unit then
+  sizeByte = Addr.add p 64;
+  rc = rawScan name p sizeByte emit 0;
+  _ = Rc.release sizeByte;
+  rc
+  else fileInspect name p emit.
+fileInspect name p emit = fd = File.open name;
+  if fd == -2 then 0 else
+  if fd < 0 then fd else finish fd (scan fd p emit).
+
+append name p n = if EspFlashLog.enabled Unit then EspFlashLog.append name p n else fileAppend name p n.
+fileAppend name p n = fd = File.append name;
+  if fd < 0 then fd else
+    size = EspRecord.pack p n;
+    rc = (if size != 72 then -1 else
+      if File.write fd p size != size then -1 else File.flush fd);
+    finish fd rc.
+
+# Trim only a single damaged final record. Refuse interior damage and
+# propagate read errors without modifying the file.
+repairFrom fd p offset =
+  got = File.read fd p 72;
+  if got <= 0 then got else
+  if got == 72 and EspRecord.unpack p > 0 then repairFrom fd p (offset + 72) else
+    extra = File.read fd p 1;
+    if extra != 0 then -1 else
+      cut = File.truncate fd offset;
+      if cut != 0 then cut else File.flush fd.
+
+repair name p = if EspFlashLog.enabled Unit then EspFlashLog.mount Unit else fileRepair name p.
+fileRepair name p = fd = File.edit name;
+  if fd == -2 then 0 else
+  if fd < 0 then fd else finish fd (repairFrom fd p 0).

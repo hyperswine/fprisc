@@ -25,7 +25,7 @@ extern mode_t archive_entry_filetype(struct archive_entry *);
 extern mode_t archive_entry_perm(struct archive_entry *);
 extern int64_t archive_entry_size(struct archive_entry *);
 
-static V good(void) { return os_ok((V)&fpr_unit); }
+static V good(void) { return os_ok(V_UNIT); }
 static int write_all(int fd, const char *s, size_t n) {
   while (n) { ssize_t w = write(fd, s, n); if (w < 0 && errno == EINTR) continue;
     if (w <= 0) return -1; s += w; n -= (size_t)w; } return 0;
@@ -40,7 +40,7 @@ static V lock_home(V p) {
   return os_ok(TAG(fd));
 }
 FPR_FN(fpr_g_Meta_x2elock, lock_home, 1);
-static V unlock_home(V fd) { close((int)UNTAG(fd)); return (V)&fpr_unit; }
+static V unlock_home(V fd) { close((int)UNTAG(fd)); return V_UNIT; }
 FPR_FN(fpr_g_Meta_x2eunlock, unlock_home, 1);
 
 static V atomic_write(V p, V s) {

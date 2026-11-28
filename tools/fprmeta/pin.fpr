@@ -11,6 +11,7 @@
 S = use "std/string".
 L = use "std/list".
 O = use "std/option".
+R = use "std/result".
 J = use "std/json".
 F = use "std/file".
 P = use "std/path".
@@ -19,69 +20,89 @@ Found = { file : String, value : String, line : Int }.
 
 # Strip comments outside basic/literal strings, including section comments.
 # Pin values are versions, but the rest of a project may contain quoted '#'.
-commentEnd : unsafe String -> Int -> Int -> Bool -> Int .
-commentEnd s i quote escaped = if i >= strlen s then i
-  else c = charAt s i;
-    if escaped then commentEnd s (i + 1) quote False
-    else if quote == 34 and c == 92 then commentEnd s (i + 1) quote True
-    else if quote != 0 and c == quote then commentEnd s (i + 1) 0 False
-    else if quote == 0 and (c == 34 or c == 39) then commentEnd s (i + 1) c False
-    else if quote == 0 and c == 35 then i
-    else commentEnd s (i + 1) quote False.
-clean : unsafe String -> String .
-clean raw = S.trim (S.left (commentEnd raw 0 0 False) raw).
+commentEnd : String -> Int -> Int -> Bool -> Int .
+commentEnd s i quote escaped = commentEndGo s i (strlen s - i) quote escaped.
 
-quoted value = if S.startsWith "'" value and S.endsWith "'" value and strlen value >= 2 then
-    body = S.slice 1 (strlen value - 1) value;
-    if S.contains "'" body then Err "text after a pin string" else Ok body
-  else case J.parse value of
+commentEndGo : String -> Int -> (rem : Int | measure rem) -> Int -> Bool -> Int .
+commentEndGo s i rem quote escaped =
+  if rem <= 0 then i
+  else
+    c = charAt s i;
+    if escaped then commentEndGo s (i + 1) (rem - 1) quote False
+    else if quote == 34 and c == 92 then commentEndGo s (i + 1) (rem - 1) quote True
+    else if quote != 0 and c == quote then commentEndGo s (i + 1) (rem - 1) 0 False
+    else if quote == 0 and (c == 34 or c == 39) then commentEndGo s (i + 1) (rem - 1) c False
+    else if quote == 0 and c == 35 then i
+    else commentEndGo s (i + 1) (rem - 1) quote False.
+
+clean : String -> String .
+clean raw = raw |> S.left (commentEnd raw 0 0 False) |> S.trim.
+
+quoted : String -> Result String String .
+quoted value | S.startsWith "'" value and S.endsWith "'" value and strlen value >= 2 =
+  body = S.slice 1 (strlen value - 1) value;
+  if S.contains "'" body then Err "text after a pin string" else Ok body.
+quoted value = case J.parse value of
     Ok (J.Text s) -> Ok s
   | _ -> Err "a pin must be one quoted version string".
 
 # Read the complete pin section: malformed or duplicate keys must not turn
 # into a missing pin and silently select the default. Other project policy
 # remains the selected compiler/SDK's responsibility.
-readValue : unsafe List String -> String -> String -> String -> Int -> O.Option (String, Int) -> Result (O.Option (String, Int)) String .
+readValue : (lines : List String | measure lines) -> String -> String -> String -> Int -> O.Option (String, Int) -> Result (O.Option (String, Int)) String .
 readValue lines section key current n found = case lines of
     Nil -> Ok found
   | raw :: rest ->
       line = clean raw;
       if S.startsWith "[" line then
         if not (S.endsWith "]" line) then Err "line {n}: malformed section header"
-        else readValue rest section key (S.trim (S.slice 1 (strlen line - 1) line)) (n + 1) found
-      else if current == section then
-        (case S.indexOf "=" line of
-            O.Some at ->
-              if S.trim (S.left at line) != key then readValue rest section key current (n + 1) found
-              else (case found of
+        else readValue rest section key (line |> S.slice 1 (strlen line - 1) |> S.trim) (n + 1) found
+      else if current != section then
+        readValue rest section key current (n + 1) found
+      else case S.indexOf "=" line of
+          O.None ->
+            if line == key then Err "line {n}: expected {key} = \"VERSION\""
+            else readValue rest section key current (n + 1) found
+        | O.Some at ->
+            if S.trim (S.left at line) != key then readValue rest section key current (n + 1) found
+            else case found of
                 O.Some _ -> Err "line {n}: {section}.{key} is given twice"
-              | O.None -> (case quoted (S.trim (S.dropLeft (at + 1) line)) of
-                    Err why -> Err "line {n}: {section}.{key}: {why}"
-                  | Ok value -> readValue rest section key current (n + 1) (O.Some (value, n))))
-          | O.None -> if line == key then Err "line {n}: expected {key} = \"VERSION\""
-                      else readValue rest section key current (n + 1) found)
-      else readValue rest section key current (n + 1) found.
+              | O.None ->
+                  line
+                  |> S.dropLeft (at + 1)
+                  |> S.trim
+                  |> quoted
+                  |> R.mapError (fn why -> "line {n}: {section}.{key}: {why}")
+                  |> R.andThen (fn value -> readValue rest section key current (n + 1) (O.Some (value, n))).
 
 # the nearest directory at or above `dir` holding `name`
-nearest : unsafe String -> String -> O.Option String .
-nearest name dir =
-  candidate = P.join dir name;
-  if F.isFile candidate then O.Some candidate
+nearest : String -> String -> O.Option String .
+nearest name dir = nearestGo name dir (strlen dir + 1).
+
+nearestGo : String -> String -> (fuel : Int | measure fuel) -> O.Option String .
+nearestGo name dir fuel =
+  if fuel <= 0 then O.None
   else
-    up = P.parent dir;
-    if up == dir or up == "" then O.None else nearest name up.
+    candidate = P.join dir name;
+    if F.isFile candidate then O.Some candidate
+    else
+      up = P.parent dir;
+      if up == dir or up == "" then O.None else nearestGo name up (fuel - 1).
+
+manifestSpec : String -> (String, String, String) .
+manifestSpec "qos" = ("qos.toml", "sdk", "version").
+manifestSpec _     = ("fpr.toml", "toolchain", "fpr").
 
 # (manifest file, pinned text, 1-based line) for a launcher kind: "fpr" or "qos"
-find : unsafe String -> String -> Result (O.Option Found) String .
+find : String -> String -> Result (O.Option Found) String .
 find kind dir =
-  (name, section, key) = if kind == "qos" then ("qos.toml", "sdk", "version") else ("fpr.toml", "toolchain", "fpr");
+  (name, section, key) = manifestSpec kind;
   case nearest name dir of
       O.None -> Ok O.None
     | O.Some file ->
-        (case F.readText file of
-            Err why -> Err "{file}: {why}"
-          | Ok text ->
-              (case readValue (S.lines text) section key "" 1 O.None of
-                  Err why -> Err "{file}: {why}"
-                | Ok O.None -> if kind == "fpr" then Err "{file}: missing [toolchain] fpr pin" else Ok O.None
-                | Ok (O.Some (v, n)) -> Ok (O.Some { file = file, value = v, line = n }))).
+        F.readText file
+        |> R.andThen (fn text -> readValue (S.lines text) section key "" 1 O.None)
+        |> R.mapError (fn why -> "{file}: {why}")
+        |> R.andThen (fn found -> case found of
+            O.None -> if kind == "fpr" then Err "{file}: missing [toolchain] fpr pin" else Ok O.None
+          | O.Some (v, n) -> Ok (O.Some { file = file, value = v, line = n })).

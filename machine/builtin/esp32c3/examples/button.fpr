@@ -1,0 +1,47 @@
+profile builtin.
+Board = use "../boards/supermini".
+GPIO = use "../lib/gpio".
+Clock = use "../lib/clock".
+Journal = use "../lib/journal".
+
+# Button records contain milliseconds since boot (unsigned little endian, 8 bytes),
+# then a pressed byte. Log the initial state and each debounced transition.
+record p stateByte pressed =
+  _ = Mem.write8 stateByte (if pressed then 1 else 0);
+  rc = Journal.append "FPRBTN.BIN" p 9;
+  if rc != 0 then rc else GPIO.write Board.led (pressed != Board.ledActiveLow).
+
+sample p stateByte deadline last previous =
+  _ = Clock.nowMs p;
+  timed = Clock.afterMs p 20 deadline;
+  level = GPIO.read Board.button;
+  changed = level >= 0 and level == previous and level != last;
+  rc = (if timed != 0 then timed else if level < 0 then level else if changed then
+    record p stateByte ((level == 0) == Board.buttonActiveLow) else 0);
+  if rc != 0 then rc else
+    _ = Clock.sleepUntil deadline;
+    sample p stateByte deadline (if changed then level else last) level.
+
+run p =
+  health = Journal.inspect "FPRBTN.BIN" p False;
+  if health != 0 then health else
+    stateByte = Addr.add p 8;
+    deadlineBuf = Mem.alloc 8;
+    rc = sample p stateByte deadlineBuf -1 -1;
+    _ = Mem.free deadlineBuf;
+    _ = Rc.release deadlineBuf;
+    _ = Rc.release stateByte;
+    rc.
+
+main =
+  mounted = Journal.mount Unit;
+  if mounted != 0 then mounted else
+    input = GPIO.input Board.button Board.buttonActiveLow;
+    if input != 0 then input else
+      output = GPIO.openDrain Board.led Board.ledActiveLow;
+      if output != 0 then output else
+        p = Mem.alloc 72;
+        rc = run p;
+        _ = Mem.free p;
+        _ = Rc.release p;
+        rc.

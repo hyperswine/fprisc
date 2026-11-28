@@ -139,6 +139,9 @@ with the same files, sockets, poller and std modules, and `std/wifi`,
 ([machine/esp-idf/README.md](machine/esp-idf/README.md)).
 `tests/check_esp_board.py` is the conformance run on an attached board.
 
+The [ESP32-C3 Builtin target](machine/builtin/esp32c3/README.md) builds RV32IMC firmware
+with binary USB serial I/O and optional on-chip flash files through ESP-IDF.
+
 ## Working with QOS
 
 Set `FPRISC_ROOT` to this checkout when working in QOS, for example:

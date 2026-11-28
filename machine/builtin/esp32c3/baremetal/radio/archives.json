@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/esp-rs/esp-wifi-sys",
+  "revision": "5afc3a38cc1abcd463e3b5140f0ac742de44053f",
+  "esp_radio_reference": "30901fac5ac033b4116542d847265346eabc0052",
+  "bluetooth_osi_version": "0x0001000b",
+  "sha256": {
+    "LICENSE-APACHE": "ecfe934a9e3fb8ae30d74fabaebac85d280024f117d77f5c71a7456b17fc9ca3",
+    "LICENSE-MIT": "0101ae3d137bc02e76a16616ce4da583ac497a4cc280530b32c4c8f96c2d35fc",
+    "esp-wifi-sys-esp32c3/build.rs": "77ad0c52f907620d105f74fa272e319d811a27bdb6a624b054069be1642c1f87",
+    "esp-wifi-sys-esp32c3/libs/libbtbb.a": "35cc741979cd054b23e6c41addea9d9e2e207e9ea99fcf225652a96ecc35c15c",
+    "esp-wifi-sys-esp32c3/libs/libbtdm_app.a": "2c503e2f86294f7284cec7c879abb2ad3d3c76252b27d85d682cb643880f08e7",
+    "esp-wifi-sys-esp32c3/libs/libcoexist.a": "13f0606291f3974823c178b14c49abda38ea22b62392a619666c4012533a4b12",
+    "esp-wifi-sys-esp32c3/libs/libcore.a": "2177652780cfde29ff7f2000299a41408bfc65fdf3df49d5ba71211badd84a5b",
+    "esp-wifi-sys-esp32c3/libs/libespnow.a": "173efd59c0f0cf71304087f0bbf904affec15a5bb1837b11b52df4d133a312ab",
+    "esp-wifi-sys-esp32c3/libs/libmesh.a": "21c20815dd660e6c0964bf0cf15de48b240b08a702c8f29caf106d0746b6bdaa",
+    "esp-wifi-sys-esp32c3/libs/libnet80211.a": "0fcbed322d3254063b2c191bc8b8004e703ffd640296164a6552676180909a0c",
+    "esp-wifi-sys-esp32c3/libs/libphy.a": "65d3591af8d982c6497a6b083dafce8a10f7c7beb86dde9735cece4d0a69202f",
+    "esp-wifi-sys-esp32c3/libs/libpp.a": "756aa3ba9fcd8bef1ee5a8ec36c82406b5ed3a4d43f94ef6b15e05b2cd7a593c",
+    "esp-wifi-sys-esp32c3/libs/libprintf.a": "4013f1d5614e54ce5a39df4ae1ed33dce9351790227d709e15a0075e56dfdf82",
+    "esp-wifi-sys-esp32c3/libs/libregulatory.a": "d3e4bb90e04db4c3aee0ff0a2378d1e6f6ec226e59edbdd72d7d1379bd21e92c",
+    "esp-wifi-sys-esp32c3/libs/libsmartconfig.a": "f1a914a1a2738b8e9c9887d2cdd117fd9e3ca4ce4b24912f41db7be91913c629",
+    "esp-wifi-sys-esp32c3/libs/libwapi.a": "72f37d369a015ff7db679710f7d859cea89189800924df9103ab83c9f565e663",
+    "esp-wifi-sys-esp32c3/libs/libwpa_supplicant.a": "f9bae7e68653f8afeb9704e60b2f20e20a054b58e95cf75de4c8e441937de321",
+    "esp-wifi-sys-esp32c3/src/c_types.rs": "d2ad76f76d884c27b664ea56e04f3c8e18c278492698af048b5e2244b9f42e59",
+    "esp-wifi-sys-esp32c3/src/include.rs": "d295a01f2fa6e053c6fd59943c5cc0c0143816ba5ad4f324cb7a7fe9791832b6"
+  }
+}

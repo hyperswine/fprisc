@@ -1,0 +1,5 @@
+profile builtin.
+
+EspWiFi.station : Unit -> Unit .
+
+main = EspWiFi.station Unit.

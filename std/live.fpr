@@ -70,7 +70,6 @@ P = use "proc".
 Ord = use "order".
 L = use "list".
 G = use "view".
-L = use "list".
 
 # ---- the app's vocabulary ------------------------------------------------------------
 # Msg sid m: from a session (sid 0: from a command or a subscription).
@@ -107,6 +106,18 @@ Sub msg = Type (Every Int msg | SyncClientState Int msg).
 # `Live.setClient sid [View.assign @Client.tender "", View.assign (View.entry @Client.cart sku) 0]`
 setClient : Int -> List (String, String) -> Cmd msg .
 setClient sid kvs = Emit sid "locals" (J.render (J.object (L.map (fn kv -> case kv of (k, v) -> (k, J.Text v)) kvs))).
+
+# ---- per-session state helpers -------------------------------------------------------------
+sessionGet : (a -> Int) -> (Int -> a) -> Int -> List a -> a .
+sessionGet sidOf mk sid xs = O.withDefault (mk sid) (L.find (fn s -> sidOf s == sid) xs).
+
+sessionPut : (a -> Int) -> a -> List a -> List a .
+sessionPut sidOf s xs =
+  id = sidOf s;
+  s :: L.filter (fn old -> sidOf old != id) xs.
+
+sessionDrop : (a -> Int) -> Int -> List a -> List a .
+sessionDrop sidOf sid xs = L.filter (fn s -> sidOf s != sid) xs.
 
 Policy = Type (Always | AtMostEvery Int).
 
@@ -386,14 +397,14 @@ advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers
        else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1) told2)))).
 
 # tell every session's writer that has not already been told; answers who has now been told
-broadcast : unsafe Int -> M.Map Int Int -> List Int -> Int -> M.Map Int Bool -> M.Map Int Bool .
+broadcast : unsafe Int -> M.Map Int Int -> (sids : List Int | measure sids) -> Int -> M.Map Int Bool -> M.Map Int Bool .
 broadcast me sessions sids version told = case sids of
     Nil -> told
-  | sid :: r -> (case M.member sid told of
-      True -> broadcast me sessions r version told
-    | False -> (case M.get sid sessions of
-        O.Some w -> _ = A.sendSure me w (Changed version); broadcast me sessions r version (M.insert sid True told)
-      | O.None -> broadcast me sessions r version told)).
+  | sid :: r ->
+      if M.member sid told then broadcast me sessions r version told
+      else case M.get sid sessions of
+          O.Some w -> _ = A.sendSure me w (Changed version); broadcast me sessions r version (M.insert sid True told)
+        | O.None -> broadcast me sessions r version told.
 goodbye : unsafe List Int -> Unit .
 goodbye writers = case writers of Nil -> Unit | w :: r -> _ = send w Stop; goodbye r.
 
@@ -472,9 +483,8 @@ evOf codec v = case D.run (D.field "e" D.string) v of
 # anything it refuses never reaches update.
 decodeWire codec wire arg =
   kind = substr wire 0 1;
-  case kind == "=" or kind == "+" or kind == "*" of
-    False -> Err "not a typed message: {wire}"
-  | True -> (case J.parse (substr wire 1 (strlen wire)) of
+  if kind != "=" and kind != "+" and kind != "*" then Err "not a typed message: {wire}"
+  else (case J.parse (substr wire 1 (strlen wire)) of
         Err why -> Err why
       | Ok v -> (case kind of
           "=" -> codec.dec (J.toWire v)
@@ -531,9 +541,9 @@ performGo reg sessions cmds quit = case cmds of
 
 # a frame for one session's page (sid 0: every session's)
 push : M.Map Int Int -> Int -> String -> Unit .
-push sessions sid text = case sid == 0 of
-    True -> pushAll (M.values sessions) text
-  | False -> (case M.get sid sessions of O.Some w -> _ = send w (Push text); Unit | O.None -> Unit).
+push sessions sid text =
+  if sid == 0 then pushAll (M.values sessions) text
+  else case M.get sid sessions of O.Some w -> _ = send w (Push text); Unit | O.None -> Unit.
 pushAll : unsafe List Int -> String -> Unit .
 pushAll writers text = case writers of Nil -> Unit | w :: r -> _ = send w (Push text); pushAll r text.
 

@@ -1,0 +1,8 @@
+# Available on ESP32-P4 boards with the qualified ESP-Hosted SDIO companion.
+EspBLE.start : String -> Int .
+EspBLE.stop : Unit -> Unit .
+EspBLE.service : Unit -> Unit .
+
+start uuid = EspBLE.start uuid.
+stop u = EspBLE.stop u.
+service u = EspBLE.service u.

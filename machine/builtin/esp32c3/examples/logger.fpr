@@ -1,0 +1,32 @@
+profile builtin.
+IO = use "../lib/io".
+File = use "../lib/file".
+
+# Each incoming frame has a one-byte length (1..64). Zero commits the file.
+record fd p = n = IO.readByte Unit;
+  if n == 0 then 0 else
+  if n < 0 or n > 64 then -1 else
+  if IO.readExact p n != n then -1 else
+  if File.write fd p n != n then -1 else
+  if IO.write p n == n then record fd p else -1.
+
+replay fd p = n = File.read fd p 64;
+  if n <= 0 then n else
+  if IO.write p n == n then replay fd p else -1.
+
+run mode p = fd = (if mode == 87 then File.create "FPRLOG.BIN" else File.open "FPRLOG.BIN");
+  if fd < 0 then fd else
+    status = (if mode == 87 then record fd p else replay fd p);
+    closed = File.close fd;
+    if status == 0 then closed else status.
+
+main = mounted = File.mount Unit;
+  if mounted != 0 then mounted else
+    _ = IO.writeByte 6;
+    mode = IO.readByte Unit;
+    if mode != 87 and mode != 82 then -1 else
+      p = Mem.alloc 64;
+      status = run mode p;
+      _ = Mem.free p;
+      _ = Rc.release p;
+      status.

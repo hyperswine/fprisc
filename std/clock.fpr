@@ -31,14 +31,14 @@ sleepMs ms = _ = Sys.sleepUs (ms * 1000); Unit.
 civil : Int -> (Int, Int, Int) .
 civil days =
   z = days + 719468;
-  era = (case z >= 0 of True -> z | False -> z - 146096) / 146097;
+  era = (if z >= 0 then z else z - 146096) / 146097;
   doe = z - era * 146097;
   yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
   doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
   mp = (5 * doy + 2) / 153;
   d = doy - (153 * mp + 2) / 5 + 1;
-  m = case mp < 10 of True -> mp + 3 | False -> mp - 9;
-  y = yoe + era * 400 + (case m <= 2 of True -> 1 | False -> 0);
+  m = if mp < 10 then mp + 3 else mp - 9;
+  y = yoe + era * 400 + (if m <= 2 then 1 else 0);
   (y, m, d).
 
 two : Int -> String .
@@ -47,13 +47,13 @@ two n = S.padLeft 2 "0" (str n).
 # "2026-09-20"
 date : Int -> String .
 date secs =
-  days = (case secs >= 0 of True -> secs | False -> secs - 86399) / 86400;
+  days = (if secs >= 0 then secs else secs - 86399) / 86400;
   case civil days of (y, m, d) -> "{y}-{two m}-{two d}".
 
 # "2026-09-20T03:14:15Z"
 iso : Int -> String .
 iso secs =
-  days = (case secs >= 0 of True -> secs | False -> secs - 86399) / 86400;
+  days = (if secs >= 0 then secs else secs - 86399) / 86400;
   rem = secs - days * 86400;
   "{date secs}T{two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}:{two (rem - (rem / 60) * 60)}Z".
 
@@ -66,7 +66,7 @@ local secs = secs + OS.tzOffset secs.
 stamp : Int -> String .
 stamp secs =
   l = local secs;
-  days = (case l >= 0 of True -> l | False -> l - 86399) / 86400;
+  days = (if l >= 0 then l else l - 86399) / 86400;
   rem = l - days * 86400;
   "{date l} {two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}".
 

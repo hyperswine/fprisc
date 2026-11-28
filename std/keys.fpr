@@ -1,0 +1,31 @@
+# std/keys.fpr -- Keys: the evdev key codes and the modifier encoding, once.
+#
+#   K = use "std/keys".
+#
+#   update (Key k) m | k == K.keyEnter = ...
+#   update (Key k) m | k == K.ctrl K.keyS = ...
+#
+# A key event carries one Int: the evdev code of the key, plus an offset for
+# each modifier held (shift 1000, ctrl 4000, alt 8000). Every name here is an
+# integer literal, and the helpers add literals, so the compiler folds a guard
+# `k == K.keyR` or `k == K.ctrl K.keyC` to the comparison a literal would give
+# (docs/2026-11-26-NULLARY-LITERAL-FOLD.md). std/game re-exports the key names.
+
+# ---- modifiers ---------------------------------------------------------------
+modShift = 1000.  modCtrl = 4000.   modAlt = 8000.
+shift k = modShift + k.
+ctrl k = modCtrl + k.
+ctrlShift k = modCtrl + modShift + k.
+alt k = modAlt + k.
+
+# ---- evdev codes -------------------------------------------------------------
+keyEsc = 1.       key1 = 2.         key2 = 3.         key3 = 4.         key4 = 5.
+key5 = 6.         key6 = 7.         key7 = 8.         key8 = 9.         key9 = 10.
+key0 = 11.        keyBackspace = 14. keyTab = 15.     keyQ = 16.        keyW = 17.
+keyE = 18.        keyR = 19.        keyY = 21.        keyU = 22.        keyO = 24.
+keyP = 25.        keyLBracket = 26. keyRBracket = 27. keyEnter = 28.    keyA = 30.
+keyS = 31.        keyD = 32.        keyF = 33.        keyG = 34.        keyH = 35.
+keyJ = 36.        keyK = 37.        keyL = 38.        keyZ = 44.        keyX = 45.
+keyC = 46.        keyV = 47.        keyB = 48.        keyN = 49.        keySpace = 57.
+keyHome = 102.    keyUp = 103.      keyPageUp = 104.  keyLeft = 105.    keyRight = 106.
+keyEnd = 107.     keyDown = 108.    keyPageDown = 109. keyDelete = 111.

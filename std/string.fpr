@@ -264,6 +264,13 @@ isAlpha : Int -> Bool
   | work isAlpha <= 10 | alloc isAlpha <= 32 .
 isAlpha c = (c >= 97 and c <= 122) or (c >= 65 and c <= 90).
 
+allChars : (Int -> Bool) -> String -> Bool .
+allChars pred s = allCharsGo pred s 0 (strlen s).
+allCharsGo : (Int -> Bool) -> String -> Int -> (rem : Int | measure rem) -> Bool .
+allCharsGo pred s i rem =
+  if rem <= 0 then True
+  else pred (charAt s i) and allCharsGo pred s (i + 1) (rem - 1).
+
 # ---- numbers -------------------------------------------------------------------------
 fromInt : Int -> String .
 fromInt n = str n.

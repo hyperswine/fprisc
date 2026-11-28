@@ -1,0 +1,8 @@
+# Stamps occupy eight little-endian bytes in a caller-owned buffer.
+EspClock.nowMs : Addr -> Unit .
+EspClock.afterMs : Addr -> Int -> Addr -> Int .
+EspClock.sleepUntil : Addr -> Unit .
+
+nowMs stamp = EspClock.nowMs stamp.
+afterMs stamp delta dest = EspClock.afterMs stamp delta dest.
+sleepUntil deadline = EspClock.sleepUntil deadline.
