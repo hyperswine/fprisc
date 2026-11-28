@@ -130,8 +130,8 @@ the next record is skipped when power fails after its body is verified
 but before the commit marker is programmed. The checker holds the CH343
 serial session open until it sees the USB disconnect and reconnect. This
 prevents reopening the port from resetting the P4 before power is cut.
-Endurance appends once per
-minute for at least two hours and replays the complete log after reset.
+Endurance appends once per minute for at least two hours and replays
+the complete log after reset.
 
 The journal shares the C3 raw record format. Its flash driver validates
 both data partitions and bounds each transfer to the requested region.
@@ -145,3 +145,9 @@ application. The 65,616-byte bench image supplies them and starts at
 the Builtin journal API and integer self-check passed, and the
 scratch sector passed program, full readback, erase, and full erased
 readback.
+
+During the physical power-cut run, the USB-UART device disappeared
+for 5.23 seconds. The flash boot replayed committed record 1 and skipped
+record 2, whose body had been verified before the cut but whose commit
+marker was still erased. The next append succeeded and replay returned
+records 1 and 3 in order.
