@@ -42,3 +42,20 @@ over the hardware SDIO link. The expected H4 response is
 
 Both chips' flash contents stay intact. This checks the BLE controller
 command path and leaves Wi-Fi work deferred.
+
+## SYSTIMER, CLIC and GPIO checks
+
+    python3 machine/builtin/esp32p4/baremetal/check.py --timer PORT build/p4-baremetal/selfcheck.bin
+    python3 machine/builtin/esp32p4/baremetal/check.py --button-dtr PORT build/p4-baremetal/selfcheck.bin
+
+UNIT0 uses the 40 MHz crystal and fixed divide-by-2.5 clock. The timer
+check recovers from a machine ECALL and verifies three absolute deadlines
+50 ms apart, each dispatched through a SYSTIMER interrupt after WFI.
+Core 0 uses direct CLIC dispatch with separate level-triggered lines for
+the timer and GPIO.
+
+The GPIO test is specific to the qualified board's CH343 auto-download
+wiring. It drives the same active-low GPIO35 input as BOOT using DTR,
+with RTS deasserted. A synthetic 7 ms bounce on both edges produced six
+hardware IRQs and two transitions after 25 ms of stability. The check
+returns the board to normal flash boot.

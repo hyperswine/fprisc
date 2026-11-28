@@ -1,5 +1,6 @@
 #include "builtin.h"
 #include "i32.h"
+#include "platform.h"
 
 enum { UART0 = 0x500ca000, STATUS = UART0 + 0x1c, FIFO_CAPACITY = 128 };
 
@@ -64,7 +65,7 @@ static uint8_t wait_for_query(void) {
     for (;;) {
         while (!(*status & 0xffu)) {}
         uint8_t key = (uint8_t)*fifo;
-        if (key == '?' || key == 'B') return key;
+        if (key == '?' || key == 'B' || key == 'T' || key == 'G') return key;
     }
 }
 
@@ -76,5 +77,14 @@ void p4_main(void) {
     uint8_t query = wait_for_query();
     fpr_fn_main();
     if (query == 'B') p4_sdio_probe();
+    if (query == 'T' || query == 'G') {
+        p4_clock_init();
+        p4_irq_init();
+        write_string(p4_trap_check() ? "P4 machine trap PASS\n" : "P4 machine trap FAIL\n");
+        write_string(p4_clock_check() ? "P4 monotonic deadline IRQ PASS\n" :
+                                       "P4 monotonic deadline IRQ FAIL\n");
+        if (query == 'G')
+            write_string(p4_button_check() ? "P4 GPIO debounce PASS\n" : "P4 GPIO debounce FAIL\n");
+    }
     write_string("FPR DONE\n");
 }

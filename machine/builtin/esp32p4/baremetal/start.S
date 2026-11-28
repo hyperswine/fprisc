@@ -13,6 +13,9 @@ _start:
     addi t0, t0, 4
     j .Lzero
 .Lboot:
+    la t0, p4_trap
+    ori t0, t0, 3
+    csrw mtvec, t0
     call p4_main
 .Lpark:
     wfi
