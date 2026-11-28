@@ -20,23 +20,23 @@ Outcome = Type (Pass name | Fail name why).
 
 # a named condition
 that : String -> Bool -> Outcome .
-that name ok = case ok of True -> Pass name | False -> Fail name "expected True".
+that name ok = if ok then Pass name else Fail name "expected True".
 
 # two values of any type that compares; a failure shows both
 equal : String -> a -> a -> Outcome .
-equal name want got = case want == got of
-    True -> Pass name
-  | False -> Fail name "want {want}, got {got}".
+equal name want got = if want == got
+    then Pass name
+    else Fail name "want {want}, got {got}".
 
 equalInt : String -> Int -> Int -> Outcome .
-equalInt name want got = case want == got of
-    True -> Pass name
-  | False -> Fail name "want {want}, got {got}".
+equalInt name want got = if want == got
+    then Pass name
+    else Fail name "want {want}, got {got}".
 
 equalString : String -> String -> String -> Outcome .
-equalString name want got = case want == got of
-    True -> Pass name
-  | False -> Fail name "want \"{want}\", got \"{got}\"".
+equalString name want got = if want == got
+    then Pass name
+    else Fail name "want \"{want}\", got \"{got}\"".
 
 # a Result that should be Ok
 isOk : String -> Result a String -> Outcome .
@@ -48,9 +48,9 @@ run checks = report 1 0 checks.
 
 report : Int -> Int -> (checks : List Outcome | measure checks) -> Int .
 report n failed checks = case checks of
-    Nil -> (case failed == 0 of
-        True -> _ = print "{n - 1} passed"; 0
-      | False -> _ = print "{failed} of {n - 1} failed"; 1)
+    Nil -> (if failed == 0
+        then _ = print "{n - 1} passed"; 0
+        else _ = print "{failed} of {n - 1} failed"; 1)
   | c :: rest -> (case c of
         Pass name -> _ = print "ok {n} - {name}"; report (n + 1) failed rest
       | Fail name why -> _ = print "not ok {n} - {name}: {why}"; report (n + 1) (failed + 1) rest).

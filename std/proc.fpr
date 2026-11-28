@@ -53,9 +53,9 @@ runWith env argv = spawn { argv = argv, dir = "", input = "", env = env, limitMs
 output : List String -> Result String String .
 output argv = case run argv of
     Err e -> Err e
-  | Ok r -> (case r.status == 0 of
-        True -> Ok r.out
-      | False -> Err "exit {r.status}: {r.err}").
+  | Ok r -> (if r.status == 0
+        then Ok r.out
+        else Err "exit {r.status}: {r.err}").
 
 # EXPLICIT shell interpretation of one line
 shell : String -> Result { status : Int, out : String, err : String } String .

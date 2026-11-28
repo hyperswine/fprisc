@@ -13,7 +13,7 @@ MV = use "std/mvu".
 # are a compiler follow-up, not supplied by this name-based helper.
 function table name =
   (found, value) = Mod.findAt table name;
-  case found == 1 of True -> Ok value | False -> Err "reload: missing export {name}".
+  if found == 1 then Ok value else Err "reload: missing export {name}".
 
 open spec = case W.session Unit of
     Err why -> Err why
@@ -27,20 +27,20 @@ openJournal spec journal result = case result of
 opened spec journal cursor table candidate result = case result of
     Err why -> Err why
   | Ok unit -> initialIdentity spec journal cursor table (W.identity candidate).
-initialIdentity spec journal cursor table info = case Mod.plugs 0 == table + 1 and Mod.hashAt table == info.to of
-    False -> rollback "reload: initial image identity mismatch"
-  | True -> bound spec journal cursor table info (spec.bind table).
+initialIdentity spec journal cursor table info = if Mod.plugs 0 == table + 1 and Mod.hashAt table == info.to
+    then bound spec journal cursor table info (spec.bind table)
+    else rollback "reload: initial image identity mismatch".
 bound spec journal cursor table info result = case result of
     Err why -> rollback why
   | Ok value -> Ok {journal = journal, name = spec.name, cursor = cursor,
                     table = table, hash = info.to, value = value}.
 rollback why = _ = Mod.detachLast Unit; Err why.
 
-reload spec me info session = case info.name == session.name of
-    False -> Err "reload: unexpected module"
-  | True -> case info.to == session.hash of
-      True -> Ok session
-    | False -> resolve spec info session (W.imageFor session.journal session.name info.to).
+reload spec me info session = if info.name == session.name
+    then if info.to == session.hash
+      then Ok session
+      else resolve spec info session (W.imageFor session.journal session.name info.to)
+    else Err "reload: unexpected module".
 resolve spec info session result = case result of
     Err why -> Err why
   | Ok image -> attached spec info session (N.nativeLoadVersionAt session.table session.hash info.to image).

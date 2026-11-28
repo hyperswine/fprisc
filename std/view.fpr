@@ -1171,7 +1171,7 @@ localsGo schema init = case schema of
 # of [key, text] pairs, anything else as its JSON
 held : Wire -> String .
 held w = case w of
-    WList xs -> (case L.all pairLike xs of True -> J.render (J.Sequence (L.map pairText xs)) | False -> J.render (J.fromWire w))
+    WList xs -> (if L.all pairLike xs then J.render (J.Sequence (L.map pairText xs)) else J.render (J.fromWire w))
   | WRec _ -> J.render (J.fromWire w)
   | WCon _ (x :: r) -> J.render (J.fromWire w)
   | other -> J.quote (J.wireText other).

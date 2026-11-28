@@ -869,25 +869,25 @@ metrics target suffix = program metricsInitial
 
 Notice = {enabled : Bool, durationMs : Int, text : String, untilUs : Int}.
 noticeInit : Bool -> Int -> Notice .
-noticeInit enabled durationMs = {enabled = enabled, durationMs = (case durationMs > 0 of True -> durationMs | False -> 0), text = "", untilUs = 0}.
+noticeInit enabled durationMs = {enabled = enabled, durationMs = (if durationMs > 0 then durationMs else 0), text = "", untilUs = 0}.
 noticePending : Notice -> Bool .
 noticePending notice = notice.text != "".
 noticeAdopted : String -> String -> Notice -> Notice .
-noticeAdopted name hash notice = case notice.enabled and notice.durationMs > 0 of
-    False -> notice
-  | True -> noticeAdoptedAt (Clock.monotonic Unit) (Clock.now Unit) name hash notice.
+noticeAdopted name hash notice = if notice.enabled and notice.durationMs > 0
+    then noticeAdoptedAt (Clock.monotonic Unit) (Clock.now Unit) name hash notice
+    else notice.
 # Explicit clocks keep formatting and deadline behavior independently testable.
 noticeAdoptedAt : Int -> Int -> String -> String -> Notice -> Notice .
-noticeAdoptedAt mono utc name hash notice = case notice.enabled and notice.durationMs > 0 of
-    False -> notice
-  | True -> {notice | text = "Live Reload new {name}#{hash} {Clock.iso utc}",
-                     untilUs = mono + notice.durationMs * 1000}.
+noticeAdoptedAt mono utc name hash notice = if notice.enabled and notice.durationMs > 0
+    then {notice | text = "Live Reload new {name}#{hash} {Clock.iso utc}",
+                     untilUs = mono + notice.durationMs * 1000}
+    else notice.
 noticeTick : Notice -> Notice .
 noticeTick notice = noticeExpireAt (Clock.monotonic Unit) notice.
 noticeExpireAt : Int -> Notice -> Notice .
-noticeExpireAt mono notice = case noticePending notice and mono >= notice.untilUs of
-    True -> {notice | text = "", untilUs = 0}
-  | False -> notice.
+noticeExpireAt mono notice = if noticePending notice and mono >= notice.untilUs
+    then {notice | text = "", untilUs = 0}
+    else notice.
 
 # Fixed shape: only the escaped text slot changes on adoption/expiry.
 noticeView : String -> G.Node .

@@ -35,8 +35,8 @@ Result = use "std/result".
 Settings = Type (Settings port workers level).
 
 settings = Decode.map3 Settings
-  (Decode.field "port" (Decode.check (fn p -> case p >= 0 and p < 65536 of True -> Ok p | False -> Err "must be 0..65535") Decode.int))
-  (Decode.field "workers" (Decode.check (fn n -> case n >= 1 of True -> Ok n | False -> Err "must be at least 1") Decode.int))
+  (Decode.field "port" (Decode.check (fn p -> if p >= 0 and p < 65536 then Ok p else Err "must be 0..65535") Decode.int))
+  (Decode.field "workers" (Decode.check (fn n -> if n >= 1 then Ok n else Err "must be at least 1") Decode.int))
   (Decode.field "log" Decode.string).
 
 loadSettings args = Config.load {
@@ -62,18 +62,18 @@ route storeActor workers listener req =
   me = myself 0;
   key = String.dropLeft 4 req.path;
   case req.method of
-    "GET" -> (case String.startsWith "/kv/" req.path of
-        True -> (case ask me storeActor (Get key) of
+    "GET" -> (if String.startsWith "/kv/" req.path
+        then (case ask me storeActor (Get key) of
             Found v -> Http.text 200 v
           | _ -> Http.text 404 "no such key: {key}\n")
-      | False -> (case req.path == "/keys" of
-            True -> (case ask me storeActor Keys of
+        else (if req.path == "/keys"
+            then (case ask me storeActor Keys of
                 Listing ks -> Http.json 200 (Json.render (Json.strings ks))
               | _ -> Http.text 500 "store\n")
-          | False -> Http.text 404 "no such page: {req.path}\n"))
-  | "PUT" -> (case String.startsWith "/kv/" req.path and strlen key > 0 of
-        True -> _ = ask me storeActor (Put key req.body); Http.text 201 "stored {key}\n"
-      | False -> Http.text 404 "PUT /kv/<key>\n")
+            else Http.text 404 "no such page: {req.path}\n"))
+  | "PUT" -> (if String.startsWith "/kv/" req.path and strlen key > 0
+        then _ = ask me storeActor (Put key req.body); Http.text 201 "stored {key}\n"
+        else Http.text 404 "PUT /kv/<key>\n")
   | "POST" -> (case req.path of
         "/digests" -> digests workers req.body
       | "/shutdown" -> _ = stopAfter me listener; Http.text 200 "shutting down\n"
@@ -101,7 +101,7 @@ digests workers body = case Task.mapBounded workers Digest.sha256 (String.lines 
 logged log handler req =
   resp = handler req;
   fields = ("method", req.method) :: ("path", req.path) :: ("status", str resp.status) :: ("bytes", str (strlen resp.body)) :: Nil;
-  _ = (case resp.status >= 400 of True -> Log.warn log "request failed" fields | False -> Log.info log "request" fields);
+  _ = (if resp.status >= 400 then Log.warn log "request failed" fields else Log.info log "request" fields);
   resp.
 
 run s = case s of Settings port workers level ->

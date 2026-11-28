@@ -53,9 +53,9 @@ findImage hash pair = (cursor, candidates) = pair; findCandidate hash candidates
 findCandidate : unsafe String -> List Candidate -> Result String String .
 findCandidate hash candidates = case candidates of
     Nil -> Err "watch: image not published"
-  | C.Candidate info path :: rest -> (case info.to == hash of
-      True -> Ok path
-    | False -> findCandidate hash rest).
+  | C.Candidate info path :: rest -> (if info.to == hash
+      then Ok path
+      else findCandidate hash rest).
 
 # Pass this starter to MV.runWatched; the runner owns both worker and port.
 watchFrom path name cursor me port = Ok (AC.spawnWith (AC.Dynamic 64) (watch path name cursor port)).

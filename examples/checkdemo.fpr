@@ -15,9 +15,9 @@
 
 # the builtin scheme's honest definition for ordinary compilation;
 # --stdcheck intercepts the NAME and uses the generic Fold bound.
-foldRange lo hi f acc = case lo > hi of
-  True -> acc
-  | False -> foldRange (lo + 1) hi f (f lo acc).
+foldRange lo hi f acc = if lo > hi
+  then acc
+  else foldRange (lo + 1) hi f (f lo acc).
 
 # ---- fully static: accumulator factorial ----------------------------
 # termination: measure x decreases by 1, lower bound 0 from the
@@ -25,9 +25,9 @@ foldRange lo hi f acc = case lo > hi of
 
 fact_acc : (x : Int | x >= 0 and measure x) -> (acc : Int | acc >= 1) -> Int.
 post_fact_acc : (r : Int | r >= 1) -> Int.
-fact_acc x acc = case x == 0 of
-  True -> acc
-  | False -> fact_acc (x - 1) (acc * x).
+fact_acc x acc = if x == 0
+  then acc
+  else fact_acc (x - 1) (acc * x).
 
 # ---- the recursion-scheme version: no per-use termination proof -----
 
@@ -49,9 +49,9 @@ use_fact x = fact_acc x 1.
 # both preconditions discharge STATICALLY — no runtime check.
 
 use_fact_guarded : Int -> Int.
-use_fact_guarded x = case x >= 0 of
-  True -> fact_acc x 1
-  | False -> 1.
+use_fact_guarded x = if x >= 0
+  then fact_acc x 1
+  else 1.
 
 # ---- where unsafe cost enters: an opaque extern ---------------------
 # core_read has no definition here, so it is an opaque unsafe extern.

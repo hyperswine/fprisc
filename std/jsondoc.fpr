@@ -47,18 +47,18 @@ parse s = parseWith defaultLimits s.
 
 parseWith : unsafe Limits -> String -> Result Json String .
 parseWith limits s = case limits of
-  Limits input depth items field -> (case strlen s > input of
-      True -> Err "json: input byte limit exceeded"
-    | False -> (case value limits 0 s (ws s 0) of
+  Limits input depth items field -> (if strlen s > input
+      then Err "json: input byte limit exceeded"
+      else (case value limits 0 s (ws s 0) of
           Err why -> Err why
-        | Ok (v, i) -> (case ws s i >= strlen s of
-              True -> Ok v
-            | False -> Err "json: trailing characters at {i}"))).
+        | Ok (v, i) -> (if ws s i >= strlen s
+              then Ok v
+              else Err "json: trailing characters at {i}"))).
 
 peek : String -> Int -> Int .
-peek s i = case i >= strlen s of True -> 0 | False -> charAt s i.
+peek s i = if i >= strlen s then 0 else charAt s i.
 ws : unsafe String -> Int -> Int .
-ws s i = case i < strlen s and S.isSpace (charAt s i) of True -> ws s (i + 1) | False -> i.
+ws s i = if i < strlen s and S.isSpace (charAt s i) then ws s (i + 1) else i.
 
 value : unsafe Limits -> Int -> String -> Int -> Result (Json, Int) String .
 value limits depth s i = case peek s i of
@@ -68,34 +68,34 @@ value limits depth s i = case peek s i of
   | 116 -> literal s i "true" (JBool True)
   | 102 -> literal s i "false" (JBool False)
   | 110 -> literal s i "null" JNull
-  | c -> (case c == 45 or S.isDigit c of
-        True -> number s i
-      | False -> (case i >= strlen s of
-            True -> Err "json: unexpected end of input"
-          | False -> Err "json: unexpected character at {i}")).
+  | c -> (if c == 45 or S.isDigit c
+        then number s i
+        else (if i >= strlen s
+            then Err "json: unexpected end of input"
+            else Err "json: unexpected character at {i}")).
 
 literal : String -> Int -> String -> Json -> Result (Json, Int) String .
-literal s i word v = case substr s i (strlen word) == word of
-    True -> Ok (v, i + strlen word)
-  | False -> Err "json: invalid literal at {i}".
+literal s i word v = if substr s i (strlen word) == word
+    then Ok (v, i + strlen word)
+    else Err "json: invalid literal at {i}".
 
 container : unsafe Limits -> Int -> String -> Int -> Result (Json, Int) String .
 container limits depth s i = case limits of
-  Limits input maxDepth items field -> (case depth >= maxDepth of
-      True -> Err "json: nesting depth limit exceeded"
-    | False -> (case peek s i == 123 of
-          True -> object limits (depth + 1) s (ws s (i + 1)) 0 Nil
-        | False -> array limits (depth + 1) s (ws s (i + 1)) 0 Nil)).
+  Limits input maxDepth items field -> (if depth >= maxDepth
+      then Err "json: nesting depth limit exceeded"
+      else (if peek s i == 123
+          then object limits (depth + 1) s (ws s (i + 1)) 0 Nil
+          else array limits (depth + 1) s (ws s (i + 1)) 0 Nil)).
 
 itemLimit : Limits -> Int .
 itemLimit limits = case limits of Limits input depth items field -> items.
 
 array : unsafe Limits -> Int -> String -> Int -> Int -> List Json -> Result (Json, Int) String .
-array limits depth s i n acc = case n == 0 and peek s i == 93 of
-    True -> Ok (JArr Nil, i + 1)
-  | False -> (case n >= itemLimit limits of
-        True -> Err "json: container item limit exceeded"
-      | False -> (case value limits depth s i of
+array limits depth s i n acc = if n == 0 and peek s i == 93
+    then Ok (JArr Nil, i + 1)
+    else (if n >= itemLimit limits
+        then Err "json: container item limit exceeded"
+        else (case value limits depth s i of
             Err e -> Err e
           | Ok (v, j) -> (case peek s (ws s j) of
                 44 -> array limits depth s (ws s (ws s j + 1)) (n + 1) (v :: acc)
@@ -103,31 +103,31 @@ array limits depth s i n acc = case n == 0 and peek s i == 93 of
               | _ -> Err "json: expected ',' or ']' at {ws s j}"))).
 
 object : unsafe Limits -> Int -> String -> Int -> Int -> List (String, Json) -> Result (Json, Int) String .
-object limits depth s i n acc = case n == 0 and peek s i == 125 of
-    True -> Ok (JObj Nil, i + 1)
-  | False -> (case n >= itemLimit limits of
-        True -> Err "json: container item limit exceeded"
-      | False -> (case peek s i == 34 of
-            False -> Err "json: expected a key at {i}"
-          | True -> (case string limits s (i + 1) of
+object limits depth s i n acc = if n == 0 and peek s i == 125
+    then Ok (JObj Nil, i + 1)
+    else (if n >= itemLimit limits
+        then Err "json: container item limit exceeded"
+        else (if peek s i == 34
+            then (case string limits s (i + 1) of
                 Err e -> Err e
-              | Ok (k, j) -> (case peek s (ws s j) == 58 of
-                    False -> Err "json: expected ':' at {ws s j}"
-                  | True -> (case value limits depth s (ws s (ws s j + 1)) of
+              | Ok (k, j) -> (if peek s (ws s j) == 58
+                    then (case value limits depth s (ws s (ws s j + 1)) of
                         Err e -> Err e
                       | Ok (v, j2) -> (case peek s (ws s j2) of
                             44 -> object limits depth s (ws s (ws s j2 + 1)) (n + 1) ((k, v) :: acc)
                           | 125 -> Ok (JObj (L.reverse ((k, v) :: acc)), ws s j2 + 1)
-                          | _ -> Err "json: expected ',' or '}' at {ws s j2}")))))).
+                          | _ -> Err "json: expected ',' or '}' at {ws s j2}"))
+                    else Err "json: expected ':' at {ws s j}"))
+            else Err "json: expected a key at {i}")).
 
 # ---- numbers -----------------------------------------------------------------
 
 digits : unsafe String -> Int -> Int .
-digits s i = case S.isDigit (peek s i) of True -> digits s (i + 1) | False -> i.
+digits s i = if S.isDigit (peek s i) then digits s (i + 1) else i.
 
 number : unsafe String -> Int -> Result (Json, Int) String .
 number s i =
-  start = (case peek s i == 45 of True -> i + 1 | False -> i);
+  start = (if peek s i == 45 then i + 1 else i);
   case integerEnd s start of
     Err e -> Err e
   | Ok a -> (case fractionEnd s a of
@@ -136,26 +136,26 @@ number s i =
             Err e -> Err e
           | Ok j ->
               t = substr s i (j - i);
-              (case b == a and j == b and a - start <= 18 and t != "-0" of
-                  True -> Ok (JNum (parseInt t), j)
-                | False -> Ok (JReal t, j)))).
+              (if b == a and j == b and a - start <= 18 and t != "-0"
+                  then Ok (JNum (parseInt t), j)
+                  else Ok (JReal t, j)))).
 
 integerEnd : unsafe String -> Int -> Result Int String .
-integerEnd s i = case peek s i == 48 of
-    True -> (case S.isDigit (peek s (i + 1)) of True -> Err "json: leading zero at {i}" | False -> Ok (i + 1))
-  | False -> (case peek s i >= 49 and peek s i <= 57 of
-        True -> Ok (digits s (i + 1))
-      | False -> Err "json: expected digit at {i}").
+integerEnd s i = if peek s i == 48
+    then (if S.isDigit (peek s (i + 1)) then Err "json: leading zero at {i}" else Ok (i + 1))
+    else (if peek s i >= 49 and peek s i <= 57
+        then Ok (digits s (i + 1))
+        else Err "json: expected digit at {i}").
 fractionEnd : unsafe String -> Int -> Result Int String .
-fractionEnd s i = case peek s i == 46 of
-    False -> Ok i
-  | True -> (case S.isDigit (peek s (i + 1)) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected fraction at {i}").
+fractionEnd s i = if peek s i == 46
+    then (if S.isDigit (peek s (i + 1)) then Ok (digits s (i + 1)) else Err "json: expected fraction at {i}")
+    else Ok i.
 exponentEnd : unsafe String -> Int -> Result Int String .
-exponentEnd s i = case peek s i == 101 or peek s i == 69 of
-    False -> Ok i
-  | True ->
-      j = (case peek s (i + 1) == 43 or peek s (i + 1) == 45 of True -> i + 2 | False -> i + 1);
-      (case S.isDigit (peek s j) of True -> Ok (digits s j) | False -> Err "json: expected exponent at {j}").
+exponentEnd s i = if peek s i == 101 or peek s i == 69
+    then
+      j = (if peek s (i + 1) == 43 or peek s (i + 1) == 45 then i + 2 else i + 1);
+      (if S.isDigit (peek s j) then Ok (digits s j) else Err "json: expected exponent at {j}")
+    else Ok i.
 
 # ---- strings -----------------------------------------------------------------
 
@@ -169,16 +169,16 @@ string : unsafe Limits -> String -> Int -> Result (String, Int) String .
 string limits s i = stringGo (fieldLimit limits) s i i Nil 0.
 
 stringGo : unsafe Int -> String -> Int -> Int -> List String -> Int -> Result (String, Int) String .
-stringGo limit s from i acc size = case size + (i - from) > limit of
-    True -> Err "json: string byte limit exceeded"
-  | False -> (case i >= strlen s of
-        True -> Err "json: unterminated string"
-      | False -> (case charAt s i of
+stringGo limit s from i acc size = if size + (i - from) > limit
+    then Err "json: string byte limit exceeded"
+    else (if i >= strlen s
+        then Err "json: unterminated string"
+        else (case charAt s i of
             34 -> Ok (strJoin "" (L.reverse (substr s from (i - from) :: acc)), i + 1)
           | 92 -> escape limit s i (substr s from (i - from) :: acc) (size + (i - from))
-          | c -> (case c < 32 of
-                True -> Err "json: raw control character in string at {i}"
-              | False -> stringGo limit s from (i + 1) acc size))).
+          | c -> (if c < 32
+                then Err "json: raw control character in string at {i}"
+                else stringGo limit s from (i + 1) acc size))).
 
 # `i` is at the backslash
 escape : unsafe Int -> String -> Int -> List String -> Int -> Result (String, Int) String .
@@ -204,26 +204,26 @@ simpleEscape c =
 unicode : unsafe Int -> String -> Int -> List String -> Int -> Result (String, Int) String .
 unicode limit s i acc size = case hex4 s (i + 2) of
     Err e -> Err e
-  | Ok hi -> (case hi >= 55296 and hi <= 56319 of
-        True -> (case substr s (i + 6) 2 == "\\u" of
-            False -> Err "json: missing low surrogate at {i}"
-          | True -> (case hex4 s (i + 8) of
+  | Ok hi -> (if hi >= 55296 and hi <= 56319
+        then (if substr s (i + 6) 2 == "\\u"
+            then (case hex4 s (i + 8) of
                 Err e -> Err e
-              | Ok lo -> (case lo >= 56320 and lo <= 57343 of
-                    False -> Err "json: invalid low surrogate at {i + 6}"
-                  | True -> pushed limit s (i + 12) acc size (utf8 (65536 + (hi - 55296) * 1024 + (lo - 56320))))))
-      | False -> (case hi >= 56320 and hi <= 57343 of
-            True -> Err "json: unpaired low surrogate at {i}"
-          | False -> pushed limit s (i + 6) acc size (utf8 hi))).
+              | Ok lo -> (if lo >= 56320 and lo <= 57343
+                    then pushed limit s (i + 12) acc size (utf8 (65536 + (hi - 55296) * 1024 + (lo - 56320)))
+                    else Err "json: invalid low surrogate at {i + 6}"))
+            else Err "json: missing low surrogate at {i}")
+        else (if hi >= 56320 and hi <= 57343
+            then Err "json: unpaired low surrogate at {i}"
+            else pushed limit s (i + 6) acc size (utf8 hi))).
 pushed : unsafe Int -> String -> Int -> List String -> Int -> String -> Result (String, Int) String .
 pushed limit s next acc size t = stringGo limit s next next (t :: acc) (size + strlen t).
 
 hex4 : unsafe String -> Int -> Result Int String .
 hex4 s i = hexGo s i 4 0.
 hexGo : unsafe String -> Int -> Int -> Int -> Result Int String .
-hexGo s i n acc = case n == 0 of
-    True -> Ok acc
-  | False -> (case hexVal (peek s i) of
+hexGo s i n acc = if n == 0
+    then Ok acc
+    else (case hexVal (peek s i) of
         16 -> Err "json: invalid unicode escape at {i}"
       | d -> hexGo s (i + 1) (n - 1) (acc * 16 + d)).
 # 0..15, or 16 for "not a hex digit"
@@ -239,13 +239,13 @@ hexVal c =
 
 # a code point as UTF-8 bytes
 utf8 : Int -> String .
-utf8 cp = case cp < 128 of
-    True -> chr cp
-  | False -> (case cp < 2048 of
-        True -> strJoin "" [chr (192 + cp / 64), chr (128 + cp % 64)]
-      | False -> (case cp < 65536 of
-            True -> strJoin "" [chr (224 + cp / 4096), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)]
-          | False -> strJoin "" [chr (240 + cp / 262144), chr (128 + (cp / 4096) % 64), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)])).
+utf8 cp = if cp < 128
+    then chr cp
+    else (if cp < 2048
+        then strJoin "" [chr (192 + cp / 64), chr (128 + cp % 64)]
+        else (if cp < 65536
+            then strJoin "" [chr (224 + cp / 4096), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)]
+            else strJoin "" [chr (240 + cp / 262144), chr (128 + (cp / 4096) % 64), chr (128 + (cp / 64) % 64), chr (128 + cp % 64)])).
 
 # ---- render ------------------------------------------------------------------
 
@@ -266,9 +266,9 @@ quote : unsafe String -> String .
 quote t = "\"{strJoin "" (L.reverse (quoteGo t 0 0 Nil))}\"".
 # [from, i) is a run that needs no escape; acc the pieces, newest first
 quoteGo : unsafe String -> Int -> Int -> List String -> List String .
-quoteGo t from i acc = case i >= strlen t of
-    True -> substr t from (i - from) :: acc
-  | False -> (case escapeOf (charAt t i) of
+quoteGo t from i acc = if i >= strlen t
+    then substr t from (i - from) :: acc
+    else (case escapeOf (charAt t i) of
         "" -> quoteGo t from (i + 1) acc
       | e -> quoteGo t (i + 1) (i + 1) (e :: substr t from (i - from) :: acc)).
 escapeOf : Int -> String .
@@ -305,9 +305,9 @@ path : List String -> Json -> Result Json String .
 path ks j = L.fold (fn r k -> case r of Ok v -> get k v | Err e -> Err e) (Ok j) ks.
 at : Int -> Json -> Result Json String .
 at i j = case j of
-    JArr xs -> (case i >= 0 and i < L.length xs of
-        True -> Ok (L.getWithDefault JNull i xs)
-      | False -> Err "json: index {i} out of range")
+    JArr xs -> (if i >= 0 and i < L.length xs
+        then Ok (L.getWithDefault JNull i xs)
+        else Err "json: index {i} out of range")
   | _ -> Err "json: not an array".
 num : Json -> Result Int String .
 num j = case j of
@@ -334,9 +334,9 @@ fields j = case j of JObj kvs -> Ok kvs | _ -> Err "json: not an object".
 # upsert a key: an existing key is replaced where it stands, a new key goes last
 set : String -> Json -> Json -> Json .
 set k v j = case j of
-    JObj kvs -> (case L.any (fn p -> case p of (k2, v2) -> k2 == k) kvs of
-        True -> JObj (L.map (fn p -> case p of (k2, v2) -> (if k2 == k then (k, v) else (k2, v2))) kvs)
-      | False -> JObj (L.append kvs [(k, v)]))
+    JObj kvs -> (if L.any (fn p -> case p of (k2, v2) -> k2 == k) kvs
+        then JObj (L.map (fn p -> case p of (k2, v2) -> (if k2 == k then (k, v) else (k2, v2))) kvs)
+        else JObj (L.append kvs [(k, v)]))
   | _ -> j.
 without : String -> Json -> Json .
 without k j = case j of

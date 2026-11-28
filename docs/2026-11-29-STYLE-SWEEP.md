@@ -29,7 +29,7 @@ definition with the prelude's signature. On main it reports "declared type of se
 cannot unify ...". Builds of programs that import the module are not affected. This
 looks like a checker name leak. It is recorded here and not fixed.
 
-**Bool `case` to `if`** in std and examples is a follow-up on this branch (std/store's `drain` is converted here).
+**Bool `case` to `if`** in std and examples: 88 two-arm cases in 13 files (std browser, checkdemo, jsondoc, livereload, proc, tcp, test, view, watch; examples checkdemo, mconf, service, tangnano20k_fact), by a mechanical rewrite that swaps the arms of a `False`-first case. `fpr check` output is identical before and after for every std file; mconf and service give the same answers on the same inputs; tangnano20k_fact's assembly differs only where a `False`-first test now tests `True` with the branches swapped. `Ok True ->`/`Ok False ->` matches are not Bool cases and stay.
 
 **Already done on main.** `tools/sol-bundle-archive.sol` and `sol-bundle-activate.sol`
 already run `Proc.streamNow` under `>!`. Both run correctly with the branch's Sol.

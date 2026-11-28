@@ -109,9 +109,9 @@ blankStep s i c | c == 35 = skipBlank s (lineEnd s (i + 1)).
 blankStep _ i _ = i.
 
 lineCol : unsafe String -> Int -> Int -> Int -> Int -> (Int, Int) .
-lineCol s i at l c = case i >= at of
-    True -> (l, c)
-  | False ->
+lineCol s i at l c = if i >= at
+    then (l, c)
+    else
       next = if charAt s i == 10 then (l + 1, 1) else (l, c + 1);
       case next of (l2, c2) -> lineCol s (i + 1) at l2 c2.
 
@@ -140,11 +140,11 @@ stringLit : unsafe String -> Int -> Result (String, Int) (Int, String) .
 stringLit s i = stringGo s (i + 1) (i + 1) Nil.
 
 stringGo : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
-stringGo s from i acc = case i >= strlen s of
-    True -> Err (i, "unterminated string")
-  | False -> case charAt s i == 34 of
-        True -> Ok (strJoin "" (List.revOnto (substr s from (i - from) :: acc) Nil), i + 1)
-      | False -> if charAt s i == 92 then escaped s i from acc else stringGo s from (i + 1) acc.
+stringGo s from i acc = if i >= strlen s
+    then Err (i, "unterminated string")
+    else if charAt s i == 34
+        then Ok (strJoin "" (List.revOnto (substr s from (i - from) :: acc) Nil), i + 1)
+        else if charAt s i == 92 then escaped s i from acc else stringGo s from (i + 1) acc.
 
 escaped : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
 escaped s i from acc = case escapeOf (atOr s (i + 1)) of
@@ -164,9 +164,9 @@ escapeOf c =
 
 # ---- names -----------------------------------------------------------------
 nameRun : unsafe String -> Int -> Int -> Int .
-nameRun s i n = case i >= n of
-    True -> i
-  | False -> if isNameChar (charAt s i) then nameRun s (i + 1) n else i.
+nameRun s i n = if i >= n
+    then i
+    else if isNameChar (charAt s i) then nameRun s (i + 1) n else i.
 
 # one dotted-path component: a bare name, or a quoted one ("a.b" is one field)
 component : unsafe String -> Int -> Result (String, Int) (Int, String) .
@@ -186,9 +186,9 @@ parseMconf s = case decls s (skipBlank s 0) Nil of
   | Ok ds -> Ok ds.
 
 decls : unsafe String -> Int -> List Decl -> Result (List Decl) (Int, String) .
-decls s i acc = case skipBlank s i >= strlen s of
-    True -> Ok (List.revOnto acc Nil)
-  | False -> (case statement s (skipBlank s i) Nil of
+decls s i acc = if skipBlank s i >= strlen s
+    then Ok (List.revOnto acc Nil)
+    else (case statement s (skipBlank s i) Nil of
         Err e -> Err e
       | Ok (ds, next) -> decls s next (List.revOnto ds acc)).
 
@@ -615,9 +615,9 @@ evalElem sp stack site rest r acc = case r of
 evalMembers : unsafe Space -> List (List String) -> Site -> List (String, Expr) -> Result MValue (List String) .
 evalMembers sp stack site kvs = case kvs of
     Nil -> Ok (VObject Map.strings)
-  | (k, x) :: rest -> (case repeatedKey k rest of
-        True -> Err (atSite site (strcat "duplicate key " (strcat k " in one object")) :: Nil)
-      | False -> evalMembersRest sp stack site rest x k).
+  | (k, x) :: rest -> (if repeatedKey k rest
+        then Err (atSite site (strcat "duplicate key " (strcat k " in one object")) :: Nil)
+        else evalMembersRest sp stack site rest x k).
 
 evalMembersRest : Space -> List (List String) -> Site -> List (String, Expr) -> Expr -> String -> Result MValue (List String) .
 evalMembersRest sp stack site rest x k = (case evalExpr sp stack site x of
