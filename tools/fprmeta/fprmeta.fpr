@@ -26,11 +26,12 @@ Path = use "std/path".
 S = use "std/string".
 L = use "std/list".
 O = use "std/option".
+P = use "std/parse".
 R = use "std/result".
 M = use "std/map".
 Json = use "std/json".
 Ord = use "std/order".
-V = use "version".
+V = use "std/semver".
 Pin = use "pin".
 Host = use "host".
 Trust = use "trust".
@@ -192,7 +193,7 @@ launch k name args =
 # ---- installing ---------------------------------------------------------------------
 
 jsonText : List String -> Json.Value -> O.Option String .
-jsonText at v = Json.at at v |> O.andThen Json.asString.
+jsonText = Json.stringAt.
 
 # every regular file under dir except toolchain.json/sdk.json, as path -> sha256
 inventoryOf : String -> String -> Result (M.Map String String) String .
@@ -267,14 +268,7 @@ withTempDir k pattern body =
     result).
 
 validSha : String -> Bool .
-validSha h = strlen h == 64 and shaChars (S.toLower h) 0 64.
-
-shaChars : String -> Int -> (rem : Int | measure rem) -> Bool .
-shaChars h i rem =
-  if rem <= 0 then True
-  else
-    c = charAt h i;
-    (S.isDigit c or (c >= 97 and c <= 102)) and shaChars h (i + 1) (rem - 1).
+validSha h = strlen h == 64 and S.allChars P.isHexDigit h.
 
 # Optional index fields remain optional for old format-1 release lists. If
 # supplied, none is ignored. Payload identity/platform are always checked.
@@ -306,7 +300,7 @@ checkRequirement r | S.startsWith "homebrew:" r and L.member (S.dropLeft 9 r) ["
 checkRequirement r = Err "unsupported release requirement {r}".
 
 checkRequirements : List String -> Result Unit String .
-checkRequirements = L.fold (fn acc r -> acc |> R.andThen (fn u -> checkRequirement r)) (Ok Unit).
+checkRequirements = R.each checkRequirement.
 
 payloadPlatform : Kind -> Json.Value -> String .
 payloadPlatform k meta | k.kind == "fpr" =
