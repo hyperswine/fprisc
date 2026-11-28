@@ -192,6 +192,13 @@ RV32 emulator vectors exercise shared PHY acquisition and release and
 retry of arbiter pre-initialization through mocked vendor entry points.
 Use the Mac BLE observer and station echo checker for on-air verification.
 
+The combined image reached Wi-Fi configuration on the C3 and advertised
+the BLE service UUID while the station searched for a test SSID. The Mac
+observed the advertisement at −40 dBm. Radio heap use peaked at 42,608
+bytes and dropped to 18,880 bytes after BLE stopped, while Wi-Fi was
+still initialized. The image then stopped Wi-Fi and returned normally.
+The associated-traffic endurance test requires a test access point.
+
 After installing the BLE or combined test image, use the compiled
 CoreBluetooth observer with the matching Mac checker.
 
