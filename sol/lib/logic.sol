@@ -50,7 +50,7 @@ intern nm syms = case lookupS nm syms of
 internNew nm syms = i = symsLen syms + 1; (i, (nm, i) :: syms).
 
 symName i syms = case syms of [] -> "?sym{i}" | p :: r -> snStep i p r.
-snStep i p r = (nm, k) = p; case k == i of True -> nm | False -> symName i r.
+snStep i p r = (nm, k) = p; if k == i then nm else symName i r.
 
 # ---------- clause-store terms (pure data; copied to heap per try) ----------
 # PT: PA symid | PV varIdx (0..nv-1) | PI int | PC symid [PT]
@@ -68,9 +68,8 @@ cellRec t v = {tag = t, val = v}.
 # allocate a cell at the soft top (reuse or push); returns (m, addr)
 halloc t v m =
   (hp, ht, hl, tr, tt, tl) = m;
-  case ht < hl of
-    True -> hallocSet t v hp ht hl tr tt tl
-  | False -> hallocPush t v hp ht hl tr tt tl.
+  if ht < hl then hallocSet t v hp ht hl tr tt tl
+  else hallocPush t v hp ht hl tr tt tl.
 hallocSet t v hp ht hl tr tt tl =
   hp2 = Vec.set ht (cellRec t v) hp;
   ((hp2, ht + 1, hl, tr, tt, tl), ht).
@@ -95,9 +94,8 @@ setCell a t v m =
 # record a binding on the trail (soft top, reuse or push)
 trailPush a m =
   (hp, ht, hl, tr, tt, tl) = m;
-  case tt < tl of
-    True -> trSet a hp ht hl tr tt tl
-  | False -> trPush a hp ht hl tr tt tl.
+  if tt < tl then trSet a hp ht hl tr tt tl
+  else trPush a hp ht hl tr tt tl.
 trSet a hp ht hl tr tt tl = tr2 = Vec.set tt a tr; (hp, ht, hl, tr2, tt + 1, tl).
 trPush a hp ht hl tr tt tl = tr2 = Vec.push a tr; (hp, ht, hl, tr2, tt + 1, tl + 1).
 
@@ -114,9 +112,8 @@ undoTo hmark tmark m =
   resetTops hmark tmark m2.
 unwind tmark m =
   (hp, ht, hl, tr, tt, tl) = m;
-  case tt <= tmark of
-    True -> (hp, ht, hl, tr, tt, tl)
-  | False -> unwind1 tmark hp ht hl tr tt tl.
+  if tt <= tmark then (hp, ht, hl, tr, tt, tl)
+  else unwind1 tmark hp ht hl tr tt tl.
 unwind1 tmark hp ht hl tr tt tl =
   (a, tr2) = Vec.get (tt - 1) tr;
   hp2 = Vec.set a (cellRec 0 a) hp;
@@ -128,45 +125,37 @@ resetTops hmark tmark m =
 # ---------- deref ----------
 deref a m =
   (m2, t, v) = cellAt a m;
-  case and (t == 0) (not (v == a)) of
-    True -> deref v m2
-  | False -> (m2, a, t, v).
+  if t == 0 and v != a then deref v m2
+  else (m2, a, t, v).
 
 # ---------- unification ----------
 unify a b m =
   (m1, a2, ta, va) = deref a m;
   (m2, b2, tb, vb) = deref b m1;
-  case a2 == b2 of
-    True -> (m2, True)
-  | False -> unify2 a2 ta va b2 tb vb m2.
+  if a2 == b2 then (m2, True)
+  else unify2 a2 ta va b2 tb vb m2.
 
 unify2 a ta va b tb vb m =
-  case ta == 0 of
-    True -> (bind a 0 b m, True)
-  | False -> (case tb == 0 of
-      True -> (bind b 0 a m, True)
-    | False -> unifyNV a ta va b tb vb m).
+  if ta == 0 then (bind a 0 b m, True)
+  else if tb == 0 then (bind b 0 a m, True)
+  else unifyNV a ta va b tb vb m.
 
 unifyNV a ta va b tb vb m =
-  case and (ta == tb) (or (ta == 1) (ta == 2)) of
-    True -> (m, va == vb)
-  | False -> (case and (ta == 3) (tb == 3) of
-      True -> unifyStr va vb m
-    | False -> (m, False)).
+  if ta == tb and (ta == 1 or ta == 2) then (m, va == vb)
+  else if ta == 3 and tb == 3 then unifyStr va vb m
+  else (m, False).
 
 unifyStr fa fb m =
   (m1, tfa, va) = cellAt fa m;
   (m2, tfb, vb) = cellAt fb m1;
-  case va == vb of
-    False -> (m2, False)
-  | True -> unifyArgs 1 (va % 1024) fa fb m2.
+  if va != vb then (m2, False)
+  else unifyArgs 1 (va % 1024) fa fb m2.
 
 unifyArgs k n fa fb m | k > n = (m, True).
 unifyArgs k n fa fb m =
   (m2, ok) = unify (fa + k) (fb + k) m;
-  case ok of
-    False -> (m2, False)
-  | True -> unifyArgs (k + 1) n fa fb m2.
+  if ok then unifyArgs (k + 1) n fa fb m2
+  else (m2, False).
 
 # ---------- instantiate a clause term onto the heap ----------
 # vars pre-allocated at vbase: PV i -> vbase + i (i is 0-based)
@@ -198,17 +187,16 @@ allocVars n m = (m1, u) = freshVar m; allocVars (n - 1) m1.
 # ---------- arithmetic over heap terms ----------
 evalA a m =
   (m1, a2, t, v) = deref a m;
-  case t == 2 of
-    True -> (m1, Got v)
-  | False -> (case t == 3 of True -> evalStr v m1 | False -> (m1, Nope)).
+  if t == 2 then (m1, Got v)
+  else if t == 3 then evalStr v m1
+  else (m1, Nope).
 
 evalStr f m =
   (m1, tf, fv) = cellAt f m;
   s = fv / 1024;
   ar = fv % 1024;
-  case and (and (s >= 2) (s <= 6)) (ar == 2) of
-    False -> (m1, Nope)
-  | True -> evalBin s f m1.
+  if s >= 2 and s <= 6 and ar == 2 then evalBin s f m1
+  else (m1, Nope).
 
 evalBin s f m =
   (m1, ra) = evalA (f + 1) m;
@@ -218,18 +206,19 @@ evalBin s f m =
   | Got x -> (case rb of Nope -> (m2, Nope) | Got y -> (m2, applyOp s x y)).
 
 applyOp s x y =
-  case s == 2 of True -> Got (x + y) | False ->
-  case s == 3 of True -> Got (x - y) | False ->
-  case s == 4 of True -> Got (x * y) | False ->
-  case s == 5 of True -> (case y == 0 of True -> Nope | False -> Got (x / y)) | False ->
-  (case y == 0 of True -> Nope | False -> Got (x % y)).
+  if s == 2 then Got (x + y)
+  else if s == 3 then Got (x - y)
+  else if s == 4 then Got (x * y)
+  else if s == 5 then (if y == 0 then Nope else Got (x / y))
+  else if y == 0 then Nope else Got (x % y).
 
 # ---------- rendering heap terms ----------
 rend a syms m =
   (m1, a2, t, v) = deref a m;
-  case t == 0 of True -> (m1, "_G{a2}") | False ->
-  case t == 1 of True -> (m1, symName v syms) | False ->
-  case t == 2 of True -> (m1, "{v}") | False -> rendStr v syms m1.
+  if t == 0 then (m1, "_G{a2}")
+  else if t == 1 then (m1, symName v syms)
+  else if t == 2 then (m1, "{v}")
+  else rendStr v syms m1.
 
 rendStr f syms m =
   (m1, tf, fv) = cellAt f m;
@@ -264,15 +253,13 @@ rqStep q r syms m =
   (nm, a) = q;
   (m1, s) = rend a syms m;
   (m2, rest) = rendQVars r syms m1;
-  (m2, (case rest == "true" of True -> "{nm} = {s}" | False -> "{nm} = {s}, {rest}")).
+  (m2, if rest == "true" then "{nm} = {s}" else "{nm} = {s}, {rest}").
 
 solveGoal db syms m g gs fuel qvars sols =
   (m1, g2, t, v) = deref g m;
-  case t == 1 of
-    True -> dispatch db syms m1 v 0 g2 gs fuel qvars sols
-  | False -> (case t == 3 of
-      True -> dispatchStr db syms m1 v g2 gs fuel qvars sols
-    | False -> (m1, fuel, sols)).
+  if t == 1 then dispatch db syms m1 v 0 g2 gs fuel qvars sols
+  else if t == 3 then dispatchStr db syms m1 v g2 gs fuel qvars sols
+  else (m1, fuel, sols).
 
 dispatchStr db syms m f g gs fuel qvars sols =
   (m1, tf, fv) = cellAt f m;
@@ -280,16 +267,15 @@ dispatchStr db syms m f g gs fuel qvars sols =
 
 # f = FUN cell addr (args at f+1..) or 0 for atoms; s = functor symbol
 dispatch db syms m s f g gs fuel qvars sols =
-  case s == 13 of True -> solveG db syms m gs fuel qvars sols | False ->  # true
-  case s == 14 of True -> (m, fuel, sols) | False ->                      # fail
-  case s == 1 of True -> doIs db syms m f gs fuel qvars sols | False ->   # is
-  case and (s >= 7) (s <= 10) of
-    True -> doCmp db syms m s f gs fuel qvars sols | False ->             # > < >= <=
-  case s == 11 of True -> doUnify db syms m f gs fuel qvars sols | False ->
-  case s == 12 of True -> doNeq db syms m f gs fuel qvars sols | False ->
-  case s == 15 of True -> doWrite db syms m f gs fuel qvars sols | False ->
-  case s == 16 of True -> doNl db syms m gs fuel qvars sols | False ->
-  tryClauses db syms m (clausesFor s db) g gs fuel qvars sols.
+  if s == 13 then solveG db syms m gs fuel qvars sols                    # true
+  else if s == 14 then (m, fuel, sols)                                   # fail
+  else if s == 1 then doIs db syms m f gs fuel qvars sols                # is
+  else if s >= 7 and s <= 10 then doCmp db syms m s f gs fuel qvars sols # > < >= <=
+  else if s == 11 then doUnify db syms m f gs fuel qvars sols
+  else if s == 12 then doNeq db syms m f gs fuel qvars sols
+  else if s == 15 then doWrite db syms m f gs fuel qvars sols
+  else if s == 16 then doNl db syms m gs fuel qvars sols
+  else tryClauses db syms m (clausesFor s db) g gs fuel qvars sols.
 
 doIs db syms m f gs fuel qvars sols =
   (m1, r) = evalA (f + 2) m;
@@ -299,9 +285,8 @@ doIs db syms m f gs fuel qvars sols =
 doIs2 db syms m f n gs fuel qvars sols =
   (m1, na) = halloc 2 n m;
   (m2, ok) = unify (f + 1) na m1;
-  case ok of
-    True -> solveG db syms m2 gs fuel qvars sols
-  | False -> (m2, fuel, sols).
+  if ok then solveG db syms m2 gs fuel qvars sols
+  else (m2, fuel, sols).
 
 doCmp db syms m s f gs fuel qvars sols =
   (m1, ra) = evalA (f + 1) m;
@@ -310,30 +295,27 @@ doCmp db syms m s f gs fuel qvars sols =
     Nope -> (m2, fuel, sols)
   | Got x -> (case rb of
       Nope -> (m2, fuel, sols)
-    | Got y -> (case cmpOp s x y of
-        True -> solveG db syms m2 gs fuel qvars sols
-      | False -> (m2, fuel, sols))).
+    | Got y -> if cmpOp s x y then solveG db syms m2 gs fuel qvars sols else (m2, fuel, sols)).
 
 cmpOp s x y =
-  case s == 7 of True -> x > y | False ->
-  case s == 8 of True -> x < y | False ->
-  case s == 9 of True -> x >= y | False -> x <= y.
+  if s == 7 then x > y
+  else if s == 8 then x < y
+  else if s == 9 then x >= y
+  else x <= y.
 
 doUnify db syms m f gs fuel qvars sols =
   (hm, tm, marked) = marks m;
   (m1, ok) = unify (f + 1) (f + 2) marked;
-  case ok of
-    True -> solveG db syms m1 gs fuel qvars sols
-  | False -> (undoTo hm tm m1, fuel, sols).
+  if ok then solveG db syms m1 gs fuel qvars sols
+  else (undoTo hm tm m1, fuel, sols).
 
 # != at call time: succeed iff NOT unifiable right now (bindings undone)
 doNeq db syms m f gs fuel qvars sols =
   (hm, tm, marked) = marks m;
   (m1, ok) = unify (f + 1) (f + 2) marked;
   m2 = undoTo hm tm m1;
-  case ok of
-    True -> (m2, fuel, sols)
-  | False -> solveG db syms m2 gs fuel qvars sols.
+  if ok then (m2, fuel, sols)
+  else solveG db syms m2 gs fuel qvars sols.
 
 doWrite db syms m f gs fuel qvars sols =
   (m1, s) = rend (f + 1) syms m;
@@ -347,9 +329,8 @@ doNl db syms m gs fuel qvars sols =
 clausesFor s db = case db of [] -> [] | c :: r -> cfStep s c r.
 cfStep s c r =
   (fs, hd, body, nv) = c;
-  case fs == s of
-    True -> (hd, body, nv) :: clausesFor s r
-  | False -> clausesFor s r.
+  if fs == s then (hd, body, nv) :: clausesFor s r
+  else clausesFor s r.
 
 tryClauses db syms m cs g gs fuel qvars sols =
   case cs of [] -> (m, fuel, sols) | c :: rest -> tcStep db syms m c rest g gs fuel qvars sols.
@@ -366,9 +347,8 @@ tcStep db syms m c rest g gs fuel qvars sols =
   tryClauses db syms m5 rest g gs fuel2 qvars sols2.
 
 tcBody db syms m ok body vbase gs fuel qvars sols =
-  case ok of
-    False -> (m, fuel, sols)
-  | True -> tcBody2 db syms m body vbase gs fuel qvars sols.
+  if not ok then (m, fuel, sols)
+  else tcBody2 db syms m body vbase gs fuel qvars sols.
 tcBody2 db syms m body vbase gs fuel qvars sols =
   (m1, baddrs) = instArgs body vbase m;
   solveG db syms m1 (base2append baddrs gs) fuel qvars sols.

@@ -29,13 +29,11 @@ parseLineWith limits bytes = Utf8.decode bytes |>? (parseWith limits).
 
 parseRaw : unsafe String -> Result Json String .
 parseRaw s = value s (ws s 0) |>? (fn r -> (v, i) = r;
-  case ws s i >= Str.len s of
-    True -> Ok v
-  | False -> Err "json: trailing characters at {i}").
+  if ws s i >= Str.len s then Ok v else Err "json: trailing characters at {i}").
 
-peek s i = case i >= Str.len s of True -> 0 | False -> Str.at s i.
+peek s i = if i >= Str.len s then 0 else Str.at s i.
 ws : unsafe String -> Int -> Int .
-ws s i = case Str.isSpace (peek s i) of True -> ws s (i + 1) | False -> i.
+ws s i = if Str.isSpace (peek s i) then ws s (i + 1) else i.
 
 value : unsafe String -> Int -> Result (Json, Int) String .
 value s i = case peek s i of
@@ -46,51 +44,51 @@ value s i = case peek s i of
   | _ -> literal s i.
 
 literal : unsafe String -> Int -> Result (Json, Int) String .
-literal s i = case Str.sub s i 4 == "true" of
-    True -> Ok (JBool True, i + 4)
-  | False -> (case Str.sub s i 5 == "false" of
-      True -> Ok (JBool False, i + 5)
-    | False -> (case Str.sub s i 4 == "null" of
-        True -> Ok (JNull, i + 4)
-      | False -> number s i)).
+literal s i =
+  if Str.sub s i 4 == "true" then Ok (JBool True, i + 4)
+  else if Str.sub s i 5 == "false" then Ok (JBool False, i + 5)
+  else if Str.sub s i 4 == "null" then Ok (JNull, i + 4)
+  else number s i.
 
 # JSON number grammar, independent of the more permissive Numeric reader.
-isDigit c = and (c >= 48) (c <= 57).
+isDigit c = c >= 48 and c <= 57.
 digits : unsafe String -> Int -> Int .
-digits s i = case isDigit (peek s i) of True -> digits s (i + 1) | False -> i.
+digits s i = if isDigit (peek s i) then digits s (i + 1) else i.
 number : unsafe String -> Int -> Result (Json, Int) String .
 number s i =
-  start = case peek s i == 45 of True -> i + 1 | False -> i;
+  start = if peek s i == 45 then i + 1 else i;
   integerEnd s start |>? (fractionEnd s) |>? (exponentEnd s) |>? (fn j ->
     Try.parseNum (Str.slice s i j) |>? (fn n ->
-      case finite n of True -> Ok (JNum n, j) | False -> Err "json: number out of range at {i}")).
+      if finite n then Ok (JNum n, j) else Err "json: number out of range at {i}")).
 integerEnd : unsafe String -> Int -> Result Int String .
 integerEnd s i = case peek s i of
-    48 -> (case isDigit (peek s (i + 1)) of True -> Err "json: leading zero at {i}" | False -> Ok (i + 1))
-  | c -> (case and (c >= 49) (c <= 57) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected digit at {i}").
+    48 -> if isDigit (peek s (i + 1)) then Err "json: leading zero at {i}" else Ok (i + 1)
+  | c -> if c >= 49 and c <= 57 then Ok (digits s (i + 1)) else Err "json: expected digit at {i}".
 fractionEnd : unsafe String -> Int -> Result Int String .
-fractionEnd s i = case peek s i == 46 of
-    False -> Ok i
-  | True -> (case isDigit (peek s (i + 1)) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected fraction at {i}").
+fractionEnd s i =
+  if peek s i != 46 then Ok i
+  else if isDigit (peek s (i + 1)) then Ok (digits s (i + 1))
+  else Err "json: expected fraction at {i}".
 exponentEnd : unsafe String -> Int -> Result Int String .
-exponentEnd s i = case or (peek s i == 101) (peek s i == 69) of
-    False -> Ok i
-  | True -> j = case or (peek s (i + 1) == 43) (peek s (i + 1) == 45) of True -> i + 2 | False -> i + 1;
-            case isDigit (peek s j) of True -> Ok (digits s j) | False -> Err "json: expected exponent at {j}".
-finite n = s = Str.lower "{n}"; not (or (Str.contains "inf" s) (Str.contains "nan" s)).
+exponentEnd s i =
+  if peek s i != 101 and peek s i != 69 then Ok i
+  else
+    j = if peek s (i + 1) == 43 or peek s (i + 1) == 45 then i + 2 else i + 1;
+    if isDigit (peek s j) then Ok (digits s j) else Err "json: expected exponent at {j}".
+finite n = s = Str.lower "{n}"; not (Str.contains "inf" s or Str.contains "nan" s).
 
 # Accumulate pieces in reverse; join once instead of copying a growing prefix.
 string : unsafe String -> Int -> String -> Result (String, Int) String .
 string s i acc = stringParts s i [acc].
 stringParts : unsafe String -> Int -> List String -> Result (String, Int) String .
-stringParts s i parts = case i >= Str.len s of
-    True -> Err "json: unterminated string"
-  | False -> (case peek s i of
+stringParts s i parts =
+  if i >= Str.len s then Err "json: unterminated string"
+  else case peek s i of
       34 -> Ok (Str.join "" (List.rev parts), i + 1)
     | 92 -> escapeParts s (i + 1) parts
-    | c -> (case or (c < 32) (and (c >= 55296) (c <= 57343)) of
-        True -> Err "json: invalid string character at {i}"
-      | False -> stringParts s (i + 1) (Str.fromCode c :: parts))).
+    | c ->
+        if c < 32 or (c >= 55296 and c <= 57343) then Err "json: invalid string character at {i}"
+        else stringParts s (i + 1) (Str.fromCode c :: parts).
 escapeParts : unsafe String -> Int -> List String -> Result (String, Int) String .
 escapeParts s i parts = case peek s i of
     110 -> stringParts s (i + 1) ("\n" :: parts)
@@ -104,46 +102,42 @@ escapeParts s i parts = case peek s i of
   | 117 -> hex4 s (i + 1) 0 0 |>? (unicodeEscape s i parts)
   | _ -> Err "json: unknown or incomplete escape at {i}".
 unicodeEscape : unsafe String -> Int -> List String -> Int -> Result (String, Int) String .
-unicodeEscape s i parts cp = case and (cp >= 55296) (cp <= 56319) of
-    True -> (case and (peek s (i + 5) == 92) (peek s (i + 6) == 117) of
-      False -> Err "json: missing low surrogate at {i}"
-    | True -> hex4 s (i + 7) 0 0 |>? (fn low ->
-        case and (low >= 56320) (low <= 57343) of
-          False -> Err "json: invalid low surrogate at {i}"
-        | True -> stringParts s (i + 11) (Str.fromCode (65536 + (cp - 55296) * 1024 + low - 56320) :: parts)))
-  | False -> (case and (cp >= 56320) (cp <= 57343) of
-      True -> Err "json: unpaired low surrogate at {i}"
-    | False -> stringParts s (i + 5) (Str.fromCode cp :: parts)).
+unicodeEscape s i parts cp =
+  if cp >= 55296 and cp <= 56319 then
+    if not (peek s (i + 5) == 92 and peek s (i + 6) == 117) then Err "json: missing low surrogate at {i}"
+    else hex4 s (i + 7) 0 0 |>? (fn low ->
+      if not (low >= 56320 and low <= 57343) then Err "json: invalid low surrogate at {i}"
+      else stringParts s (i + 11) (Str.fromCode (65536 + (cp - 55296) * 1024 + low - 56320) :: parts))
+  else if cp >= 56320 and cp <= 57343 then Err "json: unpaired low surrogate at {i}"
+  else stringParts s (i + 5) (Str.fromCode cp :: parts).
 hex4 : unsafe String -> Int -> Int -> Int -> Result Int String .
-hex4 s i n acc = case n == 4 of
-    True -> Ok acc
-  | False -> hexDigit (peek s i) |>? (fn d -> hex4 s (i + 1) (n + 1) (acc * 16 + d)).
-hexDigit c = k = Str.find c "0123456789abcdefABCDEF";
-  case k < 0 of
-    True -> Err "json: bad \\u escape"
-  | False -> Ok (case k > 15 of True -> k - 6 | False -> k).
+hex4 s i n acc =
+  if n == 4 then Ok acc
+  else hexDigit (peek s i) |>? (fn d -> hex4 s (i + 1) (n + 1) (acc * 16 + d)).
+hexDigit c =
+  k = Str.find c "0123456789abcdefABCDEF";
+  if k < 0 then Err "json: bad \\u escape"
+  else Ok (if k > 15 then k - 6 else k).
 array : unsafe String -> Int -> List Json -> Result (Json, Int) String .
-array s i acc = case and (acc == []) (peek s i == 93) of
-    True -> Ok (JArr [], i + 1)
-  | False -> value s i |>? (fn r -> (v, j) = r; k = ws s j;
+array s i acc =
+  if acc == [] and peek s i == 93 then Ok (JArr [], i + 1)
+  else value s i |>? (fn r -> (v, j) = r; k = ws s j;
       case peek s k of
         44 -> array s (ws s (k + 1)) (v :: acc)
       | 93 -> Ok (JArr (List.rev (v :: acc)), k + 1)
       | _ -> Err "json: expected ',' or ']' at {k}").
 
 object : unsafe String -> Int -> List (String, Json) -> Result (Json, Int) String .
-object s i acc = case and (acc == []) (peek s i == 125) of
-    True -> Ok (JObj [], i + 1)
-  | False -> (case peek s i == 34 of
-      False -> Err "json: expected a key at {i}"
-    | True -> string s (i + 1) "" |>? (fn r -> (k, j) = r; j2 = ws s j;
-        case peek s j2 == 58 of
-          False -> Err "json: expected ':' at {j2}"
-        | True -> value s (ws s (j2 + 1)) |>? (fn r2 -> (v, j3) = r2; j4 = ws s j3;
-            case peek s j4 of
-              44 -> object s (ws s (j4 + 1)) ((k, v) :: acc)
-            | 125 -> Ok (JObj (List.rev ((k, v) :: acc)), j4 + 1)
-            | _ -> Err "json: expected ',' or '}' at {j4}"))).
+object s i acc =
+  if acc == [] and peek s i == 125 then Ok (JObj [], i + 1)
+  else if peek s i != 34 then Err "json: expected a key at {i}"
+  else string s (i + 1) "" |>? (fn r -> (k, j) = r; j2 = ws s j;
+      if peek s j2 != 58 then Err "json: expected ':' at {j2}"
+      else value s (ws s (j2 + 1)) |>? (fn r2 -> (v, j3) = r2; j4 = ws s j3;
+          case peek s j4 of
+            44 -> object s (ws s (j4 + 1)) ((k, v) :: acc)
+          | 125 -> Ok (JObj (List.rev ((k, v) :: acc)), j4 + 1)
+          | _ -> Err "json: expected ',' or '}' at {j4}")).
 
 # ---- render ------------------------------------------------------------------
 
@@ -152,7 +146,7 @@ render j = case j of
     JNull -> "null"
   | JBool True -> "true"
   | JBool False -> "false"
-  | JNum n -> (case finite n of True -> "{n}" | False -> error "json: cannot render nonfinite number")
+  | JNum n -> if finite n then "{n}" else error "json: cannot render nonfinite number"
   | JStr t -> quote t
   | JArr xs -> "[{Str.join "," (List.map render xs)}]"
   | JObj kvs -> "\{{Str.join "," (List.map (fn p -> (k, v) = p; "{quote k}:{render v}") kvs)}\}".
@@ -161,11 +155,10 @@ quote t = "\"{Str.join "" (List.map quoteCode (Str.codes t))}\"".
 quoteCode c = case c of
     34 -> "\\\""
   | 92 -> "\\\\"
-  | _ -> (case c < 32 of
-      True -> "\\u00{hexCode (c / 16)}{hexCode (c % 16)}"
-    | False -> (case and (c >= 55296) (c <= 57343) of
-        True -> error "json: cannot render surrogate code point"
-      | False -> Str.fromCode c)).
+  | _ ->
+      if c < 32 then "\\u00{hexCode (c / 16)}{hexCode (c % 16)}"
+      else if c >= 55296 and c <= 57343 then error "json: cannot render surrogate code point"
+      else Str.fromCode c.
 hexCode n = Str.sub "0123456789abcdef" n 1.
 
 # two-space indentation; empty containers and scalars stay inline
@@ -187,7 +180,7 @@ get k j = case j of
   | _ -> Err "json: not an object".
 path ks j = List.fold (fn r k -> r |>? get k) (Ok j) ks.
 at i j = case j of
-    JArr xs -> (case and (i >= 0) (i < List.len xs) of True -> Ok (xs ! i) | False -> Err "json: index {i} out of range")
+    JArr xs -> if i >= 0 and i < List.len xs then Ok (xs ! i) else Err "json: index {i} out of range"
   | _ -> Err "json: not an array".
 num j = case j of JNum n -> Ok n | _ -> Err "json: not a number".
 text j = case j of JStr t -> Ok t | _ -> Err "json: not a string".
@@ -199,15 +192,16 @@ fields j = case j of JObj kvs -> Ok kvs | _ -> Err "json: not an object".
 
 # upsert a key (a new key goes last)
 set k v j = case j of
-    JObj kvs -> JObj (case List.has k (List.map (fn p -> (k2, _) = p; k2) kvs) of
-      True -> List.map (fn p -> (k2, v2) = p; case k2 == k of True -> (k, v) | False -> (k2, v2)) kvs
-    | False -> kvs + [(k, v)])
+    JObj kvs -> JObj (
+      if List.has k (List.map (fn p -> (k2, _) = p; k2) kvs) then
+        List.map (fn p -> (k2, v2) = p; if k2 == k then (k, v) else (k2, v2)) kvs
+      else kvs + [(k, v)])
   | _ -> j.
 without k j = case j of
     JObj kvs -> JObj (List.filter (fn p -> (k2, _) = p; k2 != k) kvs)
   | _ -> j.
 rename old new j = case j of
-    JObj kvs -> JObj (List.map (fn p -> (k, v) = p; case k == old of True -> (new, v) | False -> (k, v)) kvs)
+    JObj kvs -> JObj (List.map (fn p -> (k, v) = p; if k == old then (new, v) else (k, v)) kvs)
   | _ -> j.
 mapItems f j = case j of JArr xs -> JArr (List.map f xs) | _ -> j.
 filterItems p j = case j of JArr xs -> JArr (List.filter p xs) | _ -> j.

@@ -18,25 +18,26 @@ render rs = Str.join "" (List.map renderRow rs).
 renderRow r = case r of
     [] -> error "csv: cannot represent a zero-field row"
   | _ -> "{Str.join "," (List.map field r)}\n".
-field f = case or (f == "") (or (Str.contains "," f) (or (Str.contains "\"" f) (or (Str.contains "\r" f) (Str.contains "\n" f)))) of
-    True -> "\"{Str.replace "\"" "\"\"" f}\""
-  | False -> f.
+field f =
+  if f == "" or Str.contains "," f or Str.contains "\"" f or Str.contains "\r" f or Str.contains "\n" f then
+    "\"{Str.replace "\"" "\"\"" f}\""
+  else f.
 
 # Header views reject duplicate names and ragged rows rather than truncating.
 records rs = unwrap (recordsChecked rs).
 recordsChecked rs = case rs of
     [] -> Ok []
-  | hdr :: body -> (case duplicate hdr [] of
-      True -> Err "csv: duplicate header"
-    | False -> recordRows hdr body 2 []).
+  | hdr :: body ->
+      if duplicate hdr [] then Err "csv: duplicate header"
+      else recordRows hdr body 2 [].
 duplicate xs seen = case xs of
     [] -> False
-  | x :: rest -> (case List.has x seen of True -> True | False -> duplicate rest (x :: seen)).
+  | x :: rest -> if List.has x seen then True else duplicate rest (x :: seen).
 recordRows hdr rows n acc = case rows of
     [] -> Ok (List.rev acc)
-  | r :: rest -> (case List.len hdr == List.len r of
-      False -> Err "csv: row {n} has {List.len r} fields; expected {List.len hdr}"
-    | True -> recordRows hdr rest (n + 1) (List.zip hdr r :: acc)).
+  | r :: rest ->
+      if List.len hdr != List.len r then Err "csv: row {n} has {List.len r} fields; expected {List.len hdr}"
+      else recordRows hdr rest (n + 1) (List.zip hdr r :: acc).
 # Missing columns render empty, with the caller's explicit column order.
 table hdr recs = hdr :: List.map (fn rec -> List.map (fn h -> okOr "" (col h rec)) hdr) recs.
 col k rec = case List.filter (fn p -> (k2, _) = p; k2 == k) rec of
