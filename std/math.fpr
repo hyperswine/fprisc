@@ -68,19 +68,24 @@ isEven : Int -> Bool
   | work isEven <= 10 | alloc isEven <= 16 .
 isEven n = n - (n / 2) * 2 == 0.
 
+# Euclidean GCD on 63-bit Ints finishes in at most 91 steps (Lamé's theorem).
 gcd : Int -> Int -> Int .
-gcd a b = gcdGo (abs a) (abs b).
-gcdGo : unsafe Int -> Int -> Int .
-gcdGo a b | b == 0 = a.
-gcdGo a b = gcdGo b (rem a b).
+gcd a b = gcdGo 128 (abs a) (abs b).
+gcdGo : (fuel : Int | measure fuel) -> Int -> Int -> Int .
+gcdGo fuel a b =
+  if fuel <= 0 then a
+  else if b == 0 then a
+  else gcdGo (fuel - 1) b (rem a b).
 
 # exact, by squaring; a negative exponent has no exact answer and gives 0
 powInt : Int -> Int -> Int .
 powInt a n | n < 0 = 0.
-powInt a n = powGo a n 1.
-powGo : unsafe Int -> Int -> Int -> Int .
-powGo a n acc | n == 0 = acc.
-powGo a n acc = powGo (a * a) (n / 2) (if rem n 2 == 1 then acc * a else acc).
+powInt a n = powGo 64 a n 1.
+powGo : (fuel : Int | measure fuel) -> Int -> Int -> Int -> Int .
+powGo fuel a n acc =
+  if fuel <= 0 then acc
+  else if n <= 0 then acc
+  else powGo (fuel - 1) (a * a) (n / 2) (if rem n 2 == 1 then acc * a else acc).
 
 # ---- F64 ---------------------------------------------------------------------------
 pi = 3.141592653589793.
