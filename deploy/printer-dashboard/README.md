@@ -153,6 +153,8 @@ cameras"). Installed signed host SHA-256 before re-signing:
 panics. The public page returned 200, and anonymous `/camera/x1c.h264` and `/camera/x2d.h264`
 returned 401. Authenticated viewing was left to the owner.
 
+**Owner confirmation (2026-11-28):** the native H.264 cameras work on the public dashboard.
+
 The snapshot decoder LaunchAgent is still installed but no row uses it. To fall back, set a row back
 to `bambu-rtsps-snapshot` with `camera_snapshot_port` 6741 and restart the host. Full rollback (app
 bundle and config): `rollback/h264-20261128T195020`.
