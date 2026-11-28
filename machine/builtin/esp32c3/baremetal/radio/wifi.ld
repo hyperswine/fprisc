@@ -14,7 +14,7 @@ SECTIONS {
   } > drom
   .iram.text : {
     KEEP(*(.text.entry))
-    *(.text.vectors .text.c3_trap .iram1 .iram1.* .wifi*iram .wifi*iram.*)
+    *(.text.vectors .text.c3_trap .iram1 .iram1.* .wifi*iram .wifi*iram.* .coexiram .coexiram.*)
   } > code
   .flash.text : { *(.text .text.*) } > irom
   .data : { *(.sdata .sdata.* .data .data.* .dram1 .dram1.*) } > data

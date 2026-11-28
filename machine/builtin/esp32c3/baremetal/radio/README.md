@@ -181,7 +181,11 @@ link loss when the hotspot was turned off, and associated again after
 it was turned back on. The station shut down cleanly and the OTA
 runner verified firmware and journal restoration. That setup still
 needs packet-path verification. The Mac received no ICMP reply and
-did not resolve the station's static IPv4 address over ARP.
+did not resolve the station's static IPv4 address over ARP. A temporary
+ESP-IDF reference image on the same board and hotspot received a DHCP
+lease and an ICMP reply from the phone. A diagnostic bare-metal build
+reported successful radio transmissions of DHCP discovery frames, with
+zero receive callbacks during the test window.
 
 ## Combined BLE and Wi-Fi image
 
