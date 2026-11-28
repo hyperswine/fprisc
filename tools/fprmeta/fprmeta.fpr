@@ -76,10 +76,20 @@ run argv = case Proc.run argv of
     Err why -> Err "{S.join " " argv}: {why}"
   | Ok r -> if r.status == 0 then Ok r.out else Err "{S.join " " argv}: exit {r.status}: {S.trim r.err}".
 
+# macOS has /usr/bin/shasum; Linux has sha256sum. Both print HASH then the path.
+hasher : Unit -> Result (List String) String .
+hasher u =
+  if F.exists "/usr/bin/sha256sum" then Ok ["/usr/bin/sha256sum"]
+  else if F.exists "/bin/sha256sum" then Ok ["/bin/sha256sum"]
+  else if F.exists "/usr/bin/shasum" then Ok ["/usr/bin/shasum", "-a", "256"]
+  else Err "need sha256sum or shasum to verify archives".
+
 sha256 : String -> Result String String .
-sha256 path = case run ["/usr/bin/shasum", "-a", "256", path] of
-    Ok out -> (case S.words out of h :: _ -> Ok h | Nil -> Err "shasum gave no digest for {path}")
-  | Err why -> Err why.
+sha256 path = case hasher Unit of
+    Err why -> Err why
+  | Ok cmd -> case run (L.concat [cmd, [path]]) of
+      Ok out -> (case S.words out of h :: _ -> Ok h | Nil -> Err "hasher gave no digest for {path}")
+    | Err why -> Err why.
 
 platform : Unit -> String .
 platform u =
@@ -199,8 +209,14 @@ jsonText at v = O.andThen Json.asString (Json.at at v).
 # every regular file under dir except toolchain.json/sdk.json, as path -> sha256
 inventoryOf : String -> String -> Result (M.Map String String) String .
 inventoryOf dir metaName =
-  script = "cd \"$1\" && find . -type f ! -path \"./$2\" ! -path ./.fprmeta-receipt.json -print0 | xargs -0 /usr/bin/shasum -a 256";
-  case run ["/bin/sh", "-c", script, "sh", dir, metaName] of
+  script = case hasher Unit of
+      Err why -> Err why
+    | Ok cmd ->
+        hashed = S.join " " cmd;
+        Ok "cd \"$1\" && find . -type f ! -path \"./$2\" ! -path ./.fprmeta-receipt.json -print0 | xargs -0 {hashed}";
+  case script of
+      Err why -> Err why
+    | Ok sh -> case run ["/bin/sh", "-c", sh, "sh", dir, metaName] of
       Err why -> Err why
     | Ok out ->
         Ok (L.fold (fn m line ->
@@ -268,15 +284,43 @@ shaChars h i = if i >= strlen h then True else c = charAt h i;
 Entry = { version : { parts : List Int, tag : String, text : String }, url : String, sha256 : String,
           minimumOS : String, size : Int, requires : List String, yanked : Bool }.
 
+isDarwin : Unit -> Bool .
+isDarwin u = case run ["/usr/bin/uname", "-s"] of Ok t -> S.trim t == "Darwin" | Err _ -> False.
+
+# "2.36" from getconf GNU_LIBC_VERSION ("glibc 2.36") or ldd --version.
+hostGlibc : Unit -> Result String String .
+hostGlibc u =
+  wordsOf out = S.words (S.trim out);
+  case run ["/usr/bin/getconf", "GNU_LIBC_VERSION"] of
+    Ok out -> (case wordsOf out of
+        _ :: v :: _ -> Ok v
+      | [v] -> Ok v
+      | Nil -> Err "getconf GNU_LIBC_VERSION gave no version")
+  | Err _ ->
+      case run ["/usr/bin/ldd", "--version"] of
+        Ok out -> (case wordsOf (O.withDefault "" (L.head (S.lines out))) of
+            v :: Nil -> Ok v
+          | ws -> (case L.reverse ws of v :: _ -> Ok v | Nil -> Err "ldd --version gave no version"))
+      | Err why -> Err why.
+
+versionAtLeast : unsafe String -> String -> String -> Result Unit String .
+versionAtLeast need have label =
+  case (V.numbers (S.split "." need) Nil, V.numbers (S.split "." have) Nil) of
+    (Ok n, Ok h) -> if V.notLess (V.listCompare (L.take 3 (L.append h [0,0,0])) (L.take 3 (L.append n [0,0,0])))
+                    then Ok Unit else Err "release needs {label} {need}; this host is {have}"
+  | (Err why, _) -> Err why
+  | (_, Err why) -> Err why.
+
 checkMinimum : unsafe String -> Result Unit String .
 checkMinimum minimum = if minimum == "" then Ok Unit else
-  case (run ["/usr/bin/sw_vers", "-productVersion"], V.numbers (S.split "." minimum) Nil) of
-      (Ok current, Ok need) ->
-        (case V.numbers (S.split "." (S.trim current)) Nil of
-            Ok have -> if V.notLess (V.listCompare (L.take 3 (L.append have [0,0,0])) (L.take 3 (L.append need [0,0,0])))
-                       then Ok Unit else Err "release needs macOS {minimum}; this host is {S.trim current}"
-          | Err why -> Err why)
-    | _ -> Err "invalid minimumOS or cannot determine the host OS".
+  if isDarwin Unit then
+    case run ["/usr/bin/sw_vers", "-productVersion"] of
+      Ok current -> versionAtLeast minimum (S.trim current) "macOS"
+    | Err _ -> Err "invalid minimumOS or cannot determine the host OS"
+  else
+    case hostGlibc Unit of
+      Ok current -> versionAtLeast minimum current "glibc"
+    | Err why -> Err "invalid minimumOS or cannot determine the host glibc: {why}".
 
 checkRequirements : List String -> Result Unit String .
 checkRequirements requirements = L.fold (fn result r -> case result of
@@ -297,13 +341,20 @@ checkPayload k meta expected =
       "{O.withDefault "" (jsonText ["host", "system"] meta)}-{O.withDefault "" (jsonText ["host", "machine"] meta)}"
     else "{O.withDefault "" (jsonText ["os"] meta)}-{O.withDefault "" (jsonText ["architecture"] meta)}";
   normalized = S.replace "aarch64" "arm64" (S.replace "darwin" "macos" (S.replace "Darwin" "macos" actual));
-  minimum = O.withDefault "" (jsonText ["minimumMacOS"] meta);
+  darwin = isDarwin Unit;
+  minimum = if darwin then O.withDefault "" (jsonText ["minimumMacOS"] meta)
+            else (case jsonText ["minimumGlibc"] meta of
+                O.Some t -> t
+              | O.None -> O.withDefault "" (jsonText ["minimumMacOS"] meta));
   if O.andThen Json.asInt (Json.field "format" meta) != O.Some 1 then Err "unsupported payload metadata format"
   else if normalized != platform Unit then Err "payload platform {normalized} differs from host {platform Unit}"
-  else if minimum == "" then Err "payload must declare minimumMacOS"
+  else if minimum == "" then
+    (if darwin then Err "payload must declare minimumMacOS" else Err "payload must declare minimumGlibc")
   else case expected of
       O.Some e -> if jsonText ["release"] meta != O.Some e.version.text then Err "index version {e.version.text} differs from payload release"
-        else if e.minimumOS != "" and e.minimumOS != minimum then Err "index minimumOS differs from payload minimumMacOS"
+        else if e.minimumOS != "" and e.minimumOS != minimum then
+          (if darwin then Err "index minimumOS differs from payload minimumMacOS"
+           else Err "index minimumOS differs from payload minimumGlibc")
         else checkMinimum minimum
     | O.None -> checkMinimum minimum.
 
