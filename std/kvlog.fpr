@@ -226,11 +226,16 @@ startAt path m fmt want e size = Ok (KvLog (spawn (fn self -> serveLog self (St 
 # the loop: take what is waiting, write each run of puts once, answer.  `lost`
 # is the first failure of a POSTED write since the last Check: nobody waits on
 # a post, so a writer that must know asks (trySync)
-serveLog : unsafe Int -> St -> String -> a .
+# one batch a turn: Sys.loop frees the turn's garbage and keeps (St, lost)
+serveLog : Int -> St -> String -> Unit .
 serveLog self st lost =
+  _ = Sys.loop (st, lost) (logTurn self);
+  Unit.
+logTurn : Int -> (St, String) -> (Bool, (St, String)) .
+logTurn self state = case state of (st, lost) ->
   first = receive self;
   items = drain self (batch - 1) (item first :: Nil);
-  (case runBatch self st lost items Nil of (st2, lost2) -> serveLog self st2 lost2).
+  (True, runBatch self st lost items Nil).
 
 # a request, copied out of its message (which is then let go)
 item : (Int, Req) -> (Int, Req) .

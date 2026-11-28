@@ -96,7 +96,7 @@ frontStart self cfg want idxs =
   counts = L.fold (fn m idx -> (case M.get idx shards of
       O.Some sh -> M.insert idx (countOf self sh) m
     | O.None -> m)) (M.empty Ord.int) idxs;
-  front self (Fs cfg shards counts (M.empty Ord.int) want) A.tidy0.
+  front self (Fs cfg shards counts (M.empty Ord.int) want).
 
 spawnShard cfg want idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg want idx).
 
@@ -113,13 +113,17 @@ countOf me sh =
   n.
 
 # ---- the front ---------------------------------------------------------------------------
-front : unsafe Int -> Fs -> A.Tidy -> Unit .
-front self st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
+# one request a turn: Sys.loop frees the turn's garbage and keeps the routing state
+front : Int -> Fs -> Unit .
+front self st0 =
+  _ = Sys.loop st0 (frontTurn self);
+  Unit.
+frontTurn self st =
   m = receive self;
   (from, q) = m;
   next = serveFront self from q st;
   _ = drop m;
-  front self next t.
+  (True, next).
 
 # The front ROUTES; it never waits on a shard.  A writer asks it which shard
 # holds a key (starting the shard if none does), writes to that shard itself,
@@ -177,18 +181,23 @@ shardStart self cfg want idx =
   (entries, lines, fmt0, d, size) = load cfg path;
   fmt = (if size == 0 then O.withDefault Lines want else fmt0);
   _ = LF.truncate path size;
-  shard self cfg (Sh entries lines fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) (LF.sink path size) 0) A.tidy0.
+  shard self cfg (Sh entries lines fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) (LF.sink path size) 0).
 
 # a shard's loop: take what is waiting (up to `batch`), write each run of puts
 # and removals as ONE append, then answer -- group commit, as std/kvlog does.
 # A read first sees the writes queued before it.
 batch = 1024.
 
-shard : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> A.Tidy -> Unit .
-shard self cfg st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
+# one batch a turn: Sys.loop frees the turn's garbage and keeps the shard's state
+shard : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> Unit .
+shard self cfg st0 =
+  _ = Sys.loop st0 (shardTurn self cfg);
+  Unit.
+shardTurn : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> (Bool, Sh) .
+shardTurn self cfg st =
   first = receive self;
   items = drain self (batch - 1) (item first :: Nil);
-  shard self cfg (runBatch self cfg st items Nil) t.
+  (True, runBatch self cfg st items Nil).
 
 # a request, copied out of its message (which is then let go)
 item msg =
@@ -197,11 +206,11 @@ item msg =
   _ = drop msg;
   out.
 drain : unsafe Int -> Int -> List (Int, Sreq) -> List (Int, Sreq) .
-drain self more acc = case more <= 0 of
-    True -> L.reverse acc
-  | False -> (case receiveNow self of
+drain self more acc =
+  if more <= 0 then L.reverse acc
+  else case receiveNow self of
       Ok m -> drain self (more - 1) (item m :: acc)
-    | Err _ -> L.reverse acc).
+    | Err _ -> L.reverse acc.
 
 runBatch : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> List (Int, Sreq) -> List (Int, Sreq) -> Sh .
 runBatch self cfg st items pending = case items of

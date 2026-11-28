@@ -87,21 +87,26 @@ close : Journal -> Unit .
 close j = case j of Journal a _ -> r = A.askSure (myself 0) a Close; _ = drop r; Unit.
 
 # ---- the owner ----------------------------------------------------------------------
-serve : unsafe Int -> String -> LF.Sink -> Unit .
-serve self p sink =
+# one request a turn: Sys.loop reclaims each turn's garbage, the sink is the state
+serve : Int -> String -> LF.Sink -> Unit .
+serve self p sink0 =
+  _ = Sys.loop sink0 (ownerTurn self p);
+  Unit.
+ownerTurn : Int -> String -> LF.Sink -> (Bool, LF.Sink) .
+ownerTurn self p sink =
   m = receive self;
   (rt, q) = m;
   req = keep q;
   _ = drop m;
   (case req of
-      Close -> _ = A.sendSure self rt Closed; _ = LF.close sink; Unit
+      Close -> _ = A.sendSure self rt Closed; (False, LF.close sink)
     | Append bytes -> (case LF.ready sink of
           LF.Same s -> (case LF.write s bytes of
-              Ok s2 -> _ = A.sendSure self rt Done; serve self p s2
-            | Err why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); serve self p s)
-        | LF.Fresh s -> serve self p (underUs self rt p s bytes "is empty now")
-        | LF.Other s -> serve self p (underUs self rt p s bytes "is not the file this writer left")
-        | LF.Failed s why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); serve self p s)).
+              Ok s2 -> _ = A.sendSure self rt Done; (True, s2)
+            | Err why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); (True, s))
+        | LF.Fresh s -> (True, underUs self rt p s bytes "is empty now")
+        | LF.Other s -> (True, underUs self rt p s bytes "is not the file this writer left")
+        | LF.Failed s why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); (True, s))).
 # the file under the writer changed: the lines still go in, and the caller is told
 underUs : Int -> Int -> String -> LF.Sink -> String -> String -> LF.Sink .
 underUs self rt p s bytes what =
