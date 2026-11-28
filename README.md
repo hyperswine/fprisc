@@ -144,13 +144,18 @@ with the same files, sockets, poller and std modules, and `std/wifi`,
 Set `FPRISC_ROOT` to this checkout when working in QOS, for example:
 
 ```sh
-export FPRISC_ROOT=/Users/jasonqin/Documents/GitHub/fprisc
-cd /Users/jasonqin/Documents/GitHub/qos
-./qos.py build
+export FPRISC_ROOT=/path/to/fprisc
+cd /path/to/qos
+export FPR_HOME="$PWD"
+export FPR_PATH="$PWD/programs:$FPRISC_ROOT"
+./qbuild build host
 ```
 
-QOS invokes the compiler and compiles runtime sources directly from that path.
-There are no cross-repository source links or setup-generated overlays.
+`./qbuild` is a Sol launcher (release 0.13.1). An installed QOS Portable SDK
+uses `qos build` instead, with its own matched compiler; see the QOS README.
+QOS invokes the compiler and compiles runtime sources directly from
+`FPRISC_ROOT`. There are no cross-repository source links or setup-generated
+overlays.
 `FPR_HOME` selects the primary module home; `FPR_PATH` adds module roots separated
 by the platform path separator (`:` on Unix). Importer-relative resolution takes
 priority, then the home, then the extra roots in order. QOS sets these automatically.
