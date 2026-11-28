@@ -73,9 +73,6 @@ Rep = Type (Done | Value v | Listing ks | Count n | Failed why).
 batch : Int .
 batch = 1024.
 
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
-
 levelOf : Format -> W.Level .
 levelOf fmt = case fmt of Small -> W.Small | Compact -> W.Compact | _ -> W.Fast.
 formatOf : W.Level -> Format .
@@ -88,20 +85,20 @@ formatOf level = case level of W.Small -> Small | W.Compact -> Compact | W.Fast 
 Loaded = Type (Loaded (List (Int, String, J.Value)) Int Format W.Dec Int).
 
 load : String -> Result Loaded String .
-load path = case F.exists path of
-    False -> Ok (Loaded Nil 0 Lines (W.decoder Unit) 0)
-  | True -> (case F.readBytes path of Err why -> Err why | Ok bytes -> loadBytes bytes).
+load path =
+  if not (F.exists path) then Ok (Loaded Nil 0 Lines (W.decoder Unit) 0)
+  else case F.readBytes path of Err why -> Err why | Ok bytes -> loadBytes bytes.
 loadBytes : String -> Result Loaded String .
-loadBytes bytes = case W.isStream bytes of
-    True -> loadFrames bytes
-  | False -> Ok (loadLines bytes).
+loadBytes bytes =
+  if W.isStream bytes then loadFrames bytes
+  else Ok (loadLines bytes).
 
 loadLines : String -> Loaded .
 loadLines bytes = case recordsGo (S.lines bytes) Nil 0 of
   (recs, bad) -> Loaded recs bad Lines (W.decoder Unit) (LF.wholeLines bytes).
-recordsGo : unsafe List String -> List (Int, String, J.Value) -> Int -> (List (Int, String, J.Value), Int) .
+recordsGo : (ls : List String | measure ls) -> List (Int, String, J.Value) -> Int -> (List (Int, String, J.Value), Int) .
 recordsGo ls acc bad = case ls of
-    Nil -> (rev acc Nil, bad)
+    Nil -> (L.reverse acc, bad)
   | l :: r -> (case record l of
         O.Some rec -> recordsGo r (rec :: acc) bad
       | O.None -> recordsGo r acc (if strlen (S.trim l) == 0 then bad else bad + 1)).
@@ -120,9 +117,9 @@ loadFrames bytes = case W.frames bytes of
   | Ok (W.Stream level fs bad) -> (case decodeAll fs (W.decoder Unit) Nil of
       Err why -> Err why
     | Ok (recs, d) -> Ok (Loaded recs bad (formatOf level) d (strlen bytes - bad))).
-decodeAll : unsafe List String -> W.Dec -> List (Int, String, J.Value) -> Result (List (Int, String, J.Value), W.Dec) String .
+decodeAll : (fs : List String | measure fs) -> W.Dec -> List (Int, String, J.Value) -> Result (List (Int, String, J.Value), W.Dec) String .
 decodeAll fs d acc = case fs of
-    Nil -> Ok (rev acc Nil, d)
+    Nil -> Ok (L.reverse acc, d)
   | p :: r -> (case decodeRec d p of
       Err why -> Err "record {listLen acc + 1}: {why}"
     | Ok (rec, d2) -> decodeAll r d2 (rec :: acc)).
@@ -153,20 +150,20 @@ history : String -> String -> Result (List (Int, J.Value)) String .
 history path key = case records path of
     Err why -> Err why
   | Ok (recs, _) -> Ok (historyGo key recs Nil).
-historyGo : unsafe String -> List (Int, String, J.Value) -> List (Int, J.Value) -> List (Int, J.Value) .
+historyGo : String -> (recs : List (Int, String, J.Value) | measure recs) -> List (Int, J.Value) -> List (Int, J.Value) .
 historyGo key recs acc = case recs of
-    Nil -> rev acc Nil
-  | (t, k, v) :: r -> (if k == key then historyGo key r ((t, v) :: acc) else historyGo key r acc).
+    Nil -> L.reverse acc
+  | (t, k, v) :: r -> if k == key then historyGo key r ((t, v) :: acc) else historyGo key r acc.
 
 # the store as it stood at `time` (seconds): replay, stopping there
 at : Int -> String -> Result (M.Map String J.Value) String .
 at time path = case records path of
     Err why -> Err why
   | Ok (recs, _) -> Ok (replayGo time recs (M.empty S.compare)).
-replayGo : unsafe Int -> List (Int, String, J.Value) -> M.Map String J.Value -> M.Map String J.Value .
+replayGo : Int -> (recs : List (Int, String, J.Value) | measure recs) -> M.Map String J.Value -> M.Map String J.Value .
 replayGo time recs m = case recs of
     Nil -> m
-  | (t, k, v) :: r -> (if time > 0 and t > time then m else replayGo time r (M.insert k v m)).
+  | (t, k, v) :: r -> if time > 0 and t > time then m else replayGo time r (M.insert k v m).
 
 # ---- writing records ---------------------------------------------------------------------
 jsonLine : Int -> String -> J.Value -> String .
@@ -197,9 +194,7 @@ openGo : O.Option Format -> String -> Result KvLog String .
 openGo want path = case load path of
     Err why -> Err "{path}: {why}"
   | Ok (Loaded recs bad fmt0 d size) -> (case recs of
-      Nil -> (case size == 0 of
-          True -> fresh want path
-        | False -> existing want path recs bad fmt0 d size)
+      Nil -> if size == 0 then fresh want path else existing want path recs bad fmt0 d size
     | _ -> existing want path recs bad fmt0 d size).
 
 # a new (or empty) log: a binary one starts with its header
@@ -244,14 +239,14 @@ item msg =
   out = (rt, keep q);
   _ = drop msg;
   out.
-drain : unsafe Int -> Int -> List (Int, Req) -> List (Int, Req) .
-drain self more acc = case more <= 0 of
-    True -> rev acc Nil
-  | False -> (case receiveNow self of
+drain : Int -> (more : Int | measure more) -> List (Int, Req) -> List (Int, Req) .
+drain self more acc =
+  if more <= 0 then L.reverse acc
+  else case receiveNow self of
       Ok m -> drain self (more - 1) (item m :: acc)
-    | Err _ -> rev acc Nil).
+    | Err _ -> L.reverse acc.
 
-runBatch : unsafe Int -> St -> String -> List (Int, Req) -> List (Int, String, J.Value) -> (St, String) .
+runBatch : Int -> St -> String -> (items : List (Int, Req) | measure items) -> List (Int, String, J.Value) -> (St, String) .
 runBatch self st lost items pending = case items of
     Nil -> flushed lost (flush self st pending)
   | (rt, q) :: r -> (case q of
@@ -259,20 +254,20 @@ runBatch self st lost items pending = case items of
     | Check -> (case flushed lost (flush self st pending) of (st2, lost2) ->
         _ = answer self st2 rt (if lost2 == "" then Done else Failed lost2);
         runBatch self st2 "" r Nil)
-    | _ -> (case flushed lost (flush self st pending) of (st2, lost2) -> runOther self st2 lost2 rt q r)).
-runOther : unsafe Int -> St -> String -> Int -> Req -> List (Int, Req) -> (St, String) .
-runOther self st lost rt q r = case other st q of
-  (st2, rep) -> _ = answer self st2 rt rep; runBatch self st2 lost r Nil.
+    | _ -> (case flushed lost (flush self st pending) of (st2, lost2) ->
+        (st3, rep) = other st2 q;
+        _ = answer self st3 rt rep;
+        runBatch self st3 lost2 r Nil)).
 # the first lost post is the one a Check reports
 flushed : String -> (St, String) -> (St, String) .
 flushed lost r = case r of (st, why) -> (st, if lost == "" then why else lost).
 
 answer : Int -> St -> Int -> Rep -> Unit .
-answer self st rt rep = case rt == 0 of
-    False -> _ = A.sendSure self rt rep; Unit
-  | True -> (case rep of
+answer self st rt rep =
+  if rt != 0 then _ = A.sendSure self rt rep; Unit
+  else case rep of
       Failed why -> Sys.stderr "kvlog: {pathOf st}: a posted write failed: {why}\n"
-    | _ -> Unit).
+    | _ -> Unit.
 pathOf : St -> String .
 pathOf st = case st of St p _ _ _ _ _ _ -> p.
 
@@ -288,17 +283,17 @@ other st q = case st of St path m fmt want e sk dead -> (case q of
 
 # ---- one write for a run of puts ----------------------------------------------------------
 # the store after it, and why a POSTED put in it failed ("" when none did)
-flush : unsafe Int -> St -> List (Int, String, J.Value) -> (St, String) .
+flush : Int -> St -> List (Int, String, J.Value) -> (St, String) .
 flush self st pending = case pending of
     Nil -> (st, "")
-  | _ -> written self st (rev pending Nil) (ready st).
+  | _ -> written self st (L.reverse pending) (ready st).
 
 # the file at `path` is still the one this store writes -- or what to do instead
 Prep = Type (Go St | Stop St String).
 ready : St -> Prep .
-ready st = case st of St path m fmt want e sk dead -> (case dead == "" of
-    False -> Stop st dead
-  | True -> readyAs st (LF.ready sk)).
+ready st = case st of St path m fmt want e sk dead ->
+  if dead != "" then Stop st dead
+  else readyAs st (LF.ready sk).
 readyAs : St -> LF.Ready -> Prep .
 readyAs st r = case st of St path m fmt want e sk dead -> (case r of
     LF.Same s -> Go (St path m fmt want e s dead)
@@ -316,18 +311,18 @@ freshHeader st s = case st of St path m fmt want e _ dead -> (case LF.write s (W
     Err why -> Stop (St path m fmt want e (LF.unknown s) dead) why
   | Ok s2 -> Go (St path m fmt want (W.encoder (levelOf fmt)) s2 dead)).
 
-written : unsafe Int -> St -> List (Int, String, J.Value) -> Prep -> (St, String) .
+written : Int -> St -> List (Int, String, J.Value) -> Prep -> (St, String) .
 written self st items r = case r of
     Stop st2 why -> (failAll self st2 items why, postedIn items why)
   | Go st2 -> (case st2 of St path m fmt want e sk dead ->
       (case encodeAll fmt e (C.now Unit) items Nil of
         (pieces, e2) -> wrote self st2 items e2 (strJoin "" pieces))).
-encodeAll : unsafe Format -> W.Enc -> Int -> List (Int, String, J.Value) -> List String -> (List String, W.Enc) .
+encodeAll : Format -> W.Enc -> Int -> (items : List (Int, String, J.Value) | measure items) -> List String -> (List String, W.Enc) .
 encodeAll fmt e t items acc = case items of
-    Nil -> (rev acc Nil, e)
+    Nil -> (L.reverse acc, e)
   | (_, k, v) :: r -> (case encodeRec fmt e t k v of (b, e2) -> encodeAll fmt e2 t r (b :: acc)).
 
-wrote : unsafe Int -> St -> List (Int, String, J.Value) -> W.Enc -> String -> (St, String) .
+wrote : Int -> St -> List (Int, String, J.Value) -> W.Enc -> String -> (St, String) .
 wrote self st items e2 bytes = case st of St path m fmt want e sk dead -> (case LF.write sk bytes of
     Ok sk2 -> (answerAll self (St path (insertAll items m) fmt want e2 sk2 dead) items Done, "")
   | Err why -> (failAll self (St path m fmt want e (LF.unknown sk) (case fmt of
@@ -337,16 +332,16 @@ wrote self st items e2 bytes = case st of St path m fmt want e sk dead -> (case 
 postedIn : List (Int, String, J.Value) -> String -> String .
 postedIn items why = if L.any (fn it -> case it of (rt, _, _) -> rt == 0) items then why else "".
 
-insertAll : unsafe List (Int, String, J.Value) -> M.Map String J.Value -> M.Map String J.Value .
+insertAll : (items : List (Int, String, J.Value) | measure items) -> M.Map String J.Value -> M.Map String J.Value .
 insertAll items m = case items of
     Nil -> m
   | (_, k, v) :: r -> insertAll r (M.insert k v m).
 
-answerAll : unsafe Int -> St -> List (Int, String, J.Value) -> Rep -> St .
+answerAll : Int -> St -> (items : List (Int, String, J.Value) | measure items) -> Rep -> St .
 answerAll self st items rep = case items of
     Nil -> st
   | (rt, _, _) :: r -> _ = answer self st rt rep; answerAll self st r rep.
-failAll : unsafe Int -> St -> List (Int, String, J.Value) -> String -> St .
+failAll : Int -> St -> List (Int, String, J.Value) -> String -> St .
 failAll self st items why = answerAll self st items (Failed why).
 
 # ---- compaction ----------------------------------------------------------------------------
@@ -369,24 +364,23 @@ serialise fmt recs = case fmt of
     Lines -> (strJoin "" (L.map (fn rec -> case rec of (t, k, v) -> jsonLine t k v) recs), W.encoder W.Fast)
   | _ -> (case serialiseGo fmt (W.encoder (levelOf fmt)) recs Nil of
       (pieces, e) -> (strcat (W.header (levelOf fmt)) (strJoin "" pieces), e)).
-serialiseGo : unsafe Format -> W.Enc -> List (Int, String, J.Value) -> List String -> (List String, W.Enc) .
+serialiseGo : Format -> W.Enc -> (recs : List (Int, String, J.Value) | measure recs) -> List String -> (List String, W.Enc) .
 serialiseGo fmt e recs acc = case recs of
-    Nil -> (rev acc Nil, e)
+    Nil -> (L.reverse acc, e)
   | (t, k, v) :: r -> (case encodeRec fmt e t k v of (b, e2) -> serialiseGo fmt e2 r (b :: acc)).
 
 # key -> the position of its last record
-lastIndex : unsafe List (Int, String, J.Value) -> Int -> M.Map String Int -> M.Map String Int .
+lastIndex : (recs : List (Int, String, J.Value) | measure recs) -> Int -> M.Map String Int -> M.Map String Int .
 lastIndex recs i m = case recs of Nil -> m | (_, k, _) :: r -> lastIndex r (i + 1) (M.insert k i m).
 
 # the records to keep, in their original order
-keepGo : unsafe List (Int, String, J.Value) -> Int -> List String -> M.Map String Int -> List (Int, String, J.Value) -> List (Int, String, J.Value) .
+keepGo : (recs : List (Int, String, J.Value) | measure recs) -> Int -> List String -> M.Map String Int -> List (Int, String, J.Value) -> List (Int, String, J.Value) .
 keepGo recs i keepAll latest acc = case recs of
-    Nil -> rev acc Nil
-  | (t, k, v) :: r -> (if isIn k keepAll or M.get k latest == O.Some i
-      then keepGo r (i + 1) keepAll latest ((t, k, v) :: acc)
-      else keepGo r (i + 1) keepAll latest acc).
-isIn : unsafe String -> List String -> Bool .
-isIn k ks = case ks of Nil -> False | x :: r -> (if x == k then True else isIn k r).
+    Nil -> L.reverse acc
+  | (t, k, v) :: r ->
+      if L.member k keepAll or M.get k latest == O.Some i then
+        keepGo r (i + 1) keepAll latest ((t, k, v) :: acc)
+      else keepGo r (i + 1) keepAll latest acc.
 
 # ---- asking the store ----------------------------------------------------------------------
 # A reply is a MESSAGE: it is dropped once read (or it pins the store's slab for
@@ -411,7 +405,7 @@ tryPut key value db = case db of KvLog a _ -> (case A.askSureWithin 10000 (mysel
 # a request the owner answers within a budget (10 s; a compaction 60 s): an
 # owner that does not answer in time -- a disk that hangs -- is a named
 # failure of the caller, not a caller held for ever (HARDENING-DIRECTION 2)
-ask : unsafe Int -> Int -> q -> r .
+ask : Int -> Int -> q -> r .
 ask ms a q = case A.askSureWithin ms (myself 0) a q of
     Ok r -> r
   | Err why -> error "kvlog: the store did not answer: {why}".

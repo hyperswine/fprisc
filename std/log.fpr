@@ -109,7 +109,6 @@ textFields fields = case fields of Nil -> Nil | (k, v) :: r -> (k, J.Text v) :: 
 #
 # Used by std/kvlog and std/store.
 
-
 # the path; the descriptor (-1: none); the bytes the file should hold (-1: unknown)
 Sink = Type (Sink String Int Int).
 
@@ -128,11 +127,11 @@ Ready = Type (Same Sink | Fresh Sink | Other Sink | Failed Sink String).
 ready : Sink -> Ready .
 ready s = case s of Sink p fd size -> (case OS.stat p of
     Err _ -> reopenAs s 0
-  | Ok (kind, now, _) -> (case kind == 0 of
-      False -> Failed s "{p} is no longer a regular file"
-    | True -> (case now == size of
-        False -> reopenAs s now
-      | True -> (case fd >= 0 of True -> Same s | False -> openSame s now)))).
+  | Ok (kind, now, _) ->
+      if kind != 0 then Failed s "{p} is no longer a regular file"
+      else if now != size then reopenAs s now
+      else if fd >= 0 then Same s
+      else openSame s now).
 
 openSame : Sink -> Int -> Ready .
 openSame s now = case s of Sink p _ _ -> (case OS.open p "a" of
@@ -157,7 +156,7 @@ write s bytes = case s of Sink p fd size -> (case writeAll fd bytes of
 writeAll : unsafe Int -> String -> Result Unit String .
 writeAll fd s = case OS.write fd s of
     Err why -> Err why
-  | Ok n -> (case n >= strlen s of True -> Ok Unit | False -> writeAll fd (substr s n (strlen s - n))).
+  | Ok n -> if n >= strlen s then Ok Unit else writeAll fd (substr s n (strlen s - n)).
 
 # the size is no longer known (after a failed write)
 unknown : Sink -> Sink .
@@ -192,15 +191,14 @@ replaced s size = case close s of Sink p _ _ -> Sink p (0 - 1) size.
 truncate : String -> Int -> Result Unit String .
 truncate p keep = case F.readBytes p of
     Err why -> Err why
-  | Ok bytes -> (case strlen bytes == keep of
-      True -> Ok Unit
-    | False -> replace p (substr bytes 0 keep)).
+  | Ok bytes -> if strlen bytes == keep then Ok Unit else replace p (substr bytes 0 keep).
 
 # the length up to and including the last newline: a text log's tail after it
 # is torn (the process died mid-append)
 wholeLines : String -> Int .
-wholeLines bytes = lastNewline bytes (strlen bytes - 1).
-lastNewline : unsafe String -> Int -> Int .
-lastNewline s i = case i < 0 of
-    True -> 0
-  | False -> (case charAt s i == 10 of True -> i + 1 | False -> lastNewline s (i - 1)).
+wholeLines bytes = lastNewline bytes (strlen bytes).
+lastNewline : String -> (rem : Int | measure rem) -> Int .
+lastNewline s rem =
+  if rem <= 0 then 0
+  else if charAt s (rem - 1) == 10 then rem
+  else lastNewline s (rem - 1).
