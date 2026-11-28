@@ -1,0 +1,12 @@
+PASS hasFlag / anyFlag
+PASS option last wins
+PASS optionValues preserves order
+PASS intOption / intOptionOr
+PASS positional arg / argOr
+PASS positional bounds
+PASS double-dash stops flag parsing
+PASS unknown option refused
+PASS unknown --opt=val refused
+PASS missing option value refused
+PASS invalid intOption refused
+std/cli checks passed

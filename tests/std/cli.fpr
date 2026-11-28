@@ -1,0 +1,30 @@
+Cli = use "std/cli".
+O = use "std/option".
+R = use "std/result".
+
+check why yes = if yes then print "PASS {why}" else error "FAIL {why}".
+
+spec = { flags = ["-v", "--verbose", "--json"], options = ["--size", "--tag"] }.
+
+main =
+  p1 = case Cli.parse spec ["-v", "--size", "64", "--tag=a", "file.qa", "--tag", "b"] of
+      Ok p -> p
+    | Err e -> error e;
+  _ = check "hasFlag / anyFlag" (Cli.hasFlag "-v" p1 and Cli.anyFlag ["-v", "--verbose"] p1 and not (Cli.hasFlag "--json" p1));
+  _ = check "option last wins" (Cli.option "--tag" p1 == O.Some "b" and Cli.optionOr "def" "--missing" p1 == "def");
+  _ = check "optionValues preserves order" (Cli.optionValues "--tag" p1 == ["a", "b"]);
+  _ = check "intOption / intOptionOr" (Cli.intOption "--size" p1 == Ok (O.Some 64) and Cli.intOptionOr 32 "--missing" p1 == Ok 32);
+  _ = check "positional arg / argOr" (Cli.arg 0 p1 == O.Some "file.qa" and Cli.argOr "." 1 p1 == ".");
+  _ = check "positional bounds" (R.isOk (Cli.exactArgs 1 p1) and R.isOk (Cli.atMost 1 p1) and R.isErr (Cli.atMost 0 p1) and R.isErr (Cli.atLeast 2 p1));
+  _ = check "double-dash stops flag parsing" (
+        case Cli.parse spec ["--", "--not-a-flag", "-x"] of
+            Ok p -> p.positional == ["--not-a-flag", "-x"]
+          | Err _ -> False);
+  _ = check "unknown option refused" (R.isErr (Cli.parse spec ["--bogus"]));
+  _ = check "unknown --opt=val refused" (R.isErr (Cli.parse spec ["--bogus=1"]));
+  _ = check "missing option value refused" (R.isErr (Cli.parse spec ["--size"]));
+  _ = check "invalid intOption refused" (
+        case Cli.parse spec ["--size=abc"] of
+            Ok p -> R.isErr (Cli.intOption "--size" p)
+          | Err _ -> False);
+  print "std/cli checks passed".

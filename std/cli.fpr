@@ -1,0 +1,120 @@
+# std/cli.fpr -- Safe, declarative command-line flag and argument parsing.
+#
+#   Cli = use "std/cli".
+#   R = use "std/result".
+#
+#   parsed = Cli.parse { flags = ["-v", "--verbose"], options = ["--compiler"] } args
+#     |> R.andThen (Cli.atMost 1).
+#
+# Handles boolean flags, valued options (`--opt VALUE` and `--opt=VALUE`),
+# `--` end-of-options, positional count checks, and typed option readers.
+# Every function is total and verified safe (0 `unsafe`).
+
+L = use "list".
+O = use "option".
+R = use "result".
+S = use "string".
+
+Spec = { flags : List String, options : List String }.
+Parsed = { positional : List String, values : List (String, String), flags : List String }.
+
+emptySpec : Spec .
+emptySpec = { flags = Nil, options = Nil }.
+
+# ---- parsing ----------------------------------------------------------------------
+
+parse : Spec -> List String -> Result Parsed String .
+parse spec args = parseGo spec args False Nil Nil Nil.
+
+parseGo : Spec -> (args : List String | measure args) -> Bool -> List String -> List (String, String) -> List String -> Result Parsed String .
+parseGo spec args afterDash pos vals seen = case args of
+    Nil -> Ok { positional = L.reverse pos, values = vals, flags = seen }
+  | a :: rest ->
+      if afterDash then parseGo spec rest True (a :: pos) vals seen
+      else if a == "--" then parseGo spec rest True pos vals seen
+      else if L.member a spec.options then
+        (case rest of
+            v :: more -> parseGo spec more False pos ((a, v) :: vals) seen
+          | Nil -> Err "option {a}: expected a value")
+      else if L.member a spec.flags then
+        parseGo spec rest False pos vals (a :: seen)
+      else if S.startsWith "--" a and strIndexOf "=" a > 0 then
+        eq = strIndexOf "=" a;
+        name = substr a 0 eq;
+        val = substr a (eq + 1) (strlen a - eq - 1);
+        if L.member name spec.options then parseGo spec rest False pos ((name, val) :: vals) seen
+        else Err "unrecognized option: {name}"
+      else if S.startsWith "-" a and strlen a > 1 then
+        Err "unrecognized option: {a}"
+      else
+        parseGo spec rest False (a :: pos) vals seen.
+
+# ---- positional bounds ------------------------------------------------------------
+
+atMost : Int -> Parsed -> Result Parsed String .
+atMost n parsed =
+  if L.length parsed.positional > n
+    then Err "unrecognized arguments: {parsed.positional |> L.drop n |> S.join " "}"
+    else Ok parsed.
+
+atLeast : Int -> Parsed -> Result Parsed String .
+atLeast n parsed =
+  if L.length parsed.positional < n
+    then Err "expected at least {n} positional argument(s), got {L.length parsed.positional}"
+    else Ok parsed.
+
+exactArgs : Int -> Parsed -> Result Parsed String .
+exactArgs n parsed =
+  got = L.length parsed.positional;
+  if got != n then Err "expected {n} positional argument(s), got {got}"
+  else Ok parsed.
+
+# ---- reading parsed values --------------------------------------------------------
+
+hasFlag : String -> Parsed -> Bool .
+hasFlag name parsed = L.member name parsed.flags.
+
+anyFlag : List String -> Parsed -> Bool .
+anyFlag names parsed = names |> L.any (fn n -> L.member n parsed.flags).
+
+# last occurrence wins (values are prepended during parse)
+option : String -> Parsed -> O.Option String .
+option name parsed =
+  parsed.values
+  |> L.find (fn kv -> (k, _) = kv; k == name)
+  |> O.map (fn kv -> (_, v) = kv; v).
+
+optionOr : String -> String -> Parsed -> String .
+optionOr dflt name parsed = option name parsed |> O.withDefault dflt.
+
+# all occurrences of a repeatable option, in command-line order
+optionValues : String -> Parsed -> List String .
+optionValues name parsed =
+  parsed.values
+  |> L.filterMap (fn kv -> (k, v) = kv; if k == name then O.Some v else O.None)
+  |> L.reverse.
+
+intOption : String -> Parsed -> Result (O.Option Int) String .
+intOption name parsed = case option name parsed of
+    O.None -> Ok O.None
+  | O.Some raw ->
+      S.toInt raw
+      |> R.mapError (fn u -> "option {name}: invalid integer '{raw}'")
+      |> R.map O.Some.
+
+intOptionOr : Int -> String -> Parsed -> Result Int String .
+intOptionOr dflt name parsed =
+  intOption name parsed |> R.map (O.withDefault dflt).
+
+arg : Int -> Parsed -> O.Option String .
+arg i parsed = L.get i parsed.positional.
+
+argOr : String -> Int -> Parsed -> String .
+argOr dflt i parsed = arg i parsed |> O.withDefault dflt.
+
+# ---- exit helpers -----------------------------------------------------------------
+
+usageError : String -> String -> String -> a .
+usageError prog usage why =
+  _ = Sys.stderr "{usage}{prog}: error: {why}\n";
+  Sys.exit 2.
