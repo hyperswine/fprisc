@@ -176,6 +176,13 @@ device's ICMP echo count. With --reconnect it waits for link loss and a
 second association after restarting the test AP. Entering Q over USB
 stops the station and releases the Wi-Fi controller.
 
+The C3 bench board associated with a 2.4 GHz phone hotspot, reported
+link loss when the hotspot was turned off, and associated again after
+it was turned back on. The station shut down cleanly and the OTA
+runner verified firmware and journal restoration. That setup still
+needs packet-path verification. The Mac received no ICMP reply and
+did not resolve the station's static IPv4 address over ARP.
+
 ## Combined BLE and Wi-Fi image
 
     machine/builtin/esp32c3/baremetal/build.sh build/c3-coex coex flash
