@@ -12,8 +12,9 @@ The audit verifies the locked package digests and performs relocatable
 links rooted at the controller entry points. The reported imports include
 ROM exports, compiler helpers and platform services. Services accessed
 indirectly through callback tables require inspection of the matching
-callback ABI. The lock also records the upstream Apache and MIT license
-digests.
+callback ABI. The lock also records the upstream package's `LICENSE-APACHE` and
+`LICENSE-MIT` digests. The build links the pinned external archives
+locally. FP-RISC does not bundle the vendor archives.
 
 ## BLE advertisement
 
@@ -77,7 +78,7 @@ BLE roots leave nine imports after this step. The Wi-Fi roots leave 59.
 These counts cover the root-selected link, with controller callbacks and
 runtime initialization outside the import count.
 
-## Build the BLE bring-up image
+## Build and use standalone BLE advertising
 
 Set C3_RADIO_SYS and C3_RADIO_REF to checkouts at the commits in
 archives.json. The esp-hal reference checkout needs esp-phy and
@@ -85,6 +86,33 @@ esp-rom-sys. From the FP-RISC repository root, run the C3 build script
 with the BLE example.
 
     machine/builtin/esp32c3/baremetal/build.sh build/c3-ble ble flash
+
+The default source is `examples/ble.fpr`. Pass a fourth argument
+`path/to/program.fpr` to build another Builtin program with the same BLE
+runtime. Import `lib/ble.fpr` from that program.
+
+- `BLE.start uuid` starts nonconnectable advertising for one 128-bit
+  UUID in hyphenated hexadecimal form. It returns 0 on success or if
+  the same UUID is already active. Malformed UUIDs return `-EINVAL`.
+  Starting a different UUID while advertising returns `-EBUSY`.
+- `BLE.service Unit` gives the cooperative BLE controller time to run.
+  Call it regularly in the main loop while advertising. It can wait up
+  to 100 ms for controller work, and returns immediately when stopped.
+- `BLE.stop Unit` stops advertising and releases the controller. It is
+  safe to call again.
+
+The example releases the active-low LED on GPIO8. Its USB commands
+request a statistics sample (`S`), restart advertising (`B`), or shut
+down (`Q`). These commands belong to the example. A custom application
+can use the BLE library without a USB command loop.
+
+For standalone qualification, use the same Mac observer and OTA workflow
+described below. Add `--ble-seconds 1800` to `radio_ota.py` for the
+30-minute test. The verifier discovers the UUID on the Mac about once per
+minute, verifies the device clock and active heap at each sample, and
+then checks three controller restarts and final shutdown by default.
+Discovery timings include launch of the Mac observer process.
+
 
 The build generates the C controller configuration layout and PHY data
 from the pinned sources, then links the FP-RISC guest, C adapter, C3 ROM

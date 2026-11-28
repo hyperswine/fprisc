@@ -10,7 +10,9 @@ case "$example" in
     endurance) source="$root/machine/builtin/esp32c3/examples/endurance.fpr" ;;
     wifi) source="$here/radio/wifi.fpr" ;;
     wifi-sta|coex) source="$here/radio/wifi_sta.fpr" ;;
-    ble) source="$here/radio/ble.fpr" ;;
+    ble)
+        source=${4:-$here/../examples/ble.fpr}
+        source="$(cd "$(dirname -- "$source")" && pwd)/$(basename -- "$source")" ;;
     button) source="$here/button.fpr" ;;
     *) echo "Expected selfcheck, button, journal, journal-cut, endurance, ble, wifi, wifi-sta, or coex" >&2; exit 2 ;;
 esac

@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <string.h>
 #include "builtin.h"
 #include "alloc.h"
 #include "ble_hw.h"
@@ -14,10 +15,8 @@
 #include "ble_config.h"
 
 enum { BLE_MODE = 1, COMMAND_TIMEOUT_US = 2000000 };
-static const uint8_t service_uuid[16] = {
-    0x43, 0xaa, 0x9e, 0x7e, 0x1e, 0xa0, 0x4a, 0xb4,
-    0xa7, 0xc2, 0x1a, 0x28, 0x0b, 0x18, 0xb1, 0x3c
-};
+enum { UUID_BYTES = 16, UUID_TEXT = 36 };
+static uint8_t active_uuid[UUID_BYTES];
 static struct c3_btdm_osi callbacks;
 static uint8_t command[C3_HCI_MAX_COMMAND];
 static unsigned pending_step = C3_HCI_ADV_STEPS;
@@ -30,7 +29,6 @@ extern void btdm_controller_disable(void);
 extern void btdm_controller_deinit(void);
 extern void coex_pti_v2(void);
 extern void c3_console_text(const char *message);
-extern int c3_console_try_read(void);
 extern void c3_console_unsigned(uint32_t);
 
 static void send_available(void) {
@@ -49,7 +47,7 @@ static int32_t receive_event(uint8_t *data, uint16_t length) {
 
 static const struct c3_vhci_host host = {send_available, receive_event};
 
-static int advertise(void) {
+static int advertise(const uint8_t service_uuid[UUID_BYTES]) {
     for (unsigned step = 0; step < C3_HCI_ADV_STEPS; ++step) {
         uint64_t deadline = c3_tasks_now_us() + COMMAND_TIMEOUT_US;
         while (in_flight || !API_vhci_host_check_send_available()) {
@@ -71,8 +69,8 @@ static int advertise(void) {
     return 0;
 }
 
-void c3_ble_start_advertising(void) {
-    if (running) return;
+static int start_advertising(const uint8_t uuid[UUID_BYTES]) {
+    if (running) return memcmp(uuid, active_uuid, UUID_BYTES) ? -EBUSY : 0;
     static const struct c3_btdm_config defaults = {
         .magic = 0x5a5aa5a5, .version = 0x02509280,
         .controller_task_stack_size = 8192, .controller_task_prio = 3,
@@ -116,9 +114,31 @@ void c3_ble_start_advertising(void) {
     pending_step = C3_HCI_ADV_STEPS;
     pending_result = 0;
     in_flight = false;
-    if (advertise()) fpr_cpanic("BLE advertising HCI");
+    if (advertise(uuid)) fpr_cpanic("BLE advertising HCI");
+    memcpy(active_uuid, uuid, UUID_BYTES);
     running = true;
-    c3_console_text("FPR BLE ADVERTISING 43AA9E7E-1EA0-4AB4-A7C2-1A280B18B13C\n");
+
+    static const char hex[] = "0123456789ABCDEF";
+    char name[UUID_TEXT + 1];
+    char *out = name;
+    for (unsigned i = 0; i < UUID_BYTES; ++i) {
+        if (i == 4 || i == 6 || i == 8 || i == 10) *out++ = '-';
+        *out++ = hex[uuid[i] >> 4];
+        *out++ = hex[uuid[i] & 15];
+    }
+    *out = 0;
+    c3_console_text("FPR BLE ADVERTISING ");
+    c3_console_text(name);
+    c3_console_text("\n");
+    return 0;
+}
+
+void c3_ble_start_advertising(void) {
+    static const uint8_t default_uuid[UUID_BYTES] = {
+        0x43, 0xaa, 0x9e, 0x7e, 0x1e, 0xa0, 0x4a, 0xb4,
+        0xa7, 0xc2, 0x1a, 0x28, 0x0b, 0x18, 0xb1, 0x3c
+    };
+    (void)start_advertising(default_uuid);
 }
 
 void c3_ble_stop_advertising(void) {
@@ -139,20 +159,52 @@ void c3_ble_stop_advertising(void) {
     c3_console_text("\n");
 }
 
-static V run_ble(V unit) {
-    (void)unit;
-    c3_ble_start_advertising();
-    for (;;) {
-        switch (c3_console_try_read()) {
-        case 'B':
-            c3_ble_stop_advertising();
-            c3_ble_start_advertising();
-            break;
-        case 'Q':
-            c3_ble_stop_advertising();
-            return V_UNIT;
-        }
-        c3_task_park(&pending_step, c3_tasks_now_us() + 100000);
-    }
+static int hex_digit(uint8_t byte) {
+    if (byte >= '0' && byte <= '9') return byte - '0';
+    byte |= 32u;
+    return byte >= 'a' && byte <= 'f' ? byte - 'a' + 10 : -1;
 }
-FPR_FN(fpr_g_EspBLE_x2eadvertise, run_ble, 1);
+
+static V fpr_start(V value) {
+    if (!ISPTR(value) || TID(value) != T_STR) return TAG(-EINVAL);
+    const str_t *text = (const str_t *)value;
+    if (text->len != UUID_TEXT) return TAG(-EINVAL);
+    uint8_t uuid[UUID_BYTES];
+    const uint8_t *p = (const uint8_t *)text->bytes;
+    for (unsigned i = 0; i < UUID_BYTES; ++i) {
+        if ((i == 4 || i == 6 || i == 8 || i == 10) && *p++ != '-') return TAG(-EINVAL);
+        int hi = hex_digit(*p++);
+        int lo = hex_digit(*p++);
+        if (hi < 0 || lo < 0) return TAG(-EINVAL);
+        uuid[i] = (uint8_t)((hi << 4) | lo);
+    }
+    return TAG(start_advertising(uuid));
+}
+FPR_FN(fpr_g_EspBLE_x2estart, fpr_start, 1);
+
+static V fpr_stop(V unit) {
+    (void)unit;
+    c3_ble_stop_advertising();
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspBLE_x2estop, fpr_stop, 1);
+
+static V fpr_service(V unit) {
+    (void)unit;
+    if (running) c3_task_park(&pending_step, c3_tasks_now_us() + 100000);
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspBLE_x2eservice, fpr_service, 1);
+
+static V fpr_report(V unit) {
+    (void)unit;
+    c3_console_text("FPR BLE STATS ms=");
+    c3_console_unsigned(c3_tasks_now_us() / 1000u);
+    c3_console_text(" live=");
+    c3_console_unsigned(c3_radio_allocated());
+    c3_console_text(" peak=");
+    c3_console_unsigned(c3_radio_peak());
+    c3_console_text("\n");
+    return V_UNIT;
+}
+FPR_FN(fpr_g_EspBLE_x2ereport, fpr_report, 1);

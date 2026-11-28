@@ -146,7 +146,7 @@ def run(args):
                 needs_restore = True
                 stage(stub, revision, args.reference, backup, args.image)
         if args.profile == "ble":
-            check_ble(args.port, args.observer, args.restarts)
+            check_ble(args.port, args.observer, args.restarts, args.ble_seconds)
         elif args.profile == "wifi":
             check_scan(args.port, args.ssid.encode())
         elif args.profile == "wifi-sta":
@@ -174,6 +174,7 @@ if __name__ == "__main__":
     parser.add_argument("--open", action="store_true", help="use an open test AP")
     parser.add_argument("--reconnect", action="store_true", help="also verify recovery after an AP restart")
     parser.add_argument("--seconds", type=int, default=1800, help="minimum coexistence test duration")
+    parser.add_argument("--ble-seconds", type=int, default=0, help="minimum BLE endurance time")
     args = parser.parse_args()
     args.mac = args.mac.lower()
     if not re.fullmatch(r"[0-9a-f]{12}", args.mac):
@@ -190,6 +191,8 @@ if __name__ == "__main__":
         parser.error("The SSID must have at most 32 bytes with no NUL")
     if args.restarts < 0:
         parser.error("--restarts must be nonnegative")
+    if args.ble_seconds < 0:
+        parser.error("--ble-seconds must be nonnegative")
     if args.seconds <= 0:
         parser.error("--seconds must be positive")
     run(args)

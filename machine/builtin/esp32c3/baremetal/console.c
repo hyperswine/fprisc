@@ -104,6 +104,12 @@ int c3_console_try_read(void) {
     return (*config & (1u << 2)) ? (uint8_t)*fifo : -1;
 }
 
+static V try_read_byte(V unit) {
+    (void)unit;
+    return TAG(c3_console_try_read());
+}
+FPR_FN(fpr_g_EspIO_x2etryReadByte, try_read_byte, 1);
+
 static V read_byte(V unit) {
     (void)unit;
     return TAG(read_usb_byte());

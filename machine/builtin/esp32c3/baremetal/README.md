@@ -130,3 +130,9 @@ erase through the C3 ROM. It programmed a marker into one verified-blank
 sector inside the temporary OTA slot, read it back, erased the sector, and
 verified all 4 KiB were erased. The test also checked the permission,
 alignment, and range guards.
+
+## Standalone BLE
+
+The bare-metal BLE profile exposes advertising through `../lib/ble.fpr`.
+See the [BLE library usage and hardware checks](radio/README.md#build-and-use-standalone-ble-advertising)
+for the example, controller pins, and Mac observer.
