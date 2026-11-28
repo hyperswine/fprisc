@@ -163,3 +163,7 @@ allocation, and verified that flash outside the test ranges stayed
 unchanged through the restore. The bootloader confirmed the original
 factory app at `0x10000` over UART. The onboard C6 retained its
 installed firmware.
+
+## Hardware PWM
+
+Both bare-metal ports expose the shared [LEDC PWM library and servo example](../../esp32/README.md).

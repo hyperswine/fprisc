@@ -26,10 +26,13 @@ cmake "-Dfpr=$root/fpr" "-Dsource=$source" \
     "-Dcc=$cc" "-Dguest=$PWD/guest.o" -P "$root/machine/builtin/esp32c3/main/compile.cmake"
 
 compile() {
+    source_file=$1
+    object_file=$2
+    shift 2
     "$cc" -march=rv32imc_zicsr -mabi=ilp32 -Os -ffreestanding \
         -ffunction-sections -fdata-sections -ffixed-x27 -msmall-data-limit=0 -mno-relax \
         -DFPR_BUILTIN -DFPR_NHARTS=1 -DP4_FLASH_CHECK="$mode" ${heap_stats:+$heap_stats} -I"$root/machine/builtin/esp32c3/main" -I"$radio" -I"$root/runtime" -I"$root/machine/builtin" \
-        -c "$1" -o "$2"
+        "$@" -c "$source_file" -o "$object_file"
 }
 
 compile "$here/start.S" start.o
@@ -39,6 +42,7 @@ compile "$here/ble.c" ble.o
 compile "$radio/hci.c" hci.o
 compile "$here/clock.c" clock.o
 compile "$here/gpio.c" gpio.o
+compile "$root/machine/builtin/esp32/ledc.c" ledc.o -DFPR_LEDC_P4
 compile "$here/interrupt.c" interrupt.o
 compile "$root/machine/builtin/esp32c3/main/memory.c" memory.o
 compile "$root/machine/builtin/unsafe.c" unsafe.o
@@ -56,5 +60,5 @@ if [ "$mode" = 1 ]; then
 fi
 "$cc" -march=rv32imc -mabi=ilp32 -nostdlib -T "$layout" \
     -Wl,--gc-sections,--no-relax,-Map=selfcheck.map \
-    start.o console.o sdio_probe.o ble.o hci.o clock.o gpio.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o selfcheck.elf
+    start.o console.o sdio_probe.o ble.o hci.o clock.o gpio.o ledc.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o selfcheck.elf
 "${ESPTOOL:-esptool.py}" --chip esp32p4 elf2image --flash_size 32MB -o selfcheck.bin selfcheck.elf

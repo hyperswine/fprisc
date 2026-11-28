@@ -136,3 +136,7 @@ alignment, and range guards.
 The bare-metal BLE profile exposes advertising through `../lib/ble.fpr`.
 See the [BLE library usage and hardware checks](radio/README.md#build-and-use-standalone-ble-advertising)
 for the example, controller pins, and Mac observer.
+
+## Hardware PWM
+
+Both bare-metal ports expose the shared [LEDC PWM library and servo example](../../esp32/README.md).

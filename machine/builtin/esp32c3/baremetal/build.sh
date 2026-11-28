@@ -14,7 +14,11 @@ case "$example" in
         source=${4:-$here/../examples/ble.fpr}
         source="$(cd "$(dirname -- "$source")" && pwd)/$(basename -- "$source")" ;;
     button) source="$here/button.fpr" ;;
-    *) echo "Expected selfcheck, button, journal, journal-cut, endurance, ble, wifi, wifi-sta, or coex" >&2; exit 2 ;;
+    servo) source="$root/machine/builtin/esp32/examples/servo.fpr" ;;
+    app)
+        source=${4:?Provide a Builtin source file for app mode}
+        source="$(cd "$(dirname -- "$source")" && pwd)/$(basename -- "$source")" ;;
+    *) echo "Expected selfcheck, button, journal, journal-cut, endurance, ble, wifi, wifi-sta, coex, servo, or app" >&2; exit 2 ;;
 esac
 mode=${3:-ram}
 case "$mode" in
@@ -130,6 +134,7 @@ wifi|wifi-sta|coex)
     set -- "$@" -lm -lc -lnosys -Wl,--end-group ;;
 esac
 compile "$here/gpio.c" gpio.o
+compile "$root/machine/builtin/esp32/ledc.c" ledc.o
 compile "$here/clock.c" clock.o
 compile "$here/interrupt.c" interrupt.o
 compile "$here/../main/memory.c" memory.o
@@ -140,7 +145,7 @@ compile "$root/machine/builtin/heap.c" heap.o -DFPR_BUILTIN_HEAP_STATS
 compile "$root/machine/virt/memshim.c" memshim.o
 "$cc" -march=rv32imc -mabi=ilp32 -nostdlib -T "$link_layout" \
     -Wl,--gc-sections,--no-relax,-Map="$output.map" \
-    start.o console.o gpio.o clock.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o "$output.elf"
+    start.o console.o gpio.o ledc.o clock.o interrupt.o memory.o unsafe.o runtime.o i32.o heap.o memshim.o guest.o "$@" -lgcc -o "$output.elf"
 set --
 if [ "$example" = wifi ] || [ "$example" = wifi-sta ] || [ "$example" = ble ] || [ "$example" = coex ]; then
     set -- --flash_mode dio --flash_size 4MB

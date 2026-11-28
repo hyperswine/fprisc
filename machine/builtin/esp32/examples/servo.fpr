@@ -1,0 +1,7 @@
+profile builtin.
+PWM = use "../pwm".
+
+# Use an available GPIO on the board. This holds a hobby servo at neutral.
+main =
+  rc = PWM.open 0 0 4 50;
+  if rc != 0 then rc else PWM.pulseUs 0 1500.
