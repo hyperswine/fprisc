@@ -142,3 +142,17 @@ The [current launcher and repeatable acceptance commands](../../examples/printer
 replace earlier Python commands. Sanitized evidence and rollback files are under
 ignored `build/printer-native-runtime/`. No proxy change or boot service was needed.
 This is read-only deployment acceptance, not a printer operation or long soak.
+
+## 2026-11-28 native H.264 cameras deployed
+
+Branch `camera-h264-passthrough` (see `examples/printer-dashboard/README.md`, "Native H.264
+cameras"). Installed signed host SHA-256 before re-signing:
+`f9763e9a85c55027de9ab27b237fc0082e6872f28708ceeb979933d33068c40f`. The `x1c` and `x2d` rows in
+`data/printers.json` now use `"camera": "bambu-rtsps-h264"` on port 322; the A1/P1S keep
+`bambu-jpeg`. After the restart the host held MQTT connections to all four printers, with no
+panics. The public page returned 200, and anonymous `/camera/x1c.h264` and `/camera/x2d.h264`
+returned 401. Authenticated viewing was left to the owner.
+
+The snapshot decoder LaunchAgent is still installed but no row uses it. To fall back, set a row back
+to `bambu-rtsps-snapshot` with `camera_snapshot_port` 6741 and restart the host. Full rollback (app
+bundle and config): `rollback/h264-20261128T195020`.
